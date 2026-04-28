@@ -32,4 +32,21 @@ for d in "$CLAUDE_HOME/rules" "$CLAUDE_HOME/commands" "$CLAUDE_HOME/skills"; do
   done
 done
 
+# Strip managed block from ~/.claude/CLAUDE.md (added by install.sh).
+CLAUDE_MD="$CLAUDE_HOME/CLAUDE.md"
+BEGIN_MARK="<!-- MINDER-ZTN BEGIN — managed by install.sh, do not edit by hand -->"
+END_MARK="<!-- MINDER-ZTN END -->"
+if [ -f "$CLAUDE_MD" ] && grep -qF "$BEGIN_MARK" "$CLAUDE_MD"; then
+  TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+  BACKUP_DIR="$CLAUDE_HOME/.minder-ztn-backup-$TIMESTAMP"
+  mkdir -p "$BACKUP_DIR"
+  cp "$CLAUDE_MD" "$BACKUP_DIR/CLAUDE.md.before-uninstall"
+  awk -v begin="$BEGIN_MARK" -v end="$END_MARK" '
+    $0 == begin { skip = 1; next }
+    $0 == end   { skip = 0; next }
+    !skip       { print }
+  ' "$CLAUDE_MD" > "$CLAUDE_MD.tmp" && mv "$CLAUDE_MD.tmp" "$CLAUDE_MD"
+  echo "[uninstall] stripped managed block from $CLAUDE_MD (backup: $BACKUP_DIR)"
+fi
+
 echo "[uninstall] done. Backups (if any) preserved at $CLAUDE_HOME/.minder-ztn-backup-*"

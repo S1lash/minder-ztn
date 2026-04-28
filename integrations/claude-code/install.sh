@@ -132,6 +132,49 @@ for skill_dir in "$BUILT_SKILLS"/*/; do
   link "${skill_dir%/}" "$TARGET_SKILLS/$skill_name"
 done
 
+# --- Auto-wire @-imports into ~/.claude/CLAUDE.md ---
+# Idempotent: managed block delimited by markers. Re-running install.sh
+# rewrites the block in place. uninstall.sh strips it.
+CLAUDE_MD="$CLAUDE_HOME/CLAUDE.md"
+BEGIN_MARK="<!-- MINDER-ZTN BEGIN — managed by install.sh, do not edit by hand -->"
+END_MARK="<!-- MINDER-ZTN END -->"
+
+managed_block() {
+  cat <<BLOCK
+$BEGIN_MARK
+## Zettelkasten (ZTN) — Personal Knowledge Base
+- @~/.claude/rules/ztn.md
+
+## Constitution Capture — Global Hook
+- @~/.claude/rules/constitution-capture.md
+
+## Constitution — auto-loaded values & principles
+- @~/.claude/rules/constitution-core.md
+$END_MARK
+BLOCK
+}
+
+if [ ! -f "$CLAUDE_MD" ]; then
+  log "creating $CLAUDE_MD"
+  mkdir -p "$CLAUDE_HOME"
+  managed_block > "$CLAUDE_MD"
+elif grep -qF "$BEGIN_MARK" "$CLAUDE_MD"; then
+  log "refreshing managed block in $CLAUDE_MD"
+  mkdir -p "$BACKUP_DIR"
+  cp "$CLAUDE_MD" "$BACKUP_DIR/CLAUDE.md.before-refresh"
+  awk -v begin="$BEGIN_MARK" -v end="$END_MARK" -v block="$(managed_block)" '
+    $0 == begin { skip = 1; print block; next }
+    $0 == end   { skip = 0; next }
+    !skip       { print }
+  ' "$CLAUDE_MD" > "$CLAUDE_MD.tmp" && mv "$CLAUDE_MD.tmp" "$CLAUDE_MD"
+else
+  log "appending managed block to $CLAUDE_MD"
+  mkdir -p "$BACKUP_DIR"
+  cp "$CLAUDE_MD" "$BACKUP_DIR/CLAUDE.md.before-append"
+  printf '\n' >> "$CLAUDE_MD"
+  managed_block >> "$CLAUDE_MD"
+fi
+
 if [ -d "$BACKUP_DIR" ]; then
   log "previous entries backed up to: $BACKUP_DIR"
 fi
@@ -140,12 +183,13 @@ cat <<EOF
 
 [install] done.
 
-If not already present, add to ~/.claude/CLAUDE.md:
+Wired into ~/.claude/CLAUDE.md (managed block):
+  - @~/.claude/rules/ztn.md                    (search triggers, decision-check discovery)
+  - @~/.claude/rules/constitution-capture.md   (global capture hook)
+  - @~/.claude/rules/constitution-core.md      (axioms / principles / rules)
 
-  ## Constitution Capture — Global Hook
-  - @~/.claude/rules/constitution-capture.md
-
-  ## Zettelkasten (ZTN) — Personal Knowledge Base
-  - @~/.claude/rules/ztn.md
+Restart Claude Code (open a new session) to pick up the rules.
+Re-run this installer any time after a 'git pull' on minder-ztn — it is
+idempotent and refreshes the managed block in place.
 
 EOF
