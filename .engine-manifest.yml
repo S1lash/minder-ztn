@@ -1,0 +1,169 @@
+# Skeleton extraction manifest.
+#
+# Single source of truth for which paths leave this personal instance and
+# land in the public skeleton (`minder-ztn`).
+#
+# Categories:
+#   engine    — synced upstream-to-downstream as engine updates land.
+#               Friends do not edit engine paths; they pull updates via
+#               `scripts/sync_engine.sh`.
+#   template  — seed files. Copied once into the skeleton with the
+#               `.template` suffix stripped. After clone, become friend's
+#               data and stop syncing.
+#   exclude   — explicit listing of paths intentionally NOT in the
+#               skeleton. Default behaviour of `release_engine.py` is
+#               deny-by-default; this list exists for human readability.
+#
+# Path semantics:
+#   - trailing `/` means recursive directory copy
+#   - no trailing `/` means single file
+#   - patterns `**` not supported — list explicit subpaths instead
+#
+# Owner: see SOUL.md Identity. Engine code never names the owner.
+
+version: 1
+
+engine:
+  # Integration tooling (rules, commands, skills, install scripts)
+  - integrations/claude-code/rules/
+  - integrations/claude-code/commands/
+  - integrations/claude-code/skills/
+  - integrations/claude-code/install.sh
+  - integrations/claude-code/uninstall.sh
+  - integrations/claude-code/scheduler-prompts/
+  - integrations/minder-ztn-mcp/
+
+  # Cross-cutting scripts
+  - scripts/
+
+  # Engine documentation (spec / architecture)
+  - zettelkasten/_system/docs/
+
+  # Engine python pipeline + tests
+  - zettelkasten/_system/scripts/
+
+  # Engine spec — folder routing
+  - zettelkasten/_system/registries/FOLDERS.md
+
+  # Engine philosophy + processing principles + note templates
+  - zettelkasten/5_meta/CONCEPT.md
+  - zettelkasten/5_meta/PROCESSING_PRINCIPLES.md
+  - zettelkasten/5_meta/templates/
+
+  # Constitution starter pack (opt-in via /ztn:bootstrap --with-starter-axioms)
+  - zettelkasten/5_meta/starter-pack/
+
+  # Engine quick-reference docs
+  - zettelkasten/5_skills/
+
+  # PARA explainers (READMEs, not personal content)
+  - zettelkasten/1_projects/README.md
+  - zettelkasten/2_areas/README.md
+  - zettelkasten/3_resources/README.md
+  - zettelkasten/_records/README.md
+
+  # Constitution protocol (spec doc; owner's principles live in axiom/ etc subdirs)
+  - zettelkasten/0_constitution/CONSTITUTION.md
+
+  # Root meta (no CI ships to skeleton — see exclude:)
+  - .gitignore
+  - .engine-manifest.yml
+  - LICENSE
+  - integrations/VERSION
+
+  # Public-facing docs (friend onboarding + upstream sync)
+  - CONTRIBUTING.md
+  - docs/onboarding.md
+  - docs/upstream-sync.md
+  - docs/scheduling.md
+
+template:
+  # System layer
+  - zettelkasten/_system/SOUL.template.md
+  - zettelkasten/_system/TASKS.template.md
+  - zettelkasten/_system/CALENDAR.template.md
+  - zettelkasten/_system/POSTS.template.md
+
+  # Public README (ships as README.md in the skeleton)
+  - README.template.md
+
+  # Onboarding profile seed — read by /ztn:bootstrap as PRIMARY source for
+  # SOUL.md when present and non-template. After consumption, bootstrap
+  # moves the consumed describe-me/ dir to _sources/processed/crafted/
+  # describe-me/ as reference (matches owner's pattern).
+  - zettelkasten/_sources/inbox/crafted/describe-me/PROFILE.template.md
+
+  # Registries
+  - zettelkasten/_system/registries/TAGS.template.md
+  - zettelkasten/_system/registries/SOURCES.template.md
+  - zettelkasten/1_projects/PROJECTS.template.md
+  - zettelkasten/3_resources/people/PEOPLE.template.md
+
+  # State (skills require these to exist before first run)
+  - zettelkasten/_system/state/BATCH_LOG.template.md
+  - zettelkasten/_system/state/CLARIFICATIONS.template.md
+  - zettelkasten/_system/state/OPEN_THREADS.template.md
+  - zettelkasten/_system/state/PROCESSED.template.md
+  - zettelkasten/_system/state/log_maintenance.template.md
+  - zettelkasten/_system/state/log_process.template.md
+  - zettelkasten/_system/state/log_lint.template.md
+
+  # Views (auto-generated, but file must exist for skills to write)
+  - zettelkasten/_system/views/CURRENT_CONTEXT.template.md
+  - zettelkasten/_system/views/HUB_INDEX.template.md
+  # Stub so installer symlink resolves before first /ztn:regen-constitution
+  - zettelkasten/_system/views/constitution-core.template.md
+
+
+exclude:
+  # Owner's deployment journal — not engine
+  - platform/
+
+  # Owner's data layers
+  - zettelkasten/_records/meetings/
+  - zettelkasten/_records/observations/
+  - zettelkasten/_sources/inbox/
+  - zettelkasten/_sources/processed/
+  - zettelkasten/0_constitution/axiom/
+  - zettelkasten/0_constitution/principle/
+  - zettelkasten/0_constitution/rule/
+  - zettelkasten/1_projects/
+  - zettelkasten/2_areas/
+  - zettelkasten/3_resources/ideas/
+  - zettelkasten/3_resources/tech/
+  - zettelkasten/3_resources/people/
+  - zettelkasten/4_archive/
+  - zettelkasten/5_meta/mocs/
+  - zettelkasten/6_posts/
+
+  # Live system files (templates ship instead)
+  - zettelkasten/_system/SOUL.md
+  - zettelkasten/_system/TASKS.md
+  - zettelkasten/_system/CALENDAR.md
+  - zettelkasten/_system/POSTS.md
+  - zettelkasten/_system/registries/TAGS.md
+  - zettelkasten/_system/registries/SOURCES.md
+
+  # Runtime state
+  - zettelkasten/_system/state/
+  - zettelkasten/_system/views/
+
+  # Owner's personal README
+  - README.md
+
+  # Owner-only / generated
+  - .DS_Store
+  - .idea/
+  - .claude/
+  - integrations/claude-code/built/
+
+  # Owner-only CI. Friend's repo stays CI-free by design — engine quality
+  # is upstream's concern, friend just consumes verified releases. Linter
+  # is one-shot pre-extraction; tests verify engine scripts that ship to
+  # friends. Both serve owner's quality assurance, not friend's runtime.
+  - .github/workflows/
+
+  # Note: `scripts/check_no_personal_data.{sh,py}` still ships to skeleton
+  # (lives under engine `scripts/` glob). Harmless for friends — runs
+  # clean against their non-personal data; provided as a convenience for
+  # contributors who fork to send engine PRs upstream.

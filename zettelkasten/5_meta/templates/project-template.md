@@ -1,0 +1,40 @@
+# Project Template
+
+```markdown
+---
+id: project-id
+title: "Project Name"
+type: project
+status: active|completed|on-hold
+created: YYYY-MM-DD
+deadline: YYYY-MM-DD
+domains:
+  - domain
+tags:
+  - type/project
+  - project/project-id
+  - domain/domain
+---
+
+# Project Name
+
+## Цель
+[Описание цели проекта]
+
+## Ключевые результаты
+- [ ] KR1
+- [ ] KR2
+- [ ] KR3
+
+## Прогресс
+[Текущий статус и прогресс]
+
+## Связанные заметки
+- [[note-id|Description]]
+
+## Ключевые решения
+- [[decision-note|Decision 1]]
+
+## Люди
+- [[person-id]] — роль в проекте
+```

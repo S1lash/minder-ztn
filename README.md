@@ -1,0 +1,77 @@
+# minder-ztn
+
+Personal-knowledge engine: voice transcripts → structured Zettelkasten
++ a Claude Code agent stack that reads, writes, and integrates the
+notes for you.
+
+This is the **public skeleton**. Clone it, run bootstrap, review the
+clarifications queue, drop voice transcripts, run `/ztn:process`, and
+you have a system that:
+
+- Files transcripts into records (meetings/observations) and PARA notes
+- Tracks people, projects, tags, hubs, open threads, calendar, tasks
+- Captures principles and trade-offs into a personal constitution
+- Stays consistent under nightly lint passes
+- Survives context resets — Claude reads `_system/` to rebuild state
+
+## What you get
+
+- `integrations/claude-code/` — rules, slash commands, and skills you
+  install into `~/.claude/` with one script.
+- `zettelkasten/_system/` — system docs, registries, runtime state.
+- `zettelkasten/_system/scripts/` — Python pipeline (constitution
+  regen, evidence-trail compactor, candidate buffers, tests).
+- `zettelkasten/{0_constitution,1_projects,…,6_posts}/` — empty PARA
+  layout you populate as you go.
+- `scripts/sync_engine.sh` — pull engine updates from upstream
+  without touching your data.
+
+## Quickstart
+
+```bash
+# 1. Create your own ZTN from this template
+gh repo create my-ztn --template <maintainer>/minder-ztn --private --clone
+cd my-ztn
+
+# 2. Install the Claude Code integration (rules, commands, skills → ~/.claude/)
+./integrations/claude-code/install.sh
+
+# 3. Open the repo in Claude Code and run bootstrap:
+#    /ztn:bootstrap
+#
+# 4. Review what bootstrap surfaced for your decision:
+#    /ztn:resolve-clarifications
+#
+# 5. From here on — the daily flow:
+#    /ztn:process            (voice transcripts → notes)
+#    /ztn:save               (commit + push)
+#    /ztn:sync-data          (pull on a second device)
+#    /ztn:update             (pull engine updates from upstream)
+```
+
+`install.sh` is the only manual shell step. After it, every operation
+lives inside Claude Code.
+
+`/ztn:bootstrap` populates SOUL.md / PEOPLE / PROJECTS and seeds the
+clarifications queue with anything ambiguous it found in your inputs;
+`/ztn:resolve-clarifications` is the canonical owner-facing path to
+walk that queue (skill clusters items by theme, pre-forms hypotheses,
+applies confirmed resolutions in place).
+
+Full walkthrough with optional steps (drop an existing backlog, write
+an identity profile, set up scheduled processing) —
+`docs/onboarding.md`.
+
+## Sync engine updates
+
+See `docs/upstream-sync.md`. `git remote add upstream …` once, then
+`scripts/sync_engine.sh` whenever you want to pull engine improvements.
+
+## Contribute back
+
+Engine improvements (skills, scripts, docs) are welcome.
+See `CONTRIBUTING.md`.
+
+## License
+
+MIT — see `LICENSE`.
