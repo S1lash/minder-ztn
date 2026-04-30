@@ -11,6 +11,9 @@ you have a system that:
 - Files transcripts into records (meetings/observations) and PARA notes
 - Tracks people, projects, tags, hubs, open threads, calendar, tasks
 - Captures principles and trade-offs into a personal constitution
+- Surfaces outside-view observations via agent-lenses (stalled threads,
+  drift between stated values and actual behaviour, cross-domain
+  connections you didn't notice, system-meta digest)
 - Stays consistent under nightly lint passes
 - Survives context resets — Claude reads `_system/` to rebuild state
 
@@ -44,6 +47,8 @@ cd my-ztn
 #
 # 5. From here on — the daily flow:
 #    /ztn:process            (voice transcripts → notes)
+#    /ztn:agent-lens         (outside-view observations on cadence)
+#    /ztn:agent-lens-add           (create a new agent-lens via wizard)
 #    /ztn:save               (commit + push)
 #    /ztn:sync-data          (pull on a second device)
 #    /ztn:update             (pull engine updates from upstream)

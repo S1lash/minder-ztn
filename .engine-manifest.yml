@@ -31,6 +31,7 @@ engine:
   - integrations/claude-code/install.sh
   - integrations/claude-code/uninstall.sh
   - integrations/claude-code/scheduler-prompts/
+  - integrations/claude-code/SETUP_PROMPT.md
   - integrations/minder-ztn-mcp/
 
   # Cross-cutting scripts
@@ -44,6 +45,18 @@ engine:
 
   # Engine spec — folder routing
   - zettelkasten/_system/registries/FOLDERS.md
+
+  # Agent-lens — registry doc + frame contract + starter lenses
+  # AGENT_LENSES.md ships as the spec + concept doc with current lens
+  # registry table (3 starter lenses, status:draft). Friends override their
+  # local table after first sync; engine maintainer evolves spec and
+  # starter set via release_engine.
+  # _frame.md is the two-stage thinker→structurer contract — pure engine,
+  # never owner-edited.
+  # lenses/{id}/ folders are starter lens prompts (status:draft until
+  # owner activates them).
+  - zettelkasten/_system/registries/AGENT_LENSES.md
+  - zettelkasten/_system/registries/lenses/
 
   # Engine philosophy + processing principles + note templates
   - zettelkasten/5_meta/CONCEPT.md

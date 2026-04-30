@@ -2,9 +2,10 @@
 
 > **What this is.** The compact, load-bearing operating philosophy of
 > the ZTN engine. Every skill (`/ztn:bootstrap`, `/ztn:process`,
-> `/ztn:maintain`, `/ztn:lint`, `/ztn:capture-candidate`,
-> `/ztn:check-decision`, `/ztn:regen-constitution`, `/ztn:check-content`)
-> reads this file as part of Step 1 / Load Context. It is symlinked
+> `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`, `/ztn:agent-lens-add`,
+> `/ztn:capture-candidate`, `/ztn:check-decision`,
+> `/ztn:regen-constitution`, `/ztn:check-content`) reads this file as
+> part of Step 1 / Load Context. It is symlinked
 > into `~/.claude/rules/ztn-engine-doctrine.md` by `install.sh` so it
 > auto-loads in every Claude Code session opened in this repo.
 >
@@ -181,11 +182,15 @@ re-open or re-mutate.
 
 ### 3.4 Locks and exclusivity
 
-`/ztn:process`, `/ztn:maintain`, and `/ztn:lint` are mutually exclusive
-(cross-skill lock matrix in their SKILL.md). `/ztn:bootstrap` is not in
-the matrix — owner ensures system idle before invoking it.
-`/ztn:capture-candidate` is fire-and-forget, no lock. Stale locks
-> 2 h are surfaced as warnings, never silently deleted.
+`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, and `/ztn:agent-lens` are
+mutually exclusive (cross-skill lock matrix in their SKILL.md).
+`/ztn:bootstrap` is not in the matrix — owner ensures system idle before
+invoking it. `/ztn:capture-candidate` is fire-and-forget, no lock.
+`/ztn:agent-lens-add` does not acquire its own lock but respects
+`/ztn:agent-lens`'s lock at pre-flight (registry would race) and uses
+concurrent-edit detection (snapshot + re-validate) to defend against
+parallel owner-driven invocations of itself. Stale locks > 2 h are
+surfaced as warnings, never silently deleted.
 
 ### 3.5 Logs and audit trail
 
@@ -194,8 +199,10 @@ the matrix — owner ensures system idle before invoking it.
 | `_system/state/log_process.md` | `/ztn:process` | yes |
 | `_system/state/log_maintenance.md` | `/ztn:maintain`, `/ztn:bootstrap` | yes |
 | `_system/state/log_lint.md` | `/ztn:lint` | yes |
+| `_system/state/log_agent_lens.md` | `/ztn:agent-lens` | yes |
 | `_system/state/BATCH_LOG.md` | `/ztn:process` | yes |
 | `_system/state/PROCESSED.md` | `/ztn:process` | yes |
+| `_system/state/agent-lens-runs.jsonl` | `/ztn:agent-lens` | yes |
 | Knowledge note `## Evidence Trail` | every skill that touches the note | yes |
 
 Logs document WHAT happened and WHY. They are the engine's memory of

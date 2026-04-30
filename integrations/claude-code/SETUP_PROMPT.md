@@ -59,10 +59,10 @@
 
 **Commands:** `ztn-search`, `ztn-recap`
 
-**Skills:** `ztn:bootstrap`, `ztn:capture-candidate`, `ztn:check-content`,
-`ztn:check-decision`, `ztn:lint`, `ztn:maintain`, `ztn:process`,
-`ztn:regen-constitution`, `ztn:resolve-clarifications`, `ztn:save`,
-`ztn:sync-data`, `ztn:update`
+**Skills:** `ztn:agent-lens-add`, `ztn:agent-lens`, `ztn:bootstrap`,
+`ztn:capture-candidate`, `ztn:check-content`, `ztn:check-decision`,
+`ztn:lint`, `ztn:maintain`, `ztn:process`, `ztn:regen-constitution`,
+`ztn:resolve-clarifications`, `ztn:save`, `ztn:sync-data`, `ztn:update`
 
 ---
 

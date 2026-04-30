@@ -13,10 +13,13 @@ For full design rationale, cadence, and plug-in instructions see
 |---|---|---|
 | `process-scheduled.md` | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `/ztn:save --auto` | ≥ 3× per day, e.g. cron `0 9,14,19 * * *` |
 | `lint-nightly.md` | `/ztn:sync-data` → `/ztn:lint` → `/ztn:save --auto` | 1× nightly, e.g. cron `0 3 * * *` |
+| `agent-lens-scheduled.md` | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `/ztn:save --auto` | 1× daily, e.g. cron `0 6 * * *` |
 
 There is no `maintain` prompt — maintain runs inline at the tail of
 `/ztn:process`. There is no `resolve-clarifications` prompt — that step
-is owner-only by design.
+is owner-only by design. The `agent-lens` tick runs daily because the
+skill itself filters lenses by per-lens cadence — daily ≠ daily lens
+runs.
 
 ## Plug-in — Claude Code `/schedule`
 
@@ -34,6 +37,13 @@ The path of least friction. Two routines:
   name: ztn-lint
   cron: 0 3 * * *
   prompt: <paste body of lint-nightly.md>
+```
+
+```
+/schedule
+  name: ztn-agent-lens
+  cron: 0 7 * * *
+  prompt: <paste body of agent-lens-scheduled.md>
 ```
 
 Each routine runs in a fresh agent — the prompt body is fully

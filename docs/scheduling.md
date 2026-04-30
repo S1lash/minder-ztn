@@ -6,17 +6,25 @@ scheduling setup, the assumptions baked into it, and how to plug it in.
 
 ## The canonical loop
 
-Two scheduled jobs. No more.
+Three scheduled jobs. No more.
 
 | Job | Cadence | Skill chain | Prompt source |
 |---|---|---|---|
 | `ztn-process` | ≥ 3× per day | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/process-scheduled.md` |
 | `ztn-lint` | 1× nightly | `/ztn:sync-data` → `/ztn:lint` → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/lint-nightly.md` |
+| `ztn-agent-lens` | 1× daily | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/agent-lens-scheduled.md` |
+
+The agent-lens tick fires daily but the skill itself filters lenses by
+per-lens cadence — daily fire ≠ daily lens runs. Most days agent-lens
+is a no-op sync; on days when at least one lens is due (per its
+weekly/biweekly/monthly anchor) it runs the due lenses.
 
 There is no `ztn-maintain` schedule — maintain runs inline as the tail
 of `/ztn:process`. There is no `ztn-resolve-clarifications` schedule —
 the owner reviews the queue manually; that is the human-in-loop hinge
-of the whole system.
+of the whole system. There is no `ztn-agent-lens-add` schedule — lens
+creation is owner-driven (wizard-style); see
+`integrations/claude-code/skills/ztn-agent-lens-add/SKILL.md`.
 
 ## Opinionated assumptions
 
@@ -55,7 +63,7 @@ scheduler prompts are not for you yet.
 
 ## Plug-in — Claude Code `/schedule`
 
-The recommended path. Two routines:
+The recommended path. Three routines:
 
 ```
 /schedule
@@ -69,6 +77,13 @@ The recommended path. Two routines:
   name: ztn-lint
   cron: 0 3 * * *
   prompt: <paste body of integrations/claude-code/scheduler-prompts/lint-nightly.md>
+```
+
+```
+/schedule
+  name: ztn-agent-lens
+  cron: 0 6 * * *
+  prompt: <paste body of integrations/claude-code/scheduler-prompts/agent-lens-scheduled.md>
 ```
 
 The prompt bodies are self-contained — fresh agent per run, no extra

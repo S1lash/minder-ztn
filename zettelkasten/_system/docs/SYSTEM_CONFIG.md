@@ -131,6 +131,8 @@ Order mandatory: frontmatter → `# Name` → `**Role:**` → `## Контекс
 - `log_lint.md` — written ONLY by `/ztn:lint`
 - `log_maintenance.md` — written ONLY by `/ztn:maintain` + `/ztn:bootstrap`
 - `log_process.md` — written ONLY by `/ztn:process`
+- `log_agent_lens.md` — written ONLY by `/ztn:agent-lens`
+- `agent-lens-runs.jsonl` — written ONLY by `/ztn:agent-lens` (append-only machine index)
 - Cross-reads OK (activity detection, context sourcing)
 
 ### Skill Write Territory (HARD RULES)
@@ -201,7 +203,9 @@ Owner-facing review path: `/ztn:resolve-clarifications` — interactive walker t
 
 ### Cross-skill exclusion
 
-All three skills (`/ztn:process`, `/ztn:maintain`, `/ztn:lint`) mutually exclusive. Each reads all three `.{skill}.lock` files в `_sources/` on start. Any other skill's lock exists → abort.
+All four pipeline skills (`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`) mutually exclusive. Each reads all four `.{skill}.lock` files в `_sources/` on start. Any other skill's lock exists → abort.
+
+`/ztn:agent-lens-add` (lens creation wizard) is owner-driven, not in the lock matrix. It respects `/ztn:agent-lens`'s lock at pre-flight (would race on registry writes) but does not acquire its own — uses concurrent-edit detection (snapshot at Step 0, re-validate at write) to defend against rare parallel owner invocations.
 
 **`/ztn:bootstrap` не входит в lock matrix** — disposable one-shot skill (запускается при системной инициализации, disaster recovery, onboarding'е друга). User ensures system idle before running bootstrap (runs <1 раз в год после initial setup).
 
@@ -875,6 +879,13 @@ Before saving each note:
 | _system/state/log_lint.md | Append-only log of /ztn:lint runs | Each /ztn:lint |
 | _system/state/log_maintenance.md | Append-only log of /ztn:maintain + /ztn:bootstrap runs | Each /ztn:maintain / /ztn:bootstrap |
 | _system/state/log_process.md | Chronological log of /ztn:process operations | Each /ztn:process |
+| _system/state/log_agent_lens.md | Append-only log of /ztn:agent-lens runs | Each /ztn:agent-lens |
+| _system/state/agent-lens-runs.jsonl | Machine index of every agent-lens run (one JSON line per run) | Each /ztn:agent-lens |
+| _system/state/agent-lens-rejected/{lens}/{ts}.md | Raw Stage 2 outputs that failed structural validator | On validator rejection |
+| _system/agent-lens/{lens}/{date}.md | Structured agent-lens observation outputs | Each successful /ztn:agent-lens lens run |
+| _system/registries/AGENT_LENSES.md | Agent-lens registry (active/draft/paused, cadence, schema) | /ztn:agent-lens-add (table row append on creation) + Manual (owner edits) + /ztn:agent-lens (status updates only on auto-pause) |
+| _system/registries/lenses/{id}/prompt.md | Per-lens prompt + frontmatter | /ztn:agent-lens-add (creates new lens) + Manual (owner edits) |
+| _system/registries/lenses/_frame.md | Two-stage frame (thinker + structurer) + validator rules | Manual (engine-shipped) |
 | _system/state/lint-context/daily/*.md | 30-day rolling daily summaries | Each /ztn:lint |
 | _system/state/lint-context/monthly/*.md | Append-forever monthly summaries | First /ztn:lint of new UTC month |
 | _system/state/BATCH_LOG.md | Append-only index of batch operations | Each /ztn:process |

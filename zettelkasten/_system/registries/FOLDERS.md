@@ -72,12 +72,22 @@ zettelkasten/
 │   │   ├── log_process.md        # хронологический лог /ztn:process
 │   │   ├── log_maintenance.md    # append-only лог /ztn:maintain + /ztn:bootstrap
 │   │   ├── log_lint.md           # append-only лог /ztn:lint runs
+│   │   ├── log_agent_lens.md     # append-only лог /ztn:agent-lens runs
+│   │   ├── agent-lens-runs.jsonl # машинный индекс agent-lens runs (one JSON per line)
+│   │   ├── agent-lens-rejected/  # raw Stage 2 outputs (validator rejected)
 │   │   ├── batches/              # полные batch-отчёты
 │   │   └── lint-context/         # Lint Context Store: daily/ (30d rolling) + monthly/ (forever)
+│   ├── agent-lens/               # agent-lens outputs (private, owner-only review)
+│   │   └── {lens-id}/{date}.md   # one snapshot per run per lens
 │   ├── scripts/                  # Python pipeline (см. scripts/README.md)
 │   └── registries/               # реестры сущностей (schema-only после 4.75)
 │       ├── TAGS.md               # реестр тегов
 │       ├── SOURCES.md            # реестр источников
+│       ├── AGENT_LENSES.md       # agent-lens registry + concept + lifecycle
+│       ├── lenses/               # per-lens definitions
+│       │   ├── _frame.md         # two-stage frame + validator rules
+│       │   └── {lens-id}/        # one folder per lens
+│       │       └── prompt.md     # required; companion *.md files allowed
 │       └── FOLDERS.md            # этот файл
 │
 ├── 0_constitution/               # Behavioural principles (Phase 4.5)
