@@ -52,6 +52,12 @@ Decide for yourself. The frame's contract gives you full base access — use it.
 - `3_resources/people/PEOPLE.md` — when a candidate is person+topic-shaped, resolve the canonical person-id before treating different mentions as the same thread.
 - When useful — `_sources/inbox/` for fresh transcripts not yet shaped into records (if a thread seems to continue there).
 
+## Window calibration by base maturity
+
+A fresh ZTN base surfaces stalled threads at relatively high frequency in short windows — most recurring topics still live in raw records. A mature base (HUB_INDEX with >10 active hubs absorbing common recurring topics + a populated `OPEN_THREADS.md`) moves the obvious patterns into curated layers, so the threads that escape curation tend to recur slowly: a few mentions per quarter, not weekly.
+
+In a mature base, default to a 3-6 month sweep over `_records/` — the monthly window will systematically miss the very threads the lens exists to find (the slow-burn ones that did not reach a hub). Fresh bases (few hubs, thin OPEN_THREADS) work fine with a few weeks. Criterion #3 below («not already fixed») does the de-duplication regardless of window size, so widening only changes what is detectable, not what is double-counted.
+
 ## What counts as a hit
 
 A candidate where ALL hold:
