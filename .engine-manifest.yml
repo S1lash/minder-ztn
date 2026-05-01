@@ -46,6 +46,10 @@ engine:
   # Engine spec — folder routing
   - zettelkasten/_system/registries/FOLDERS.md
 
+  # Engine spec — concept naming canonical format. Pure spec; no owner
+  # mutations. Friends pull updates via sync_engine.sh.
+  - zettelkasten/_system/registries/CONCEPT_NAMING.md
+
   # Agent-lens — registry doc + frame contract + starter lenses
   # AGENT_LENSES.md ships as the spec + concept doc with current lens
   # registry table (3 starter lenses, status:draft). Friends override their
@@ -115,6 +119,11 @@ template:
   # Registries
   - zettelkasten/_system/registries/TAGS.template.md
   - zettelkasten/_system/registries/SOURCES.template.md
+  # AUDIENCES ships as template (not engine) because the file carries
+  # both spec sections AND an owner-mutable Extensions table. Spec
+  # updates flow via /ztn:update or manual diff; sync_engine.sh skips
+  # templates so owner extensions are never wiped.
+  - zettelkasten/_system/registries/AUDIENCES.template.md
   - zettelkasten/1_projects/PROJECTS.template.md
   - zettelkasten/3_resources/people/PEOPLE.template.md
 
@@ -162,6 +171,7 @@ exclude:
   - zettelkasten/_system/POSTS.md
   - zettelkasten/_system/registries/TAGS.md
   - zettelkasten/_system/registries/SOURCES.md
+  - zettelkasten/_system/registries/AUDIENCES.md
 
   # Runtime state
   - zettelkasten/_system/state/

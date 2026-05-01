@@ -285,6 +285,8 @@ Load into memory (streamed on-demand where noted):
 **Core live state:**
 - `_system/SOUL.md` (Focus + Values + Working Style — used by Scan E + monthly SOUL advice)
 - `_system/docs/SYSTEM_CONFIG.md` (Data & Processing Rules, Tier thresholds, Profile template, CLARIFICATIONS format contract)
+- `_system/registries/CONCEPT_NAMING.md` (concept name format — `concepts:` validation, normalisation algorithm, CLARIFICATION codes for `concept-format-mismatch`/`concept-type-prefix-in-name`/`concept-name-too-long`)
+- `_system/registries/AUDIENCES.md` (audience tag whitelist — `audience_tags` validation, canonical five + tenant Extensions, CLARIFICATION codes for `audience-tag-unknown`/`audience-tag-reserved-conflict`/`audience-tag-format-mismatch`)
 - `3_resources/people/PEOPLE.md` (all persons, Tier/Mentions/Last — used by Scan C)
 - `_system/state/OPEN_THREADS.md` (Active + recent Resolved — used by Scan B)
 - `_system/TASKS.md` (Waiting/Action/Delegate sections — thread activity detection)

@@ -16,8 +16,11 @@ Engine paths in short:
   prompts and skills.
 - `integrations/minder-ztn-mcp/` — MCP integration guide.
 - `scripts/` — release, sync, lint tooling.
-- `zettelkasten/_system/{docs,scripts,registries/FOLDERS.md}` —
+- `zettelkasten/_system/{docs,scripts,registries/{FOLDERS,CONCEPT_NAMING}.md}` —
   authoritative system spec.
+- `zettelkasten/_system/registries/AUDIENCES.template.md` — seed for
+  the `audience_tags` privacy whitelist (ships as template; owner
+  extensions accumulate after install).
 - `zettelkasten/5_meta/{CONCEPT.md,PROCESSING_PRINCIPLES.md,templates/}`
 - `zettelkasten/5_skills/` — quick-reference cards.
 - `zettelkasten/0_constitution/CONSTITUTION.md` — protocol spec

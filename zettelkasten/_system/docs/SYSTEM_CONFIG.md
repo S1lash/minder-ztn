@@ -274,10 +274,14 @@ zettelkasten/
 │   │   ├── batches/                  # Полные batch-отчёты
 │   │   └── lint-context/             # Lint Context Store: daily/ (30d rolling) + monthly/ (forever)
 │   ├── scripts/                      # Python pipeline (см. scripts/README.md)
-│   └── registries/                   # Реестры сущностей (schema-only после 4.75)
-│       ├── TAGS.md                   # Реестр тегов
+│   └── registries/                   # Реестры сущностей и форматные спеки
+│       ├── TAGS.md                   # Реестр `tags:` namespace labels
 │       ├── SOURCES.md                # Реестр источников
-│       └── FOLDERS.md                # Структура папок (этот layout)
+│       ├── FOLDERS.md                # Структура папок (этот layout)
+│       ├── CONCEPT_NAMING.md         # Канонический формат concept-имён (snake_case)
+│       ├── AUDIENCES.md              # Whitelist `audience_tags` privacy labels
+│       ├── AGENT_LENSES.md           # Agent-lens registry
+│       └── lenses/                   # Per-lens prompts + frame contract
 ├── 0_constitution/                   # Behavioural principles layer (Phase 4.5)
 │   ├── CONSTITUTION.md               # Root doc — scope, invariants, tree
 │   ├── axiom/                        # Tier-1 axioms
@@ -887,7 +891,9 @@ Before saving each note:
 | _system/POSTS.md | Published posts archive + content strategy | Manual or /ztn:check-content |
 | _system/CONTENT_OVERVIEW.md | Auto-generated content candidates overview | Each /ztn:check-content (read-only) |
 | _system/state/CLARIFICATIONS.md | Non-blocking human-in-the-loop questions | All skills (safety valve) |
-| _system/registries/TAGS.md | Tag registry | When new tags |
+| _system/registries/TAGS.md | Tag registry (`tags:` namespace labels) | When new tags |
+| _system/registries/CONCEPT_NAMING.md | Spec — canonical concept-name format (engine-shipped) | Manual (engine maintainer) |
+| _system/registries/AUDIENCES.md | Spec + extensions for `audience_tags` privacy labels | /ztn:resolve-clarifications (extension append on owner approval) + Manual (owner edits) |
 | 1_projects/PROJECTS.md | Project registry | When new projects |
 | 3_resources/people/PEOPLE.md | People registry | When new people |
 | _system/registries/FOLDERS.md | Folder structure | Rarely |

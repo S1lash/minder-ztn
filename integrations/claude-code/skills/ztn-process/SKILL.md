@@ -203,11 +203,13 @@ Read these system files (in parallel where possible):
 5. `{{MINDER_ZTN_BASE}}/_system/state/OPEN_THREADS.md` — open strategic threads (context only)
 6. `{{MINDER_ZTN_BASE}}/3_resources/people/PEOPLE.md` — people registry. Schema: `ID | Name | Role | Org | Profile | Tier | Mentions | Last`. Preserve all columns when writing
 7. `{{MINDER_ZTN_BASE}}/1_projects/PROJECTS.md` — project registry
-8. `{{MINDER_ZTN_BASE}}/_system/registries/TAGS.md` — tag registry
-9. `{{MINDER_ZTN_BASE}}/_system/registries/SOURCES.md` — inbox source whitelist (consumed by Step 2.1)
-10. `{{MINDER_ZTN_BASE}}/_system/views/HUB_INDEX.md` — hub index (if not loaded in Step 0)
-11. `{{MINDER_ZTN_BASE}}/_system/state/PROCESSED.md` — already processed files
-12. `{{MINDER_ZTN_BASE}}/_system/state/CLARIFICATIONS.md` — pending clarifications.
+8. `{{MINDER_ZTN_BASE}}/_system/registries/TAGS.md` — tag registry (`tags:` namespace labels)
+9. `{{MINDER_ZTN_BASE}}/_system/registries/CONCEPT_NAMING.md` — canonical concept-name format (snake_case ASCII; emit `concepts:` and manifest concept fields conformant to this spec; non-conformant raw input from non-English sources MUST be translated to English upstream of manifest emission, never transliterated)
+10. `{{MINDER_ZTN_BASE}}/_system/registries/AUDIENCES.md` — `audience_tags` whitelist (canonical five + tenant Extensions; emit `audience_tags` only with whitelisted values; unknown values raise `audience-tag-unknown` CLARIFICATION rather than silent inclusion)
+11. `{{MINDER_ZTN_BASE}}/_system/registries/SOURCES.md` — inbox source whitelist (consumed by Step 2.1)
+12. `{{MINDER_ZTN_BASE}}/_system/views/HUB_INDEX.md` — hub index (if not loaded in Step 0)
+13. `{{MINDER_ZTN_BASE}}/_system/state/PROCESSED.md` — already processed files
+14. `{{MINDER_ZTN_BASE}}/_system/state/CLARIFICATIONS.md` — pending clarifications.
     Also scan **Resolved Archive** table: previously resolved name variants (e.g.,
     «Нуара» = Лара Непрокина, «Трафт» = Кравец). Use these to auto-resolve
     transcription artifacts in new transcripts without re-creating ambiguities.
