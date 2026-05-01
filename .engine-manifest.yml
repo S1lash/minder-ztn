@@ -84,6 +84,12 @@ engine:
   - LICENSE
   - integrations/VERSION
 
+  # Project-local Claude Code config (engine-development guide for
+  # contributors). The local override `.claude/CLAUDE.local.md` and
+  # `.claude/settings.local.json` are excluded — see `exclude:`.
+  - .claude/CLAUDE.md
+  - .claude/settings.json
+
   # Public-facing docs (friend onboarding + upstream sync)
   - CONTRIBUTING.md
   - docs/onboarding.md
@@ -167,7 +173,8 @@ exclude:
   # Owner-only / generated
   - .DS_Store
   - .idea/
-  - .claude/
+  - .claude/CLAUDE.local.md
+  - .claude/settings.local.json
   - integrations/claude-code/built/
 
   # Owner-only CI. Friend's repo stays CI-free by design — engine quality

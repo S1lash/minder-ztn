@@ -22,7 +22,16 @@ Engine paths in short:
 - `zettelkasten/5_skills/` — quick-reference cards.
 - `zettelkasten/0_constitution/CONSTITUTION.md` — protocol spec
   (your `axiom/principle/rule/` files stay yours).
+- `.claude/CLAUDE.md`, `.claude/settings.json` — project-local
+  engine-development guide and permissive Bash allowlist for common
+  dev/CI commands.
 - `.github/workflows/`, `.gitignore`, `LICENSE`, `integrations/VERSION`.
+
+Before opening an engine PR, read `.claude/CLAUDE.md` — it codifies
+the boundary between engine paths and owner-data paths, the
+documentation conventions enforced on every doc edit, and the
+verification commands (linter, pytest, release dry-run) that gate
+engine changes.
 
 ## Workflow
 
