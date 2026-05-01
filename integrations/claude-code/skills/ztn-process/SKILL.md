@@ -13,7 +13,7 @@ disable-model-invocation: false
 # /ztn:process — Transcript Processing Pipeline
 
 Process new source files from `_sources/inbox/` into the ZTN three-layer architecture:
-- **Records** (`_records/{meetings,observations}/`) — lightweight transcript-grounded logs (meetings = multi-speaker work; observations = solo Plaud reflections/ideas/therapy)
+- **Records** (`_records/{meetings,observations}/`) — lightweight transcript-grounded logs (meetings = multi-speaker; observations = solo voice / journal / reflection)
 - **Knowledge** (PARA: `1_projects/` through `4_archive/`) — atomic insights
 - **Hubs** (`5_meta/mocs/`) — synthesis and evolution tracking
 
@@ -136,16 +136,16 @@ Before any processing begins, scan ALL new transcripts to build shared context.
 
 ### 0.1 Quick Read
 
-For each new transcript:
-- If `transcript_with_summary.md`: read only the summary section
-  (after `<transcript_to_summary_delimiter>`)
-- If `transcript.md`: read first 50 lines
+For each new file selected by §2.1 (layout-aware), read a cheap preview:
+- If the filename is `transcript_with_summary.md`: read only the summary section (the part AFTER `<transcript_to_summary_delimiter>`). The summary is short — full read is acceptable.
+- If the filename is `transcript.md`: read first 50 lines.
+- For `flat-md` files (any other filename — sources like `notes`, `crafted`): read first 50 lines.
 
 Extract (quick, no deep analysis):
-- Date/timestamp from folder name
+- Date/timestamp from folder name (`dir-per-item` / `dir-with-summary`) or from filename / mtime (`flat-md`). Folder-name forms accepted are listed in §2.3.
 - Names of people mentioned
 - Main topics / keywords
-- Source type (derived from parent folder under `_sources/inbox/`; canonical list in `_system/registries/SOURCES.md`)
+- Source type — derived from the parent folder under `_sources/inbox/{source-id}/...`; the canonical whitelist is `_system/registries/SOURCES.md`.
 
 ### 0.2 Build People Resolution Map
 
@@ -227,32 +227,44 @@ skill. Используются для лучшего понимания priorit
 ### 2.1 Scan Directories
 
 Load `_system/registries/SOURCES.md` — the whitelist of inbox source types.
-Iterate over rows in the `## Active Sources` and `## Reserved Sources` tables;
-for each row, scan the `Inbox Path` directory using the `Format Hint` as a
-matching pattern. Reserved sources may be empty — that is expected and NOT an error.
+SOURCES.md is the **only** place where source-specific behaviour lives; this
+SKILL never names individual source IDs.
 
-To add a new source: append a row to SOURCES.md and create the corresponding
-`_sources/inbox/{id}/` + `_sources/processed/{id}/` folders. No skill code changes.
+Iterate over rows in `## Active Sources` and `## Reserved Sources` (skip
+`## Deprecated Sources` rows entirely). For each row, scan `Inbox Path`
+according to the row's `Layout` column:
 
-Everything in `_sources/inbox/` is unprocessed — the filesystem IS the primary filter.
-PROCESSED.md serves three roles:
+| Layout | Scan rule |
+|---|---|
+| `flat-md` | Glob `{Inbox Path}/*.md` (top-level only — never recurse). |
+| `dir-per-item` | For every immediate subfolder of `Inbox Path`, take `transcript.md` if present. |
+| `dir-with-summary` | For every immediate subfolder of `Inbox Path`, pick exactly one file with this priority: (1) `transcript_with_summary.md` if present (combined raw+summary, see §3.1 delimiter contract), (2) `transcript.md` otherwise. A folder with NEITHER file is skipped silently (empty / partial export). A folder that has BOTH never reads `transcript.md` — the combined file is canonical. |
+
+For every layout, honour the row's `Skip Subdirs` column — any subdirectory
+whose name matches an entry in that comma-separated list is skipped without
+warning. Reserved sources may have empty inbox folders; that is expected and
+NEVER an error.
+
+Adding a new source is declarative: invoke `/ztn:source-add` (or append a
+row to SOURCES.md + create `_sources/inbox/{id}/.gitkeep` and
+`_sources/processed/{id}/.gitkeep` manually). No edits to this SKILL.
+
+Everything in `_sources/inbox/` not skipped above is unprocessed — the
+filesystem IS the primary filter. PROCESSED.md serves three roles:
 1. **Crash recovery** — files are moved to `processed/` BEFORE processing (Step 2.4).
    If a file is in `processed/` but NOT in PROCESSED.md, it was moved but processing
    failed — needs retry.
 2. **`--reprocess` support** — identifies which files to re-process from `processed/`.
 3. **Audit log** — historical record of all processing operations.
 
-NOTE: Both `_sources/inbox/crafted/describe-me/` and
-`_sources/processed/crafted/describe-me/` are **excluded from processing**.
-They contain AI-generated / hand-written reference profiles (PROFILE.md,
-policies, identity drafts) consumed by `/ztn:bootstrap` Step 2 as the
-primary SOUL source. These are NOT transcripts. The directory glob for
-the `crafted` source is `_sources/inbox/crafted/*.md` (flat, top-level
-only) — `describe-me/` lives in a subdir and therefore stays out of the
-processing queue regardless. Bootstrap moves consumed inbox-side
-describe-me/ contents to processed-side after first read.
-
-For each folder, prefer `transcript_with_summary.md` over `transcript.md`.
+> **Reference material under sources.** Some sources expose reference content
+> (identity drafts, policies, AI-generated profiles) inside a subfolder that
+> must NEVER reach the processing queue. The mechanism is the `Skip Subdirs`
+> column on SOURCES.md. Example: `crafted` declares `Skip Subdirs: describe-me`,
+> so `_sources/inbox/crafted/describe-me/` and its mirror under `processed/`
+> are invisible to this SKILL. `/ztn:bootstrap` reads that path through its own
+> contract and is responsible for moving consumed inbox-side describe-me content
+> to the processed-side mirror.
 
 ### 2.2 File Selection
 
@@ -263,8 +275,17 @@ If `--reprocess`: also scan `_sources/processed/` and re-process specified files
 
 ### 2.3 Sort Chronologically
 
-Sort new files by timestamp ASCENDING (oldest first).
-Extract timestamp from folder name (e.g., `2026-03-31T14:38:00Z` or `2026-03-31_topic`).
+Sort new files by timestamp ASCENDING (oldest first). Extract the timestamp
+from the folder name (for `dir-per-item` / `dir-with-summary` layouts) or
+the file name / mtime (for `flat-md`).
+
+Folder-name forms accepted (all may coexist within one source):
+
+1. **Pure ISO** — `2026-04-29T14:09:30Z` → use as-is.
+2. **ISO + topic suffix** — `2026-04-29T14:09:30Z_short topic` → split on first `_`, parse left side.
+3. **Date + topic** — `2026-04-29_short-topic` → midnight UTC of that date.
+4. **Legacy short date + topic** — `04-29 short topic` → assume current year, midnight UTC, surface a CLARIFICATION (`type: source-folder-naming`) so the owner can rename.
+5. **No parseable date** → fall back to file mtime, surface a CLARIFICATION suggesting a rename. Never silently drop the file.
 
 Chronological order matters: earlier transcripts provide context for later ones —
 within a batch via shared subagent context, across batches via the pre-scan
@@ -282,7 +303,7 @@ For each file to be processed:
 
 This "move-first" approach guarantees:
 - `source:` fields are always correct (no temporary mismatch)
-- New `plaud_insert` deliveries to `inbox/` won't be confused with in-progress files
+- New deliveries to `inbox/` won't be confused with in-progress files
 - PROCESSED.md entry = fully processed; no entry = needs processing or retry
 
 ---
@@ -396,13 +417,16 @@ explicit handoff document.
 
 ### 3.1 Read Transcript
 
-Read full file content. Two formats:
+Read full file content. The selected file (per §2.1 layout rule) is one of two formats — same contract regardless of source ID:
 
-- **`transcript_with_summary.md`**: raw transcript + LLM summary separated by
-  `<transcript_to_summary_delimiter>`.
-  - Part BEFORE delimiter = raw transcript (the SOURCE OF TRUTH)
-  - Part AFTER delimiter = LLM summary (use as classification HINT, never as authority)
-- **`transcript.md`**: raw transcript only.
+- **`transcript_with_summary.md`** (combined): raw transcript + LLM summary in a single file, separated by the literal token `<transcript_to_summary_delimiter>` on its own line.
+  - Split the file on that token. Both halves MUST be used.
+  - Part BEFORE the delimiter = raw transcript (the SOURCE OF TRUTH for classification, atomization, quotes).
+  - Part AFTER the delimiter = LLM-generated summary (use as classification HINT only — never as authority, never quoted).
+  - If the delimiter is missing in a file named `transcript_with_summary.md`, treat the entire file as raw transcript and surface a CLARIFICATION (`type: source-format-anomaly`) so the owner can investigate the producer.
+- **`transcript.md`** (raw only): the entire file is raw transcript. No summary, no hint.
+
+For `flat-md` sources the file IS the content — no delimiter expected, no summary contract.
 
 ### 3.2 LLM Noise Gate
 

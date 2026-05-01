@@ -50,6 +50,7 @@ cd my-ztn
 #    /ztn:lint               (consistency sweep — autofix + surface non-obvious)
 #    /ztn:agent-lens         (outside-view observations on cadence)
 #    /ztn:agent-lens-add     (create a new agent-lens via wizard)
+#    /ztn:source-add         (register a new input-source type declaratively)
 #    /ztn:resolve-clarifications  (walk the owner-decision queue)
 #    /ztn:save               (commit + push)
 #    /ztn:sync-data          (pull on a second device)

@@ -10,7 +10,7 @@
 
 ## Overview
 
-Это персональная система управления знаниями. Claude Code автоматически обрабатывает голосовые записи из `_sources/inbox/` (plaud, dji-recorder, superwhisper, apple-recording, crafted), создавая структурированные Zettelkasten-заметки с богатыми метаданными для автоматизаций. После обработки исходные файлы перемещаются в `_sources/processed/`. `_sources/processed/crafted/describe-me/` содержит reference-материалы (AI-generated profiles, policies) — не обрабатываются пайплайном.
+Это персональная система управления знаниями. Claude Code автоматически обрабатывает source-файлы из `_sources/inbox/` (whitelist живёт в `_system/registries/SOURCES.md` — voice-recorder transcripts, hand-written notes, Claude session recaps, и любые источники, которые owner добавил через `/ztn:source-add`), создавая структурированные Zettelkasten-заметки с богатыми метаданными для автоматизаций. После обработки исходные файлы перемещаются в `_sources/processed/`. Reference-материал (AI-generated profiles, policies, identity drafts) живёт в подкаталогах, помеченных колонкой `Skip Subdirs` в SOURCES.md — пайплайном не обрабатывается; читается отдельным контрактом `/ztn:bootstrap`.
 
 ### Будущие автоматизации (контекст)
 - Психолог / эдвайзер по жизни
@@ -233,27 +233,17 @@ ZTN v4 использует три слоя обработки знаний:
 zettelkasten/
 ├── _sources/                         # ВСЕ сырые данные (input + processed)
 │   ├── inbox/                        # Новые, необработанные файлы
-│   │   ├── plaud/                    # Plaud voice recorder
-│   │   │   └── {timestamp}/transcript.md
-│   │   ├── dji-recorder/            # DJI mic recorder
-│   │   │   └── {date}_{topic}/transcript.md
-│   │   ├── superwhisper/            # Superwhisper transcriptions
-│   │   │   └── {date}_{topic}/transcript.md
-│   │   ├── apple-recording/         # Apple Voice Memos
-│   │   │   └── {date}_{topic}/transcript.md
-│   │   ├── claude-sessions/         # Claude Code session recaps
-│   │   │   └── {date}_{topic}/transcript.md
-│   │   ├── openclaw/                # OpenClaw session_end recaps
-│   │   │   └── {ISO-timestamp}/transcript.md
-│   │   ├── notes/                   # Текстовые заметки
-│   │   ├── voice-notes/             # Голосовые заметки
-│   │   └── crafted/                 # Вручную написанные документы
+│   │   └── {source-id}/              # Whitelist живёт в _system/registries/SOURCES.md.
+│   │                                 # Layout каждой папки определяется колонкой Layout
+│   │                                 # на её row: flat-md (*.md в корне) | dir-per-item
+│   │                                 # ({folder}/transcript.md) | dir-with-summary
+│   │                                 # ({folder}/transcript_with_summary.md preferred).
+│   │                                 # Подкаталоги, объявленные в Skip Subdirs, исключены.
 │   └── processed/                    # Обработанные файлы (зеркальная иерархия)
-│       ├── {source}/{id}/transcript.md
-│       └── crafted/describe-me/      # Reference-материалы (не обрабатываются)
+│       └── {source-id}/{id}/...
 ├── _records/                         # Слой 1: Records (операционная память)
-│   ├── meetings/                     # Логи рабочих встреч (kind: meeting)
-│   └── observations/                 # Соло Plaud-транскрипты: рефлексии, идеи, терапия (kind: observation)
+│   ├── meetings/                     # Логи многосторонних встреч (kind: meeting)
+│   └── observations/                 # Соло-записи: рефлексии, идеи, терапия (kind: observation)
 ├── _system/                          # Системные файлы (Phase 4.75 layout)
 │   ├── SOUL.md                       # Identity + Focus + Working Style
 │   ├── TASKS.md                      # Автогенерируемый список задач

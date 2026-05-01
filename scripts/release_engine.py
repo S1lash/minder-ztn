@@ -53,6 +53,42 @@ def strip_template_suffix(name: str) -> str:
     return name
 
 
+def parse_source_ids_from_template(template_path: Path) -> list[str]:
+    """Read SOURCES.template.md, return ordered list of IDs from the
+    `## Active Sources` and `## Reserved Sources` tables. Skips
+    `## Deprecated Sources`. ID is the first column of the markdown table.
+    """
+    if not template_path.exists():
+        return []
+    ids: list[str] = []
+    section: str | None = None
+    for raw in template_path.read_text(encoding="utf-8").splitlines():
+        line = raw.rstrip()
+        if line.startswith("## "):
+            heading = line[3:].strip().lower()
+            if heading.startswith("active sources") or heading.startswith("reserved sources"):
+                section = heading
+            else:
+                section = None
+            continue
+        if section is None:
+            continue
+        # Table row: `| id | ... |` — skip header and separator rows.
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if not cells:
+            continue
+        first = cells[0]
+        if not first or first.lower() == "id" or set(first) <= set("-: "):
+            continue
+        # Strip backticks/markdown around the ID if any.
+        first = first.strip("`").strip()
+        if first:
+            ids.append(first)
+    return ids
+
+
 def copy_path(src_root: Path, dst_root: Path, rel: str, *, strip_template: bool, dry_run: bool) -> int:
     """Copy a manifest entry. Returns count of files copied."""
     rel_clean = rel.rstrip("/")
@@ -125,25 +161,26 @@ def main() -> int:
     print(f"\n{'would copy' if args.dry_run else 'copied'} {total} files")
 
     if not args.dry_run:
-        # Add .gitkeep markers for empty data directories that the skeleton
-        # ships (so users get the layout, not an empty repo).
-        empty_dirs = [
-            "zettelkasten/_sources/inbox/plaud",
-            "zettelkasten/_sources/inbox/dji-recorder",
-            "zettelkasten/_sources/inbox/superwhisper",
-            "zettelkasten/_sources/inbox/apple-recording",
-            "zettelkasten/_sources/inbox/claude-sessions",
-            "zettelkasten/_sources/inbox/notes",
-            "zettelkasten/_sources/inbox/voice-notes",
-            "zettelkasten/_sources/inbox/crafted",
-            "zettelkasten/_sources/processed/plaud",
-            "zettelkasten/_sources/processed/dji-recorder",
-            "zettelkasten/_sources/processed/superwhisper",
-            "zettelkasten/_sources/processed/apple-recording",
-            "zettelkasten/_sources/processed/claude-sessions",
-            "zettelkasten/_sources/processed/notes",
-            "zettelkasten/_sources/processed/voice-notes",
-            "zettelkasten/_sources/processed/crafted",
+        # Source folders are derived from SOURCES.template.md (single source
+        # of truth). After release_engine copied templates and stripped the
+        # `.template` suffix, the file lives at registries/SOURCES.md in
+        # the target.
+        sources_template = target / "zettelkasten/_system/registries/SOURCES.md"
+        source_ids = parse_source_ids_from_template(sources_template)
+        if not source_ids:
+            print(
+                "warning: no source IDs found in SOURCES.template — "
+                "skeleton will ship without inbox/processed source folders",
+                file=sys.stderr,
+            )
+
+        source_dirs: list[str] = []
+        for sid in source_ids:
+            source_dirs.append(f"zettelkasten/_sources/inbox/{sid}")
+            source_dirs.append(f"zettelkasten/_sources/processed/{sid}")
+
+        # Non-source layout dirs that always ship empty.
+        layout_dirs = [
             "zettelkasten/_records/meetings",
             "zettelkasten/_records/observations",
             "zettelkasten/0_constitution/axiom",
@@ -160,6 +197,7 @@ def main() -> int:
             "zettelkasten/_system/state/batches",
             "zettelkasten/_system/state/lint-context",
         ]
+        empty_dirs = source_dirs + layout_dirs
         for d in empty_dirs:
             (target / d).mkdir(parents=True, exist_ok=True)
             keep = target / d / ".gitkeep"

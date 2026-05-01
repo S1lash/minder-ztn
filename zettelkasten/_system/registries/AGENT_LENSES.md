@@ -1,6 +1,6 @@
 # Agent Lenses Registry
 
-**Last Updated:** 2026-05-01
+**Last Updated:** 2026-05-01 (global-navigator scope expanded to engine-wide)
 
 Registry of agent-lens definitions. Each row points to a folder under
 `_system/registries/lenses/{id}/` containing the lens prompt and any
@@ -70,6 +70,8 @@ will be visible in `global-navigator` as gaps.
 | stalled-thread | Stalled Thread Detector | mechanical | records | weekly (mon) | fresh-eyes | active |
 | stated-vs-lived | Stated vs Lived | psyche | records | biweekly (mon) | longitudinal | active |
 | cross-domain-bridge | Cross-Domain Bridge | mechanical | records | weekly (thu) | longitudinal | active |
+| decision-review | Decision Review | mechanical | records | monthly (1) | longitudinal | active |
+| energy-pattern | Energy Pattern (records affect) | psyche | records | weekly (sun) | longitudinal | active |
 | global-navigator | Global Navigator | meta | lens-outputs | weekly (sun) | longitudinal | active |
 
 ## Lens summaries
@@ -88,9 +90,17 @@ Runs every other Monday. Compares what the owner declares (constitution + SOUL �
 
 Runs weekly on Thursday. Searches for connections the owner thought about independently in different life domains without noticing the structural overlap — defends ZTN's flagship value (highest-value insights at domain boundaries) by surfacing what context-lock makes the owner himself miss. Output: one-sentence claim + two endpoint records (path + cited framing each) + which of 4 signals fired (relational match / matrix independence / cluster disjointness / nameable claim) + a falsifier («this would NOT be a bridge if…») + confidence.
 
+### decision-review
+
+Runs monthly on the 1st. Takes substantive decisions 90-180 days old, extracts the assumptions / alternatives / expected outcome (from explicit sections OR embedded prose / TENTATIVE flags / Открытые вопросы), and checks whether records after the decision date confirm or disconfirm each assumption. Output: decision (path + date + one-line subject) + per-assumption verdict (confirmed / disconfirmed / open with cited records) + net call (held / drifted / mixed) + alternative reading + confidence. Top-3 most material per run; assumption-level scoring only — owner judges decision-quality. Edge case `hits: 0` differentiated by reason: «base too young», «present but not extractable», «extractable but no records-evidence».
+
+### energy-pattern
+
+Runs weekly on Sunday. Surfaces verbatim affect-markers from owner's voice-note records over a 14-day window and compares them against the SOUL Working Style baseline («Заряжает / Истощает / Выводит из себя») and the previous window — targeting **shifts** in distribution, not absolute mood. Records-only by design; physiological (Garmin) and behavioral (ActivityWatch) data stay scoped to future sibling lenses. Hit requires ≥3 markers distributed across ≥2 different records (no single-session venting bursts) OR a polarity crossing relative to baseline. Output: pattern + verbatim quotes (path + date) + shift framing (vs prev / vs SOUL) + three readings (action gap / baseline shift / episode) + confidence (high requires 2+ consecutive windows confirming). «No shift, baseline confirmed» is a valid output, not failure.
+
 ### global-navigator
 
-Runs weekly on Sunday — short status page for the lens system itself: which lenses ran, which are stuck, which observations are 2-4+ weeks old, which are approaching auto-pause. One place to know the state of the outside-view instrument so observations don't accumulate without notice. Output: stuck/failing → outstanding (by age) → productive this week → silent (only if non-empty) → aggregate counter; verbatim short titles only, no claims about the owner's life, no recommendations.
+Runs weekly on Sunday — short status page for the **whole engine** over a trailing 7-day window: agent-lens layer (every active lens auto-discovered from this registry, including new ones), `/ztn:process` activity (batches + BATCH_LOG sums), `/ztn:lint` activity (F-codes + gaps), `/ztn:maintain` runs, candidate buffers (principle + people append counts by origin), CLARIFICATIONS state (new + open + by type), OPEN_THREADS delta. Output sections: stuck/failing → outstanding observations (by age) → lint → process → maintenance → candidates → clarifications → open-threads → productive lenses → silent lenses (only if non-empty) → aggregate counter; verbatim short titles, F-codes, batch-ids, type labels, counts only — no claims about the owner's life, no recommendations, no body-citation of any second-order content (observation bodies, candidate bodies, clarification quotes).
 
 ## Frameworks behind the calibration
 
@@ -99,6 +109,8 @@ Each lens prompt is calibrated against external frameworks (cited inline in the 
 - **stalled-thread**: GTD open-loops + Nolen-Hoeksema brooding/pondering + Matuschak incubation
 - **stated-vs-lived**: ACT VLQ + Higgins self-discrepancy + MI tone + Argyris-Schön espoused-vs-in-use
 - **cross-domain-bridge**: Gentner structure-mapping + Koestler bisociation + Granovetter/Burt structural holes + Luhmann/Matuschak nameable-claim + apophenia falsifiability guard
+- **decision-review**: Kahneman/Klein post-mortem discipline + Argyris double-loop learning + Tetlock superforecasting (assumption-level scoring, not overall decision-rightness)
+- **energy-pattern**: ESM (Csikszentmihalyi) episode-level affect + Higgins ideal/ought self-discrepancy lexicon + ACT lived-vs-lived comparison
 - **global-navigator**: SRE Four Golden Signals + USE method + Tufte data-ink + multi-doc summarisation hallucination research
 
 ## Operating principles
@@ -106,7 +118,7 @@ Each lens prompt is calibrated against external frameworks (cited inline in the 
 - Lenses are pure outside-view-of-life. System-health concerns (CLARIFICATIONS flow, lint context store, log audit) belong to `/ztn:lint` and `/ztn:maintain` and are deliberately not mixed in here.
 - Numeric thresholds inside prompts are starting points, not hard limits. The thinker LLM has full base read access and license to widen windows when the pattern asks.
 - Domain assumptions are owner-defined per `ENGINE_DOCTRINE.md` §1.5 — no hardcoded work/personal binary.
-- The four active lenses cover four observation flavours (within-records / records-vs-declarations / across-domains / system-meta). They are not exhaustive; owners grow their own set via `/ztn:agent-lens-add`.
+- The active lenses cover several observation flavours (within-records / records-vs-declarations / across-domains / decision-feedback-loop / affect-distribution / system-meta). They are not exhaustive; owners grow their own set via `/ztn:agent-lens-add`.
 - Auto-pause safety net active: 3 consecutive validator rejections of any lens → runner flips status to `paused` (per `ztn-agent-lens/SKILL.md` §5.5).
 
 ## Draft Lenses

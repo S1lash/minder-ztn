@@ -114,9 +114,11 @@ total transcript count < 5 AND mode is `fresh-onboarding`:
 > extraction (people, projects, hubs, principles) needs raw material —
 > below ~10 transcripts the registries will be near-empty. Choose:
 >
-> 1. **Pause now.** Drop your backlog (Plaud / voice notes / journal
->    exports / past notes) into `_sources/inbox/{plaud,notes,
->    voice-notes,...}/` and re-invoke `/ztn:bootstrap`.
+> 1. **Pause now.** Drop your backlog (voice-recorder transcripts,
+>    journal exports, past notes) into the matching `_sources/inbox/{id}/`
+>    folder for each active source declared in `_system/registries/SOURCES.md`,
+>    then re-invoke `/ztn:bootstrap`. If you need a source that does not
+>    exist yet, run `/ztn:source-add` first.
 > 2. **Proceed anyway** — identity-only path. Useful if you genuinely
 >    have no backlog and want to start fresh from `/ztn:capture-candidate`
 >    + future `/ztn:process` runs.
@@ -270,8 +272,15 @@ Glob for structured signal:
 - PARA trees (`1_projects/`, `2_areas/`, `3_resources/`, `4_archive/`) — knowledge notes
 
 Glob for raw signal (used in Step 1.5):
-- `_sources/inbox/*/*/transcript*.md` — unprocessed transcripts (Plaud, DJI, SuperWhisper, Apple, notes, voice-notes, claude-sessions, openclaw)
-- `_sources/processed/*/*/transcript*.md` — already processed transcripts (for catch-up scan)
+- `_sources/inbox/**/*.md` — unprocessed sources (every active source declared in `_system/registries/SOURCES.md`)
+- `_sources/processed/**/*.md` — already processed sources (for catch-up scan)
+
+Bootstrap is source-agnostic: it does not name individual source IDs. Whatever
+rows are present in SOURCES.md determine the scan surface. The only path
+bootstrap treats specially is the one declared as `Skip Subdirs` on the
+`crafted` row (or any row that uses the same mechanism for reference content),
+which is read in Step 2 as the SOUL profile source and is moved from inbox
+to processed mirror after consumption.
 
 **Mode detection:**
 
@@ -410,19 +419,24 @@ seeding (PEOPLE.md Org column, PROJECTS.md Scope column, principle
 domain tagging) honours the split without owner having to retag
 afterwards.
 
-For each transcript determine a **source-scope bias** before
-extraction:
+For each transcript determine a **source-scope bias** before extraction.
+The bias comes from two declarative inputs — never from hardcoded source
+IDs in this SKILL:
 
-- `_records/meetings/` + processed-meetings transcripts → bias `work`
-- `_records/observations/` + processed-observations transcripts → bias `personal`
-- `_sources/inbox/plaud/`, `voice-notes/`, `notes/` → infer per
-  transcript content (LLM scope classification: «is the dominant
-  topic about employer / clients / professional team OR life /
-  relationships / health / personal projects?»)
-- `_sources/inbox/claude-sessions/` → bias `work` if topic is
-  technical / repo-focused, else `personal`
-- `_sources/inbox/crafted/` (top-level only — describe-me/ is
-  excluded as bootstrap reference) → infer from content
+1. **Layer signal** (from path):
+   - `_records/meetings/` (and its processed mirror) → bias `work`
+   - `_records/observations/` (and its processed mirror) → bias `personal`
+2. **Source signal** (from `Default Domain` column on the matching
+   row of `_system/registries/SOURCES.md`):
+   - `personal` / `work` → use directly as the bias
+   - `mixed` → infer per-transcript content (LLM scope classification:
+     «is the dominant topic about employer / clients / professional
+     team OR life / relationships / health / personal projects?»)
+   - `auto` → same as `mixed` — let the LLM decide per-file
+
+If a row carries `Skip Subdirs`, those subdirectories are out of scope
+entirely (they are reference material, consumed via a different contract
+in Step 2).
 
 Apply the bias to each extracted signal:
 

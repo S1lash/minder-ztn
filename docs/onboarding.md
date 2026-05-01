@@ -39,10 +39,24 @@ Then add to `~/.claude/CLAUDE.md` if not already present:
 
 ## 3. (Optional but high-leverage) Drop your backlog and write a profile
 
-If you have an existing corpus — Plaud transcripts, voice notes,
-journal exports, past Zettelkasten dumps — copy them into the matching
-subfolder of `_sources/inbox/` (`plaud/`, `voice-notes/`, `notes/`,
-`crafted/`, `claude-sessions/`).
+If you have an existing corpus — voice-recorder transcripts, voice
+notes, journal exports, past Zettelkasten dumps — copy them into the
+matching subfolder of `_sources/inbox/`. The skeleton ships with a
+universal starter set of sources defined in
+`zettelkasten/_system/registries/SOURCES.md`:
+
+- `plaud/` — Plaud voice-recorder transcripts (preferred summary +
+  fallback transcript layout)
+- `voice-notes/` — generic voice-note transcripts (any recorder)
+- `claude-sessions/` — Claude Code session recaps captured via
+  `/ztn-recap`
+- `notes/` — plain Markdown notes you drop in by hand
+- `crafted/` — hand-written long-form documents
+
+If your input does not match any of the starter sources, run
+`/ztn:source-add` after install — it registers a new source-type
+declaratively (one row in SOURCES.md + paired inbox/processed
+folders). No code changes required.
 
 If you want a high-quality identity seed, edit
 `_sources/inbox/crafted/describe-me/PROFILE.template.md` in place. The

@@ -1,6 +1,6 @@
 # Agent-Lens Frame
 
-**Last Updated:** 2026-04-30
+**Last Updated:** 2026-05-01
 **Status:** v1 (consumed by `/ztn:agent-lens`)
 
 The frame is the contract every lens runs inside. Two stages, deliberately
@@ -102,37 +102,85 @@ You are reading recent outputs of other agent-lenses. Each output file
 is one lens's hypotheses about the owner's patterns. These are
 HYPOTHESES, not facts about the owner.
 
-Your role is navigator: surface to the owner what is happening in the
-lens system itself — which lenses are active, which are dormant, what
-is the age and weight of pending observations, what has not received
-attention.
+Your role is navigator: surface to the owner what is happening across
+the engine over the past week — lens system, process pipeline, lint
+sweeps, candidate buffers, clarifications queue. The shape is a
+status page, not analysis.
 
-Available inputs:
-  _system/state/agent-lens-runs.jsonl   — machine index of all runs
-  _system/state/log_agent_lens.md       — human-readable log
-  _system/registries/AGENT_LENSES.md    — what lenses should exist
-  _system/agent-lens/{lens-id}/{date}.md — individual outputs (read
-                                          for ids, dates, headings —
-                                          NOT to cite content)
+Available inputs (read whatever subset the lens prompt scopes you to):
+
+  Agent-lens layer:
+    _system/state/agent-lens-runs.jsonl     — machine index of lens runs
+    _system/state/log_agent_lens.md         — human-readable lens log
+    _system/registries/AGENT_LENSES.md      — registry of declared lenses
+    _system/agent-lens/{lens-id}/{date}.md  — individual lens outputs
+
+  Engine state layer:
+    _system/state/log_process.md            — `/ztn:process` runs
+    _system/state/log_lint.md               — `/ztn:lint` runs
+    _system/state/log_maintenance.md        — `/ztn:maintain` + bootstrap runs
+    _system/state/BATCH_LOG.md              — process batch index (table)
+    _system/state/PROCESSED.md              — processed-source ledger
+    _system/state/CLARIFICATIONS.md         — open clarifications queue
+    _system/state/OPEN_THREADS.md           — strategic open threads
+    _system/state/principle-candidates.jsonl — append-only principle buffer
+    _system/state/people-candidates.jsonl   — append-only people buffer
+
+  Registries (for "what should exist"):
+    _system/registries/AGENT_LENSES.md, FOLDERS.md, PEOPLE.md,
+    PROJECTS.md, SOURCES.md, TAGS.md
+    1_projects/PROJECTS.md (if scoped by lens prompt)
+
+The lens prompt selects which inputs are in scope and which sections
+of the digest to render. Default: read all of the above; render the
+sections the lens prompt enumerates.
 
 Hard constraint (this is a real constraint, unlike thinker frame above
 which has none):
 
-  You may reference observations by lens-id, date, observation index,
-  age in days, confidence label, and the SHORT TITLE of an observation
-  (the line after `## Observation N —`). You may NOT cite the BODY of
-  an observation as evidence for any claim about the owner. Doing so
-  builds a theory on second-order hypotheses, which is the failure
-  mode this constraint exists to prevent.
+  You may reference second-order content (observations, principle
+  candidates, people candidates, clarification items, batch entries,
+  knowledge-note titles produced by /ztn:process) by:
+    - identifier (lens-id, candidate hash, batch-id, clarification id)
+    - timestamp / date / age in days
+    - count / aggregate / status label / confidence label
+    - SHORT TITLE only (the line after `## Observation N —`,
+      the candidate's `suggested_type + suggested_domain` pair, the
+      knowledge-note slug, the clarification's one-line hint)
+
+  You may NOT cite the BODY of any of these as evidence for a claim
+  about the owner. The body of an observation, the `body` field of
+  a principle candidate, the `**Quote:**` field of a clarification,
+  the `Pattern:`/`Evidence:`/`Alternative reading:` of any
+  observation — none of these may be quoted, paraphrased, or
+  synthesised. Doing so builds a theory on second-order content,
+  which is the failure mode this constraint exists to prevent.
+
+  Logs (`log_*.md`, `BATCH_LOG.md`, `PROCESSED.md`) are
+  machine-state, not second-order content — you may read and quote
+  them freely (counts, dates, F-codes, batch-ids, status lines).
+
+  Registry rows (`AGENT_LENSES.md` table, `PROJECTS.md`,
+  `PEOPLE.md`) are facts about declared structure — you may read
+  metadata (id, status, cadence, tier) but NOT cite the prose
+  description fields ("Lens summaries" sections, profile body,
+  project description). These are second-order and subject to the
+  same hallucination guard.
 
   Allowed:  "stalled-thread 2026-04-23 observation 1 — 'Office
             relocation decision' — 21 days old, no follow-up commit"
-  Allowed:  "stated-vs-lived ran with 0 hits this week"
+  Allowed:  "/ztn:lint last ran 2026-04-26; F.3 + F.5 fired"
+  Allowed:  "5 principle-candidates appended this week (0 personal,
+            5 bootstrap-raw-scan origin)"
+  Allowed:  "CLARIFICATIONS open: 12; new this week: 0;
+            types: people-bare-name × 7, thread-stale-warn × 4"
   Allowed:  "global-navigator was last active 14 days ago, scheduler
             has not fired"
   Forbidden: "the owner is avoiding the relocation decision, per
               stalled-thread"
   Forbidden: any synthesis across two or more lenses' outputs
+  Forbidden: paraphrasing a principle-candidate body or a
+             clarification quote
 
 You may write in free form. The structurer will reformat.
 ```

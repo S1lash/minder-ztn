@@ -11,24 +11,14 @@
 ```
 _sources/                             # ВСЕ сырые данные (внутри zettelkasten)
 ├── inbox/                            # Новые, необработанные файлы
-│   ├── plaud/                        # Plaud voice recorder
-│   │   └── {timestamp}/transcript.md
-│   ├── dji-recorder/                 # DJI mic recorder
-│   │   └── {date}_{topic}/transcript.md
-│   ├── superwhisper/                 # Superwhisper transcriptions
-│   │   └── {date}_{topic}/transcript.md
-│   ├── apple-recording/              # Apple Voice Memos
-│   │   └── {date}_{topic}/transcript.md
-│   ├── claude-sessions/              # Claude Code session recaps
-│   │   └── {date}_{topic}/transcript.md
-│   ├── openclaw/                     # OpenClaw session_end recaps
-│   │   └── {ISO-timestamp}/transcript.md
-│   ├── notes/                        # Текстовые заметки
-│   ├── voice-notes/                  # Голосовые заметки
-│   └── crafted/                      # Вручную написанные документы
+│   └── {source-id}/                  # Whitelist active sources — _system/registries/SOURCES.md.
+│                                     # Layout (flat-md | dir-per-item | dir-with-summary)
+│                                     # и Skip Subdirs объявлены на row of source.
+│                                     # Добавить новый source: /ztn:source-add.
 └── processed/                        # Обработанные (зеркальная иерархия)
-    ├── {source}/{id}/transcript.md
-    └── crafted/describe-me/          # Reference-материалы (не обрабатываются)
+    └── {source-id}/{id}/...          # Mirrors inbox layout. Reference-подкаталоги
+                                      # (Skip Subdirs) переезжают сюда после
+                                      # консумации /ztn:bootstrap (например crafted/describe-me/).
 ```
 
 ---

@@ -4,7 +4,8 @@
 > the ZTN engine. Every skill (`/ztn:bootstrap`, `/ztn:process`,
 > `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`, `/ztn:agent-lens-add`,
 > `/ztn:capture-candidate`, `/ztn:check-decision`,
-> `/ztn:regen-constitution`, `/ztn:check-content`) reads this file as
+> `/ztn:regen-constitution`, `/ztn:check-content`, `/ztn:source-add`)
+> reads this file as
 > part of Step 1 / Load Context. It is symlinked
 > into `~/.claude/rules/ztn-engine-doctrine.md` by `install.sh` so it
 > auto-loads in every Claude Code session opened in this repo.
@@ -235,6 +236,57 @@ file IS the contract. When behaviour changes, the file changes; git
 log carries the history.
 
 > Binding spec: `_system/docs/CONVENTIONS.md`.
+
+### 3.8 Manifest emission — bridging to downstream consumers
+
+Every ZTN engine skill that produces persistent state changes
+emits a structured **batch manifest** in JSON form alongside its
+existing markdown summaries:
+
+```
+_system/state/batches/{ts}-process.json
+_system/state/batches/{ts}-maintain.json
+_system/state/batches/{ts}-lint.json
+_system/state/batches/{ts}-agent-lens.json
+```
+
+The manifest schema is shared across all four skills, distinguished
+by top-level `processor` field. It carries:
+- Section per artifact kind (`sources`, `records`, `knowledge_notes`,
+  `hubs`, `tier1_objects.{tasks,ideas,events,decisions,people,
+  projects,content}`, `tier2_objects.{inventory,wardrobe,
+  lens-observation,...}`, `concepts`, `constitution.principles`,
+  `constitution.constitution_core_view`, `constitution.soul`)
+- Privacy trio per entity: `origin`, `audience_tags`, `is_sensitive`
+  (defaults `personal / [] / false`)
+- Format version (`format_version: "MAJOR.MINOR"`) for evolution
+  policy
+- `section_extras: jsonb` per section for forward-compat new fields
+- Idempotency via `batch_id` (top-level) + checksums per file
+
+**Manifest is the contract** between the ZTN engine and downstream
+consumers (currently Minder Java backend). Downstream:
+- Reads manifests chronologically
+- Idempotent by `batch_id` + checksums
+- Routes per `processor` field semantics
+- Rejects incompatible major versions with loud alert; accepts
+  unknown minor fields via `section_extras`
+
+**Universality matters:** new ZTN skills emitting persistent state
+inherit this contract by default. Downstream consumers need no code
+change to integrate. The contract is engine-level, not skill-level.
+
+**What is intentionally NOT in manifest:**
+- Pre-resolution staging (`people-candidates.jsonl`,
+  `principle-candidates.jsonl`)
+- Working memory (`OPEN_THREADS.md` — until focus engine arrives)
+- HITL queues (`CLARIFICATIONS.md`)
+- Audit trails (`log_*.md`)
+- Derived/regenerable views (`CURRENT_CONTEXT.md`,
+  `lint-context/{daily,monthly}/*`)
+
+> Full manifest schema spec: `strategy/ARCHITECTURE.md` §4.5 in the
+> minder-project repo. ZTN skills emit; Minder consumes.
 
 ---
 

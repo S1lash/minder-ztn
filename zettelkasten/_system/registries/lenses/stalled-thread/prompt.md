@@ -41,6 +41,16 @@ From research on repetitive thinking (Nolen-Hoeksema brooding/pondering 2008; Wa
 
 From David Allen — open-loop test: for the thread, mentally formulate "the next physical action" as the owner would. If you cannot (because the owner never named one across the records) — the thread is **open**. If any mention contains a committed next action or an explicit decision — it is NOT open; it is in-flight or resolved.
 
+**Sources to query before declaring «no committed next action»:**
+
+1. `_system/state/OPEN_THREADS.md` — explicit thread + `Related tasks:` field
+2. `_system/TASKS.md` — full pass on the topic by keyword + person + project; not just by frontmatter; tasks may live under unrelated section headers
+3. `_records/` mentions themselves — a record-level `[ ]` checkbox or «договорились X сделать Y до Z» counts as committed
+4. Hub `## Changelog` and `## Связанные knowledge` — a closure entry («решили X», «приняли Y») disqualifies the thread
+5. `_system/CALENDAR.md` — a scheduled meeting on the topic counts as «in-flight», not stalled
+
+If after all five the thread still has no committed next action — it is open.
+
 ## What to read
 
 Decide for yourself. The frame's contract gives you full base access — use it. Useful starting points:
@@ -58,6 +68,12 @@ A fresh ZTN base surfaces stalled threads at relatively high frequency in short 
 
 In a mature base, default to a 3-6 month sweep over `_records/` — the monthly window will systematically miss the very threads the lens exists to find (the slow-burn ones that did not reach a hub). Fresh bases (few hubs, thin OPEN_THREADS) work fine with a few weeks. Criterion #3 below («not already fixed») does the de-duplication regardless of window size, so widening only changes what is detectable, not what is double-counted.
 
+**Mature-by-curation, short-by-records edge case** — the base has >10 hubs and a populated `OPEN_THREADS.md`, but `_records/` history is shorter than the calibration window (e.g. recent migration, fresh capture pipeline, or first-ever scan). In that case: read the available `_records/` AND descend into hub `## Хронологическая карта` / `## Changelog` and into knowledge notes in `1_projects/`, `2_areas/`, `3_resources/` to reconstruct the multi-month / multi-year span of the thread. Note the asymmetry explicitly in the output: «N weeks in records + M months in hubs» rather than collapsing both into one span. The thread's true span is what matters for confidence; records are just one of several surfaces that capture it.
+
+## First retroactive run mode
+
+Distinct from steady-state weekly cadence. On the first run of a newly-created lens — or on an explicit deep re-baseline by the owner — the lens reads the **full available history** rather than the calibrated window. Output may surface more candidates than a steady-state run. Confidence calibration stays the same. Mark such runs in the output's notes («first retroactive run / deep baseline») so the owner can read it accordingly. Steady-state weekly runs revert to window-calibrated reading.
+
 ## What counts as a hit
 
 A candidate where ALL hold:
@@ -65,15 +81,35 @@ A candidate where ALL hold:
 1. **Multiple mentions** in `_records/` on different days, with meaningful spacing (consecutive-day mentions are usually one continued thinking session, not recurrence).
 2. **Each mention leaves the topic open** by the GTD test above — no committed next action, no explicit decision.
 3. **Not already fixed** in `OPEN_THREADS.md`, `TASKS.md` (as an active task), `5_meta/mocs/`, or closed inside a knowledge note in `1_projects/`, `2_areas/`, `3_resources/`.
+
+   **Hub coverage is not binary.** A hub may capture the surrounding *arc* without the specific *sub-thread* having closure. Three gradations:
+   - **(i) Hub closes the sub-thread** — there is an explicit decision / closure entry in `## Changelog` or in a linked decision note covering this exact question. → NOT a hit.
+   - **(ii) Hub mentions the arc, sub-thread has no closure** — the changelog explicitly notes that this specific question stayed unresolved (e.g. «X не обсуждалось», «решение отложено»). → IS a hit, label «within hub, not closed».
+   - **(iii) Hub silent on the sub-thread** — sub-thread present in records but no hub mention at all. → IS a hit.
+
+   In case (ii) and (iii), surface explicitly so the owner sees that hub-presence ≠ resolution.
+
 4. **Brooding-shape** by the test above — abstract framing, no new sub-questions or constraints between mentions. If framing evolves between mentions, it is pondering, probably NOT a hit.
+
+## Ambient vs recurrence — operational tie-breaker
+
+The most common false positive is treating co-occurrence (person X / project Y appearing across records) as recurrence of a thread. Apply this test:
+
+> **The substitution test** — if you remove the candidate thread's framing and rewrite the record around the rest of its content, does the mention disappear? If YES, the mention is *about the thread*. If NO (the mention would survive in any record on the topic), it is ambient context.
+
+Example: «Vasily молча реагировал на Agentic Commerce» — substitution removes Vasily, the record about Agentic Commerce stands. Vasily here is ambient. «У меня вот эти 4 года ни зарплаты, ни премии не растёт» — substitution removes the brood, the record loses its core. The brood is the thread.
+
+If you cannot decide — the candidate is weak. Surface as low-confidence «watching, ambient probability ≥ thread probability» rather than as a hit.
 
 ## Confidence calibration
 
 State your confidence honestly:
 
-- **high** = several mentions with the same abstract framing, no committed next action in any of them, span on the order of a month or more, option-set / question-shape does not narrow between mentions.
-- **medium** = a few mentions with the same framing; OR more mentions with slowly-evolving framing but no resolution.
-- **low** = two mentions with framing that differs or evolves — surface as "thread in motion, watching, not yet stalled" rather than as stalled.
+- **high** = ≥3 mentions with the same abstract framing, no committed next action in any of them, span on the order of a month or more, option-set / question-shape does not narrow between mentions, no parallel processing of the same topic in adjacent channels (therapy, framing-reframes, structural moves).
+- **medium** = 2-3 mentions with the same framing; OR more mentions with slowly-evolving framing but no resolution; OR the direct channel is brooding but adjacent indirect channels show evolution (mixed signal).
+- **low** = two mentions with framing that differs or evolves; OR ambient/recurrence ambiguity per the substitution test; OR strong evidence of parallel processing in adjacent channels — surface as "thread in motion, watching, not yet stalled" rather than as stalled.
+
+**Direct vs indirect-channel signal** — when a topic is brooding in one channel (e.g. direct salary conversation) but actively processed in 2+ adjacent channels (therapy, framing-reframes, structural workarounds), the more accurate pattern is «direct channel blocked, indirect channels active». State this explicitly rather than calling the whole topic stalled. Confidence drops to medium / low for the direct-channel-only piece.
 
 Low confidence is a normal output. Better to surface low with a clear note than not surface at all, or surface with false high confidence.
 
@@ -102,6 +138,12 @@ Descriptive, never evaluative. Naming repetitive thought as "pathological" or "a
 
 Vocabulary: "thread in motion" (Matuschak idiom: ideas in motion) for pondering; "open thread" for stalled. No "avoiding", "stuck", "failing to". No second-person evaluative verbs.
 
+**Russian-language output vocabulary** (when the lens runs in Russian — language follows record-base language per skill convention):
+- ✅ «открытая нить», «нить в движении», «прямой канал заблокирован», «параллельные каналы обработки»
+- ❌ «застрявшая нить», «залипшая тема», «избегаешь», «не справляешься», «откладываешь»
+
+Same descriptive-not-evaluative discipline; literal translations of English vocabulary above.
+
 ## What to give back
 
 For each hit, in free form:
@@ -109,7 +151,12 @@ For each hit, in free form:
 - **What the thread is** — 1-2 sentences. Name it as one phrase.
 - **Specific record references** — path + date + a short quote or paraphrase showing the framing.
 - **Brooding-shape evidence** — what specifically shows the framing isn't moving (repeated phrasing, abstract language, absence of sub-questions).
-- **What is visible in the system as a next move** for the owner — NOT advice, but a statement of what is available: "could be fixed in OPEN_THREADS.md", "could become a task with a next action", "could be consciously released".
+- **What is visible in the system as a next move** for the owner — NOT advice, but a statement of what is available. Offer 2-3 concrete options when possible, framed as system-level moves rather than instructions:
+  - «could be fixed as a separate row in OPEN_THREADS.md» (with a suggested thread-id)
+  - «could become a task with a next action in TASKS.md»
+  - «could be reframed as N-cycle test — if next direct attempt fails, accept channel as unavailable»
+  - «could be consciously released — accepting the channel as background not actionable»
+  - «could be pinned to hub `## Changelog` as `direct-channel-stall, indirect-channels-active` so future runs see the framing»
 - **Alternative reading** — why this might NOT be stalled (it's a reference, or pondering, or external-blocker). If unsure, note that the thread may be weak and worth waiting another pass.
 - **Confidence** — high / medium / low.
 
