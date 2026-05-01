@@ -123,10 +123,12 @@ judgement + resolution.
 - **One big nightly job.** Tried mentally: would mean transcripts
   dropped at 10am don't surface until 03:00 the next day. ZTN is a
   thinking aid; latency >12h kills the feedback loop.
-- **Per-skill schedules (process, maintain, lint, resolve).** Tried
-  mentally: maintain has no independent cadence (it tails process);
-  resolve must not be autonomous; process and lint cover the
-  autonomous surface area entirely. Two jobs is the right minimum.
+- **Per-skill schedules (process, maintain, lint, resolve, agent-lens,
+  agent-lens-add).** Tried mentally: maintain has no independent
+  cadence (it tails process); resolve and agent-lens-add must not be
+  autonomous (owner judgement / wizard interview); process / lint /
+  agent-lens cover the autonomous surface area entirely. Three jobs
+  is the right minimum.
 - **Process every hour.** Wasteful for typical input rates and burns
   Claude Code budget; revisit only if you start dropping transcripts
   faster than the recommended 3× cadence drains them.

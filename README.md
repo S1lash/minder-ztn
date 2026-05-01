@@ -47,8 +47,10 @@ cd my-ztn
 #
 # 5. From here on — the daily flow:
 #    /ztn:process            (voice transcripts → notes)
+#    /ztn:lint               (consistency sweep — autofix + surface non-obvious)
 #    /ztn:agent-lens         (outside-view observations on cadence)
-#    /ztn:agent-lens-add           (create a new agent-lens via wizard)
+#    /ztn:agent-lens-add     (create a new agent-lens via wizard)
+#    /ztn:resolve-clarifications  (walk the owner-decision queue)
 #    /ztn:save               (commit + push)
 #    /ztn:sync-data          (pull on a second device)
 #    /ztn:update             (pull engine updates from upstream)
@@ -66,6 +68,22 @@ applies confirmed resolutions in place).
 Full walkthrough with optional steps (drop an existing backlog, write
 an identity profile, set up scheduled processing) —
 `docs/onboarding.md`.
+
+## Run it on a schedule
+
+Three engine-shipped scheduler prompts in
+`integrations/claude-code/scheduler-prompts/` cover the autonomous
+surface so you only show up for resolution:
+
+- `process-scheduled.md` — ingest new transcripts (≥ 3× per day)
+- `lint-nightly.md` — consistency sweep, autofix obvious / surface rest
+  to CLARIFICATIONS (1× nightly)
+- `agent-lens-scheduled.md` — fire daily; the skill filters lenses by
+  per-lens cadence
+
+Paste each body into Claude Code `/schedule` (or any cron-like runner
+that can launch a `claude` session). Full setup, push-credential
+options, and design rationale — `docs/scheduling.md`.
 
 ## Sync engine updates
 
