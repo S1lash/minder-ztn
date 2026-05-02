@@ -26,7 +26,8 @@ It defines note formats, routing rules, entity types, naming conventions.
 For philosophy and architecture: see `5_meta/CONCEPT.md`.
 For processing principles: see `5_meta/PROCESSING_PRINCIPLES.md`.
 For pipeline algorithm: see SKILL.md (`/ztn:process`).
-For batch output format: see `_system/docs/batch-format.md` (v1.0).
+For batch output format: see `_system/docs/batch-format.md` (markdown
+report + JSON manifest emission per `emit_batch_manifest.py`).
 
 ---
 
@@ -195,6 +196,9 @@ Owner-facing review path: `/ztn:resolve-clarifications` — interactive walker t
 | `run-check-content` | (none) | `content_overview_generated: true, notes_reviewed: N` |
 | `decide-policy` | subject | `policy_chosen: "a|b|c|d", sdd_updated: bool` |
 | `suppress-until` | subject | `date: YYYY-MM-DD, reason: "..."` — suppression cache entry |
+| `update-hub-synthesis` | hub-id | `sections_updated: ["Текущее понимание", "Changelog"], notes_integrated: [ids]` — owner refreshed hub against fresh underlying material (D.4) |
+| `split-hub` | hub-id | `new_hub_ids: [ids], theme_separation: "..."` — owner split a hub into ≥ 2 narrower hubs (D.4 split-mismatch resolution) |
+| `archive-hub` | hub-id | `target_path: "4_archive/...", reason: "..."` — owner archived a hub whose theme is no longer active |
 
 **Vocabulary governance:**
 - Reason codes ending `-suggested` / `-resolved` / `-drift-warn` / `-promote-*` MUST use canonical vocabulary — feed `/ztn:resolve-clarifications` execution
@@ -260,6 +264,7 @@ zettelkasten/
 │   │   ├── CONSTITUTION_INDEX.md     # Registry активных principles
 │   │   ├── constitution-core.md      # Harness view (symlinked from ~/.claude/rules/)
 │   │   ├── HUB_INDEX.md              # Индекс всех hub-заметок
+│   │   ├── INDEX.md                  # Content catalog (knowledge + hubs, faceted)
 │   │   ├── CURRENT_CONTEXT.md        # Live state snapshot
 │   │   └── CONTENT_OVERVIEW.md       # Автогенерируемый обзор контент-кандидатов
 │   ├── state/                        # Pipeline state (write-heavy)
@@ -390,6 +395,11 @@ people:
   - person-id
 projects:
   - project-id
+concepts:                  # canonical concept names per CONCEPT_NAMING.md (snake_case ASCII)
+  - concept_name_1
+origin: work               # privacy trio per ENGINE_DOCTRINE §3.8 — defaults: work / [] / false on meeting
+audience_tags: []
+is_sensitive: false
 tags:
   - record/meeting
   - person/{id}
@@ -416,6 +426,11 @@ people:
   - {упомянутые по имени}
 projects:
   - {если затронуты}
+concepts:                  # canonical concept names per CONCEPT_NAMING.md
+  - concept_name_1
+origin: personal           # privacy trio — defaults: personal / [] / false on solo Plaud capture
+audience_tags: []
+is_sensitive: false        # set true on therapy / health / family / financial content
 tags:
   - record/observation
   - person/{speaker}
@@ -462,6 +477,18 @@ content_type: expert|reflection|story|insight|observation  # OPTIONAL — set wi
 content_angle: "hook" | ["hook1", "hook2"]  # OPTIONAL — string or array of angle hooks
 mentions: N  # OPTIONAL — for idea notes, counts how many times idea surfaced across transcripts
 
+concepts:                                 # canonical concept names per CONCEPT_NAMING.md
+  - concept_name_1
+  - concept_name_2
+
+# Privacy trio per ENGINE_DOCTRINE §3.8.
+# `origin` ∈ {personal, work, external}; `audience_tags[]` from
+# canonical 5 + AUDIENCES.md extensions; `is_sensitive` is bool.
+# Defaults are conservative-safe (`personal` / `[]` / `false`).
+origin: personal
+audience_tags: []
+is_sensitive: false
+
 tags:
   - type/{type}
   - domain/{domain}
@@ -488,6 +515,14 @@ domains:
   - work|personal|career
 projects: []
 people: []
+
+# Privacy trio — auto-derived by `_common.py::recompute_hub_trio()`
+# from member-note trios; only fills missing fields (preserves owner
+# edits). Hub frontmatter does NOT carry `concepts:` — `member_concepts`
+# is manifest-only, derived at emission time.
+origin: personal|work|external
+audience_tags: []
+is_sensitive: false
 
 related_notes: N
 first_mention: YYYY-MM-DD
@@ -568,6 +603,47 @@ Full-text search по raw content: `grep -r "keyword" zettelkasten/_sources/`
 | archived | В архиве |
 
 ---
+
+## Concepts (concepts:)
+
+Open-vocabulary semantic anchors — every "thing-in-the-world" the
+knowledge base tracks. Format and rules: `_system/registries/CONCEPT_NAMING.md`.
+
+- **Field on:** records (meeting + observation), knowledge notes,
+  project profiles. NOT on hubs (hubs carry `member_concepts[]` only
+  in the manifest, derived from members) and NOT on person profiles
+  (people are first-class entities; their identifier is `firstname-lastname`).
+- **Format:** snake_case ASCII `[a-z0-9_]`, length 1–64, no forbidden
+  type prefix, English-only (translate non-English source terms; never
+  transliterate).
+- **Type lives in metadata, not in name.** The 18-enum
+  (`theme`/`tool`/`decision`/`idea`/`event`/`organization`/`skill`/
+  `location`/`emotion`/`goal`/`value`/`preference`/`constraint`/
+  `algorithm`/`fact`/`other` — `person` and `project` reserved but
+  not emitted by ZTN) lives in manifest `concepts.upserts[].type`.
+- **Autonomous resolution.** Engine resolves every format issue via
+  `_system/scripts/_common.py::normalize_concept_name()`; never raises
+  CLARIFICATIONs (see ENGINE_DOCTRINE §3.1 layer-specific exception).
+
+## Privacy Trio (origin / audience_tags / is_sensitive)
+
+Three orthogonal slots on every entity per ENGINE_DOCTRINE §3.8.
+Spec: `_system/registries/AUDIENCES.md` for `audience_tags`.
+
+| Field | Type | Default | Spec |
+|---|---|---|---|
+| `origin` | enum `personal \| work \| external` | `personal` | Source provenance — does NOT determine sharing scope |
+| `audience_tags` | `text[]` | `[]` (owner-only) | Whitelist: canonical 5 (`family`/`friends`/`work`/`professional-network`/`world`) ∪ active extensions in AUDIENCES.md |
+| `is_sensitive` | bool | `false` | Friction modifier on share — orthogonal to audience |
+
+- **On records, knowledge notes, hubs, person profiles, project
+  profiles, principles, every Tier 1/2 typed object.**
+- **Hub auto-derivation:** `recompute_hub_trio()` fills MISSING fields
+  from members (dominant origin / audience intersection / sensitivity
+  contagion); never overwrites owner-set values.
+- **Lint Step 1.D backfill** applies conservative defaults to existing
+  entities lacking the trio (one-time migration on first lint run
+  after the engine adopts the trio).
 
 ## Content Potential Fields
 
@@ -870,6 +946,7 @@ Before saving each note:
 | _system/SOUL.md | Identity + Focus + Working Style | Manual + /ztn:bootstrap (once) |
 | _system/state/OPEN_THREADS.md | Active open threads + resolved history | /ztn:bootstrap, /ztn:maintain |
 | _system/views/CURRENT_CONTEXT.md | Live state snapshot for thin orientation | /ztn:maintain, /ztn:lint |
+| _system/views/INDEX.md | Content catalog of knowledge notes + hubs (PARA / domains / cross-domain / hubs facets) | /ztn:maintain Step 7.6 |
 | _system/state/log_lint.md | Append-only log of /ztn:lint runs | Each /ztn:lint |
 | _system/state/log_maintenance.md | Append-only log of /ztn:maintain + /ztn:bootstrap runs | Each /ztn:maintain / /ztn:bootstrap |
 | _system/state/log_process.md | Chronological log of /ztn:process operations | Each /ztn:process |
@@ -884,7 +961,7 @@ Before saving each note:
 | _system/state/lint-context/monthly/*.md | Append-forever monthly summaries | First /ztn:lint of new UTC month |
 | _system/state/BATCH_LOG.md | Append-only index of batch operations | Each /ztn:process |
 | _system/state/batches/{id}.md | Full batch reports (one per /ztn:process run) | Each /ztn:process |
-| _system/docs/batch-format.md | Batch format contract (v1.0) | Manual (bump version on change) |
+| _system/docs/batch-format.md | Batch format contract — markdown report + JSON manifest; per-entity privacy trio + concept fields; sections `## Concepts Upserted` + `## Sensitive Entities` | Manual (bump version on change) |
 | _system/state/PROCESSED.md | Source → Note mapping | Each /ztn:process |
 | _system/TASKS.md | All open tasks | Regenerated |
 | _system/CALENDAR.md | All events | Regenerated |

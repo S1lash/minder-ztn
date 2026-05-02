@@ -285,6 +285,7 @@ Each user gets a fully isolated Docker stack with its own network.
           │  7. Update _system/state/OPEN_THREADS.md (via /ztn:maintain post-batch)
           │  8. Update _system/views/HUB_INDEX.md, 3_resources/people/PEOPLE.md
           │  9. Write _system/state/batches/{batch_id}.md (markdown report per batch-format spec)
+          │ 9a. Write _system/state/batches/{batch_id}.json (JSON manifest via emit_batch_manifest.py — Minder consumer contract per ARCHITECTURE.md §4.5)
           │ 10. Append row to _system/state/BATCH_LOG.md (markdown table)
           │ 11. git commit + push
           │
@@ -344,10 +345,11 @@ Markdown structures built into ZTN для dogfooding + friend rollout. Дета�
 | `_system/SOUL.md` | Identity + Current Focus + Working Style | bootstrap + вручную | lint (focus drift suggestions) |
 | `_system/state/OPEN_THREADS.md` | Незакрытые темы (отличается от TASKS — это ожидания/вопросы, не действия) | bootstrap + maintain | maintain + lint |
 | `_system/views/CURRENT_CONTEXT.md` | Live state для thin orientation | bootstrap, maintain after-batch | maintain + lint |
+| `_system/views/INDEX.md` | Content catalog (knowledge + hubs, faceted by PARA / domains / cross-domain) | bootstrap, maintain after-batch (Step 7.6) | maintain + lint A.6 (heartbeat) |
 | `_system/state/log_maintenance.md` | Append-only audit maintain + bootstrap | maintain, bootstrap | lint (reads) |
 | `_system/state/log_process.md` | Append-only chronological process log | process | lint, maintain (reads) |
 | `_system/state/log_lint.md` | Append-only lint audit trail | lint | — |
-| `_system/docs/batch-format.md` | Batch report format contract с версионированием | manual | manual bump + migration |
+| `_system/docs/batch-format.md` | Batch format contract — markdown report + JSON manifest; per-entity privacy trio + concept fields; sections `## Concepts Upserted` + `## Sensitive Entities` | manual | manual bump + migration |
 | `_system/state/BATCH_LOG.md` | Markdown table, append-only index of batches | process | — |
 | `_system/state/batches/{id}.md` | Full report per batch (frontmatter + structured sections) | process | — |
 | `_system/state/lint-context/daily/` | 30-day rolling daily summaries | lint | — |
@@ -413,7 +415,8 @@ collections:
 | `_system/state/OPEN_THREADS.md` | Yes | Active threads |
 | `_system/TASKS.md` | Yes | Tasks |
 | `_system/state/BATCH_LOG.md` | No | Machine-readable index (markdown table), not for text search |
-| `_system/state/batches/*.md` | No | Machine-readable batch reports per batch-format spec |
+| `_system/state/batches/*.md` | No | Human-readable batch reports per batch-format spec |
+| `_system/state/batches/*.json` | No | Machine-parseable JSON manifests for the Minder dispatch worker (schema: minder-project/strategy/ARCHITECTURE.md §4.5) |
 | `_system/state/lint-context/daily/` | No | 30-day rolling — high churn |
 | `_system/state/lint-context/monthly/` | Yes | Rich prose summaries — valuable for semantic recall |
 

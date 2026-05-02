@@ -37,7 +37,10 @@ observation snapshots to `_system/agent-lens/{id}/{date}.md`. Each
 lens runs in isolation: fresh API context per Stage, no cross-lens
 carry-over, no subagent dispatch. Meta lenses (input_type=lens-outputs)
 read other lenses' outputs and produce a navigator digest of pointers,
-never content.
+never content. Each observation entity carries the privacy trio per
+SKILL Step 5.9 (`origin: personal`, `audience_tags: []`,
+`is_sensitive: false` defaults — owner-only by construction since
+lens output is internal hypothesis-grade analysis).
 
 ## How to add a lens
 

@@ -58,6 +58,21 @@ loop. Your contract:
      - If `/ztn:process` aborts on lock / repo state — append
        failure note to CLARIFICATIONS as in step 1, then continue to
        step 3 so the note still gets committed.
+     - **Manifest emission.** `/ztn:process` Step 5.5 writes both
+       `_system/state/batches/{batch_id}.md` (markdown report) and
+       `_system/state/batches/{batch_id}.json` (JSON manifest via
+       `emit_batch_manifest.py` — Minder consumer contract per
+       `minder-project/strategy/ARCHITECTURE.md` §4.5). `/ztn:maintain`
+       Step 6.6 writes its own `{batch_id}-maintain.json`. Both
+       files commit through `/ztn:save` in step 3 normally.
+     - **Concept and audience layer is fully autonomous.** Format
+       issues never raise CLARIFICATION; the engine resolves via
+       `_common.py` normalisers (`normalize_concept_name`,
+       `normalize_audience_tag`, `recompute_hub_trio`) at Step 3.6
+       structural verification + Step 4.7 producer guard. Lint Scan
+       A.7 is the post-write defence-in-depth. The scheduler tick
+       does NOT see new owner-facing items from these classes —
+       they're producer-resolved.
 
 3. Save. Run `/ztn:save --auto`.
    - This commits with the auto-proposed message (suffix `[scheduled]`)

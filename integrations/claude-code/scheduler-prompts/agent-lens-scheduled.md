@@ -38,7 +38,10 @@ There is no human in this loop. Your contract:
      runs them sequentially (records-input first, lens-outputs-input
      last), writes outputs to `_system/agent-lens/{id}/{date}.md`,
      appends to `_system/state/agent-lens-runs.jsonl`, and logs to
-     `_system/state/log_agent_lens.md`.
+     `_system/state/log_agent_lens.md`. Each observation entity
+     carries the privacy trio per SKILL Step 5.9 (`origin: personal`,
+     `audience_tags: []`, `is_sensitive: false` — owner-only by
+     construction; engine never auto-widens).
    - Validator rejections, registry malformations, individual lens
      errors — all surface to `_system/state/log_agent_lens.md` and
      CLARIFICATIONS as the skill designs. Do NOT pause for owner.

@@ -38,10 +38,15 @@ discussions without explicit recall signal.
 
 ## How to search
 
-1. **Resolve entities** when searching by person/project:
+1. **Resolve entities** when searching by person/project/concept:
    - `_system/registries/PEOPLE.md` — name → ID
    - `_system/registries/PROJECTS.md` — project → ID
-   - `_system/registries/TAGS.md` — available tags
+   - `_system/registries/TAGS.md` — available tags (`tags:` axis)
+   - `_system/registries/CONCEPT_NAMING.md` — concept-name format
+     (`concepts:` axis: snake_case ASCII, English-only). Concepts are
+     a separate axis from tags.
+   - `_system/registries/AUDIENCES.md` — `audience_tags` whitelist
+     (canonical 5 + active extensions)
 
 2. **Search** (Grep/Glob, parallel):
    - **Records:** `_records/meetings/`, `_records/observations/`
@@ -49,7 +54,8 @@ discussions without explicit recall signal.
    - **Hubs:** `5_meta/mocs/`; `_system/HUB_INDEX.md` for topic overview
    - **Sources:** `_sources/` for full-text on raw transcripts when ZTN notes
      lack detail
-   - Frontmatter grep: person ID, project ID, tags, types
+   - Frontmatter grep: person ID, project ID, tags, types, concepts,
+     audience_tags, is_sensitive, origin
    - System indexes: `_system/TASKS.md` (todos), `_system/CALENDAR.md` (events)
 
 3. **Return synthesised results.** For each match: title, date, excerpt, tags.

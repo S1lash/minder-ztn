@@ -9,17 +9,18 @@
 1. [Философия](#философия)
 2. [Три слоя системы](#три-слоя-системы)
 3. [Четвёртый слой — Конституция](#четвёртый-слой--конституция)
-4. [Архитектура](#архитектура)
-5. [8 принципов обработки](#8-принципов-обработки)
-6. [Обработка транскриптов](#обработка-транскриптов)
-7. [Hub-заметки (Maps of Content)](#hub-заметки-maps-of-content)
-8. [Примеры обработки](#примеры-обработки)
-9. [Query → Compound паттерн](#query--compound-паттерн)
-10. [Lint и Sweep операции](#lint-и-sweep-операции)
-11. [Генерализация](#генерализация)
-12. [Журнал решений](#журнал-решений)
-13. [Интеллектуальное наследие](#интеллектуальное-наследие)
-14. [Scaling и будущее](#scaling-и-будущее)
+4. [Концепты и приватность — поперечные оси](#концепты-и-приватность--поперечные-оси)
+5. [Архитектура](#архитектура)
+6. [8 принципов обработки](#8-принципов-обработки)
+7. [Обработка транскриптов](#обработка-транскриптов)
+8. [Hub-заметки (Maps of Content)](#hub-заметки-maps-of-content)
+9. [Примеры обработки](#примеры-обработки)
+10. [Query → Compound паттерн](#query--compound-паттерн)
+11. [Lint и Sweep операции](#lint-и-sweep-операции)
+12. [Генерализация](#генерализация)
+13. [Журнал решений](#журнал-решений)
+14. [Интеллектуальное наследие](#интеллектуальное-наследие)
+15. [Scaling и будущее](#scaling-и-будущее)
 
 ---
 
@@ -272,6 +273,103 @@ constitution — 4 узких trigger + 5 anti-trigger.
 
 ---
 
+## Концепты и приватность — поперечные оси
+
+Поверх трёх слоёв (Records / Knowledge / Hubs) и четвёртого слоя
+(Constitution) существуют **поперечные axes**, прорезающие все
+сущности: концептный слой и privacy trio. Они не формируют отдельный
+слой хранения, но определяют семантический контекст и видимость
+каждой entity.
+
+### Концептный слой — `concepts:` frontmatter
+
+«Концепт» = thing-in-the-world, который база отслеживает: тема, tool,
+класс решения, организация, навык, событие, идея, ценность, и т.д.
+Open-vocabulary; новые концепты возникают естественно по мере роста
+базы. **Не путать с tags** (closed registry of `category/value`
+labels) и не с **domains** (tiny closed set: `work`, `identity`,
+`learning`, etc).
+
+| Field | Где | Назначение |
+|---|---|---|
+| `concepts:` | frontmatter records / knowledge notes / project profiles | Каноничные snake_case ASCII имена концептов, которых entity касается |
+| `concept_hints[]` | per-record / per-note манифест | Зеркало `concepts:` в JSON manifest для downstream consumer |
+| `member_concepts[]` | per-hub манифест | Объединение `concepts:` всех member knowledge notes; manifest-only, не во frontmatter хаба |
+| `applies_in_concepts[]` | constitution principle манифест | Концепты, в которых принцип применим |
+| `concepts.upserts[]` | top-level манифест | Дедуплицированный реестр концептов batch'a с `name` / `type` / `subtype` / `related_concepts` / `previous_slugs` |
+
+**Format**: snake_case `[a-z0-9_]`, ASCII, English-only, length ≤ 64,
+no forbidden type prefix. Spec: `_system/registries/CONCEPT_NAMING.md`.
+
+**Type enum** (lowercase, в манифесте только): `theme`, `tool`,
+`decision`, `idea`, `event`, `organization`, `skill`, `location`,
+`emotion`, `goal`, `value`, `preference`, `constraint`, `algorithm`,
+`fact`, `other`. `person` и `project` зарезервированы спецой, но ZTN
+их в `concepts.upserts[]` не эмитит — они first-class через
+`tier1_objects.{people,projects}`.
+
+**Translation contract**: non-English source terms ОБЯЗАТЕЛЬНО
+переводятся семантически в `/ztn:process` Q15 ДО эмиссии. Никогда
+не транслитерируются (раскалывает identity графа). Untranslatable
+terms — silent drop (теряем mention, но сохраняем граф stable).
+
+### Privacy trio — три ортогональных слота
+
+| Field | Тип | Default | Question |
+|---|---|---|---|
+| `origin` | enum `personal\|work\|external` | `personal` | Where was this captured? (provenance) |
+| `audience_tags` | `text[]` | `[]` | Who is allowed to see it? |
+| `is_sensitive` | bool | `false` | Does sharing require extra friction? |
+
+**На каждой entity**: records, knowledge notes, hubs, person profiles,
+project profiles, tasks, events, ideas, principles, Tier 2 typed
+objects.
+
+**Audience whitelist**: canonical 5 (`family`, `friends`, `work`,
+`professional-network`, `world`) + tenant Extensions table в
+`_system/registries/AUDIENCES.md`. Empty `[]` = owner-only (safest
+state — fail-closed).
+
+**Hub auto-derivation**: `_common.py::recompute_hub_trio()` fills
+missing trio fields from members (dominant origin / audience
+intersection / sensitivity contagion); НИКОГДА не overwrites
+owner-set values. Owner может вручную поставить `audience_tags:
+[work]` на hub — engine preserve через все будущие touches.
+
+### Autonomous resolution — layer-specific исключение из §3.1
+
+Концептный и аудиенс-слой **полностью автономны**: engine resolves
+все format issues деноминистически через `_common.py` нормализаторы;
+никогда не raises CLARIFICATION для owner action. Это **исключение
+из ENGINE_DOCTRINE §3.1** ("Surface, don't decide silently"),
+обоснованное:
+
+- High-volume layer (десятки концептов в одном транскрипте)
+- Per-decision low-stakes (wrong concept name теряет одну mention,
+  не data integrity)
+- Fully-specified algorithm (нормализация — pure function, нет
+  judgment)
+
+Surfacing per-decision drowned бы owner queue без actual decision'ов,
+которые owner мог бы принять. Все остальные layers (threading,
+dedup, principle promotion, people identity, и т.д.) сохраняют
+surface-don't-decide правило.
+
+### Где искать подробности
+
+- **Concept format spec:** `_system/registries/CONCEPT_NAMING.md`.
+- **Audience whitelist + extensions:** `_system/registries/AUDIENCES.md`.
+- **Manifest contract:** `_system/docs/batch-format.md` + downstream
+  schema в `minder-project/strategy/ARCHITECTURE.md` §4.5.
+- **Helpers:** `_system/scripts/_common.py` (normalize_concept_name,
+  normalize_audience_tag, recompute_hub_trio, looks_transliterated).
+- **Producer-side:** `/ztn:process` Step 3.4 Q15/Q16 + Step 4.7.
+- **Post-write defence-in-depth:** `/ztn:lint` Scan A.7 +
+  `lint_concept_audit.py`.
+- **Manifest emitter:** `emit_batch_manifest.py`.
+
+---
+
 ## Архитектура
 
 ### Структура файловой системы
@@ -333,6 +431,7 @@ zettelkasten/
     │   ├── CONSTITUTION_INDEX.md      # Registry активных principles
     │   ├── constitution-core.md       # Harness view (symlinked from ~/.claude/rules/)
     │   ├── HUB_INDEX.md               # Индекс хабов
+    │   ├── INDEX.md                   # Content catalog (knowledge + hubs, faceted)
     │   ├── CURRENT_CONTEXT.md         # Live state snapshot
     │   └── CONTENT_OVERVIEW.md        # Автогенерируемый обзор контент-кандидатов
     ├── state/                         # Pipeline state (write-heavy)
@@ -386,6 +485,12 @@ people:
   - misha-gapeev
 projects:
   - psp-router
+concepts:                  # canonical concept names per CONCEPT_NAMING.md
+  - api_v2_payment_routing
+  - p2p_architecture
+origin: work               # privacy trio per ENGINE_DOCTRINE §3.8
+audience_tags: []          # default `[]` = owner-only; widen explicitly
+is_sensitive: false
 tags:
   - record/meeting
   - project/psp-router
@@ -394,7 +499,10 @@ tags:
 ```
 
 Record-формат минимален: нет `types`, `domains`, `contains`, `status`, `priority`.
-Только кто, когда, о чём, откуда.
+Только кто, когда, о чём, откуда. **Concepts** — открытый словарь
+семантических якорей в snake_case ASCII (см. слой ниже).
+**Privacy trio** (`origin` / `audience_tags` / `is_sensitive`) на
+каждой entity; defaults conservative-safe.
 
 ### Frontmatter: Knowledge Note
 
@@ -417,6 +525,9 @@ projects:
   - psp-router
 people:
   - matvey-vasilyev
+concepts:                  # canonical concept names per CONCEPT_NAMING.md
+  - api_v2_payment_routing
+  - payment_details_nesting
 
 contains:
   tasks: 0
@@ -426,6 +537,11 @@ contains:
 
 status: reference
 priority: normal
+
+# Privacy trio per ENGINE_DOCTRINE §3.8 — defaults conservative-safe
+origin: work
+audience_tags: []
+is_sensitive: false
 
 tags:
   - type/decision
@@ -458,6 +574,14 @@ projects:
 people:
   - matvey-vasilyev
   - misha-gapeev
+
+# Privacy trio — auto-derived from members via
+# `_common.py::recompute_hub_trio()`. Hub frontmatter does NOT carry
+# `concepts:` — `member_concepts[]` is manifest-only, derived at
+# emission time from member knowledge notes.
+origin: work
+audience_tags: []
+is_sensitive: false
 
 tags:
   - hub
@@ -1594,15 +1718,24 @@ Wikilinks = explicit, deliberate connections. Embeddings = latent, discovered co
 
 ### Конкретный план
 
-1. **FTS (Full-Text Search)** — уже работает через grep. Можно улучшить индексом.
-2. **Embedding index** — каждая knowledge note + hub → embedding vector.
+1. **Content catalog (INDEX.md)** — `_system/views/INDEX.md`, авто-
+   генерируется `/ztn:maintain` Step 7.6. Faceted by PARA (структурно),
+   `domains:` (семантически), cross-domain (≥2 доменов), hubs.
+   Content-oriented: каждая запись = заметка / хаб + одна строка summary.
+   Это первая точка входа: читаешь INDEX → drill в нужную ноту, без grep
+   и без embedding-RAG. Закрывает «что есть в базе» на текущем масштабе
+   (~500 нот). Karpathy-style navigation surface.
+2. **FTS (Full-Text Search)** — grep + локальный поисковый MCP (qmd
+   опционально). На текущем масштабе INDEX + grep достаточно.
+3. **Embedding index** — каждая knowledge note + hub → embedding vector.
    При создании новой заметки: найти top-5 семантически близких.
    Предложить как связи при следующем sweep.
-3. **Semantic query** — «Расскажи всё, что я знаю про leadership»
+4. **Semantic query** — «Расскажи всё, что я знаю про leadership»
    использует и теги, и embeddings, и hub содержимое.
 
-**Не реализовано сейчас.** Текущие 400+ заметок управляемы через курируемые связи.
-Embedding layer станет критичным при 1000+ заметок.
+**Сейчас реализовано:** INDEX.md (1) + grep (2). Текущие 400+ заметок
+управляемы через курируемые связи + INDEX. Embedding layer (3-4)
+станет критичным при 1000+ заметок.
 
 ---
 

@@ -53,6 +53,16 @@ loop. Your contract:
      - If `/ztn:lint` aborts on lock / repo state — append failure
        note to CLARIFICATIONS, then continue to step 3 so the note
        ships.
+     - **Scan A.7 (concept + audience + privacy-trio autofix) runs
+       every cycle** via `_system/scripts/lint_concept_audit.py`.
+       Pure autonomous (no CLARIFICATIONs); emits fix-id events to
+       `log_lint.md`. On a clean state produces zero events.
+     - **Step 1.D privacy-trio backfill** runs ONCE on the first
+       lint cycle that observes the migration flag absent. Applies
+       conservative trio defaults (`personal` / `[]` / `false`) to
+       every record / knowledge note / hub / person / project
+       profile lacking the trio. Single-commit migration; corpus
+       auto-migrates without owner action.
 
 3. Save. Run `/ztn:save --auto`.
    - Commits with auto-proposed message (suffix `[scheduled]`) and

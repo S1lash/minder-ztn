@@ -1,7 +1,9 @@
-# Constitution scripts
+# Engine scripts
 
-Deterministic Python utilities for the `0_constitution/` layer. No LLM. PyYAML
-is the single external dependency.
+Deterministic Python utilities for the engine — constitution layer,
+concept and audience format autofix, batch JSON manifest emission,
+shared frontmatter helpers. No LLM. PyYAML is the single external
+dependency.
 
 ## Install
 
@@ -30,6 +32,24 @@ harness) set up a symlink once per machine:
 | `append_candidate.py` | Append a principle candidate to `_system/state/principle-candidates.jsonl` with schema validation + advisory file lock. Backing for `/ztn:capture-candidate`. | `_system/state/principle-candidates.jsonl` |
 | `render_soul_values.py` | Render the Values auto-zone inside `_system/SOUL.md`, bounded by markers. Detects manual drift. | `_system/SOUL.md` (only between markers) |
 | `compact_evidence_trail.py` | Collapse Evidence Trail entries older than a cutoff into one `[compacted]` summary. Invoked only after the owner approves an `evidence-trail-compact` CLARIFICATION. | single `.md` file under `0_constitution/` |
+| `lint_concept_audit.py` | Autonomous Scan A.7 + Step 1.D backfill for `/ztn:lint`. Walks frontmatter on records / knowledge notes / hubs / person and project profiles; normalises `concepts:` via `_common.py::normalize_concept_list`; filters `audience_tags:` against canonical 5 + AUDIENCES.md active extensions; backfills missing privacy trio fields with conservative defaults; coerces `is_sensitive` to bool, `origin` to enum. Emits JSONL fix events on stdout. NEVER raises CLARIFICATIONs — concept layer is fully autonomous (see ENGINE_DOCTRINE §3.1). Idempotent on a clean state. | frontmatter of in-scope `.md` files (in `--mode fix`) |
+| `emit_batch_manifest.py` | Producer-side JSON manifest emitter for `/ztn:process` Step 5.5 and `/ztn:maintain` Step 6.6. Reads structured batch data (stdin or `--input`), recursively normalises every concept-list field (`concept_hints` / `member_concepts` / `applies_in_concepts` / `concept_ids` / `related_concepts` / `previous_slugs`), filters `audience_tags[]` against the whitelist, coerces privacy trio types, drops `concepts.upserts[]` entries with unnormalisable name. Writes conformant JSON to `_system/state/batches/{batch_id}.json`. Format contract: `minder-project/strategy/ARCHITECTURE.md` §4.5. | `_system/state/batches/{batch_id}.json` |
+
+## Shared `_common.py` helpers
+
+Functions imported by the scripts above; consumers of the engine
+SKILLs reference them as the single source of truth for autonomous
+resolution.
+
+| Helper | Purpose |
+|---|---|
+| `normalize_concept_name(raw) -> str \| None` | CONCEPT_NAMING.md normalisation: diacritic-fold, lowercase, separator→`_`, ASCII guard, type-prefix strip, length truncate, transliteration safety net. Returns `None` to signal silent drop. |
+| `normalize_concept_list(raw_iter) -> list[str]` | Apply normalize_concept_name to each entry; drop Nones; dedupe preserving first-seen order. |
+| `normalize_audience_tag(raw) -> str \| None` | AUDIENCES.md normalisation: kebab-case ASCII, length 2-32. Returns the well-formed value or `None` to drop. Caller checks against whitelist. |
+| `recompute_hub_trio(hub_fm, member_trios) -> tuple[dict, list[dict]]` | Hub privacy derivation — dominant origin / audience intersection / sensitivity contagion. Owner-edit preservation: only fills missing fields; never overwrites. |
+| `read_frontmatter(path) -> tuple[dict, str] \| None` | Generic YAML frontmatter reader, tolerant of read / parse errors (returns None). |
+| `write_frontmatter(path, fm, body)` | Round-trip writer preserving body verbatim; sort_keys=False, allow_unicode=True. |
+| `looks_transliterated(s) -> bool` | Heuristic detector for Russian-noun morphology patterns (`_tsiya`, `_ovaniye`, `_eniye`, `_atelnost`, `shch`). Used inside normalize_concept_name to drop transliterations. |
 
 ## CLI examples
 
@@ -74,6 +94,16 @@ python3 -m unittest discover -s tests -v
 
 ## Schema & invariants
 
-See `0_constitution/CONSTITUTION.md` for the authoritative schema, scope
-semantics, writeability matrix, and governance invariants. The scripts mirror
-that spec; any discrepancy is a bug in the scripts.
+- `0_constitution/CONSTITUTION.md` — authoritative schema for the
+  constitution layer; scope semantics; writeability matrix.
+- `_system/registries/CONCEPT_NAMING.md` — concept-name format spec
+  + autonomous-resolution table.
+- `_system/registries/AUDIENCES.md` — audience-tag whitelist + spec
+  + Extensions table.
+- `_system/docs/batch-format.md` — batch format contract (markdown
+  report + JSON manifest).
+- `_system/docs/ENGINE_DOCTRINE.md` §3.1 — surface-don't-decide rule
+  + concept layer autonomous-resolution exception.
+
+The scripts mirror these specs; any discrepancy is a bug in the
+scripts.

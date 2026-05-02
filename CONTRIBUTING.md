@@ -16,8 +16,12 @@ Engine paths in short:
   prompts and skills.
 - `integrations/minder-ztn-mcp/` — MCP integration guide.
 - `scripts/` — release, sync, lint tooling.
-- `zettelkasten/_system/{docs,scripts,registries/{FOLDERS,CONCEPT_NAMING}.md}` —
-  authoritative system spec.
+- `zettelkasten/_system/{docs,scripts,registries/{FOLDERS,CONCEPT_NAMING,AUDIENCES,AGENT_LENSES}.md}` —
+  authoritative system spec. CONCEPT_NAMING + AUDIENCES define the
+  autonomous resolution contract for the concept and audience layers
+  (engine resolves format issues mechanically — never raises a
+  CLARIFICATION for owner action; see ENGINE_DOCTRINE §3.1
+  layer-specific exception).
 - `zettelkasten/_system/registries/AUDIENCES.template.md` — seed for
   the `audience_tags` privacy whitelist (ships as template; owner
   extensions accumulate after install).

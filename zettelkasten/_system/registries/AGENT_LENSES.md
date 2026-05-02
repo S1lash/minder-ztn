@@ -1,6 +1,6 @@
 # Agent Lenses Registry
 
-**Last Updated:** 2026-05-01 (global-navigator scope expanded to engine-wide)
+**Last Updated:** 2026-05-02 (knowledge-emergence lens activated, weekly Saturday; energy-pattern + global-navigator cadence_anchor sun→mon for clean Mon-Sun calendar week; lint D.4 hub-stale-vs-material + A.6 INDEX heartbeat added)
 
 Registry of agent-lens definitions. Each row points to a folder under
 `_system/registries/lenses/{id}/` containing the lens prompt and any
@@ -71,8 +71,9 @@ will be visible in `global-navigator` as gaps.
 | stated-vs-lived | Stated vs Lived | psyche | records | biweekly (mon) | longitudinal | active |
 | cross-domain-bridge | Cross-Domain Bridge | mechanical | records | weekly (thu) | longitudinal | active |
 | decision-review | Decision Review | mechanical | records | monthly (1) | longitudinal | active |
-| energy-pattern | Energy Pattern (records affect) | psyche | records | weekly (sun) | longitudinal | active |
-| global-navigator | Global Navigator | meta | lens-outputs | weekly (sun) | longitudinal | active |
+| energy-pattern | Energy Pattern (records affect) | psyche | records | weekly (mon) | longitudinal | active |
+| knowledge-emergence | Knowledge Emergence | mechanical | records | weekly (sat) | longitudinal | active |
+| global-navigator | Global Navigator | meta | lens-outputs | weekly (mon) | longitudinal | active |
 
 ## Lens summaries
 
@@ -96,11 +97,15 @@ Runs monthly on the 1st. Takes substantive decisions 90-180 days old, extracts t
 
 ### energy-pattern
 
-Runs weekly on Sunday. Surfaces verbatim affect-markers from owner's voice-note records over a 14-day window and compares them against the SOUL Working Style baseline («Заряжает / Истощает / Выводит из себя») and the previous window — targeting **shifts** in distribution, not absolute mood. Records-only by design; physiological (Garmin) and behavioral (ActivityWatch) data stay scoped to future sibling lenses. Hit requires ≥3 markers distributed across ≥2 different records (no single-session venting bursts) OR a polarity crossing relative to baseline. Output: pattern + verbatim quotes (path + date) + shift framing (vs prev / vs SOUL) + three readings (action gap / baseline shift / episode) + confidence (high requires 2+ consecutive windows confirming). «No shift, baseline confirmed» is a valid output, not failure.
+Runs weekly on Monday. Surfaces verbatim affect-markers from owner's voice-note records over a 14-day window and compares them against the SOUL Working Style baseline («Заряжает / Истощает / Выводит из себя») and the previous window — targeting **shifts** in distribution, not absolute mood. Records-only by design; physiological (Garmin) and behavioral (ActivityWatch) data stay scoped to future sibling lenses. Hit requires ≥3 markers distributed across ≥2 different records (no single-session venting bursts) OR a polarity crossing relative to baseline. Output: pattern + verbatim quotes (path + date) + shift framing (vs prev / vs SOUL) + three readings (action gap / baseline shift / episode) + confidence (high requires 2+ consecutive windows confirming). «No shift, baseline confirmed» is a valid output, not failure.
+
+### knowledge-emergence
+
+Runs weekly on Saturday — primary input is the **knowledge layer** (`1_projects/`, `2_areas/`, `3_resources/`), not records. Surfaces themes / framings recurring across ≥3 knowledge notes that have no hub yet (or have a mismatched hub — too general / too narrow / split candidate). Defends Layer 3 (hubs) growth against passive owner-noticing: promotion knowledge → hub becomes an active observation, not a quiet drift. Output: one-sentence promotion claim + 3+ cited knowledge note paths + relational structure name + signal tally (recurrent / hub-absence / cross-PARA / independent-derivation, ≥2-of-4) + hub verdict (new-hub / split-existing / extend-existing / unclear) + falsifier + confidence + recurrence classification (new / stable / fading) + counter-evidence. Never recommends action — owner decides whether to promote.
 
 ### global-navigator
 
-Runs weekly on Sunday — short status page for the **whole engine** over a trailing 7-day window: agent-lens layer (every active lens auto-discovered from this registry, including new ones), `/ztn:process` activity (batches + BATCH_LOG sums), `/ztn:lint` activity (F-codes + gaps), `/ztn:maintain` runs, candidate buffers (principle + people append counts by origin), CLARIFICATIONS state (new + open + by type), OPEN_THREADS delta. Output sections: stuck/failing → outstanding observations (by age) → lint → process → maintenance → candidates → clarifications → open-threads → productive lenses → silent lenses (only if non-empty) → aggregate counter; verbatim short titles, F-codes, batch-ids, type labels, counts only — no claims about the owner's life, no recommendations, no body-citation of any second-order content (observation bodies, candidate bodies, clarification quotes).
+Runs weekly on Monday — short status page for the **whole engine** over a trailing 7-day window ending the prior day (Mon-Sun calendar week): agent-lens layer (every active lens auto-discovered from this registry, including new ones), `/ztn:process` activity (batches + BATCH_LOG sums), `/ztn:lint` activity (F-codes + gaps), `/ztn:maintain` runs, candidate buffers (principle + people append counts by origin), CLARIFICATIONS state (new + open + by type), OPEN_THREADS delta. Output sections: stuck/failing → outstanding observations (by age) → lint → process → maintenance → candidates → clarifications → open-threads → productive lenses → silent lenses (only if non-empty) → aggregate counter; verbatim short titles, F-codes, batch-ids, type labels, counts only — no claims about the owner's life, no recommendations, no body-citation of any second-order content (observation bodies, candidate bodies, clarification quotes).
 
 ## Frameworks behind the calibration
 
@@ -112,6 +117,7 @@ Each lens prompt is calibrated against external frameworks (cited inline in the 
 - **decision-review**: Kahneman/Klein post-mortem discipline + Argyris double-loop learning + Tetlock superforecasting (assumption-level scoring, not overall decision-rightness)
 - **energy-pattern**: ESM (Csikszentmihalyi) episode-level affect + Higgins ideal/ought self-discrepancy lexicon + ACT lived-vs-lived comparison
 - **global-navigator**: SRE Four Golden Signals + USE method + Tufte data-ink + multi-doc summarisation hallucination research
+- **knowledge-emergence**: Luhmann Folgezettel (thematic anchor on ≥3 sister-notes) + Matuschak evergreen promotion ladder + Weick retrospective sensemaking + apophenia falsifiability guard
 
 ## Operating principles
 
@@ -167,6 +173,24 @@ One JSON object per line, append-only:
 All lens outputs are owner-local. They live under `_system/agent-lens/`
 and `_system/state/agent-lens-rejected/` and are committed to the same
 private repo as the rest of the ZTN base.
+
+**Privacy trio on lens-observation entities** (per
+`/ztn:agent-lens` SKILL Step 5.9). Every observation file carries:
+
+- `origin: personal` — lens runs internal to the owner; never `work`
+  (would risk leaking to a future work-team sync) or `external`.
+- `audience_tags: []` — owner-only by construction. Engine never
+  widens automatically; owner curates if a specific lens result is
+  worth sharing.
+- `is_sensitive: false` by default; `true` if the lens prompt
+  explicitly surfaces sensitive patterns (relationship/conflict
+  observations) — set via lens registry `output_sensitivity` field
+  when added; default `false` otherwise.
+
+If a lens output references concepts by name, the names are
+normalised through `_common.py::normalize_concept_name()` at write
+time — same autonomous-resolution contract as `/ztn:process` Q15
+(silent autofix or silent drop; never raises CLARIFICATION).
 
 **Search isolation is deferred.** A future phase will set up a separate
 QMD index for lens outputs so they remain accessible to the owner via

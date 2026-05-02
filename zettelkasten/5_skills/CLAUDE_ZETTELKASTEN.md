@@ -26,9 +26,12 @@ modified: '2026-04-26'
 6.  3_resources/people/PEOPLE.md     ← Реестр людей (Tier/Mentions/Last)
 7.  1_projects/PROJECTS.md   ← Реестр проектов
 8.  _system/registries/TAGS.md       ← Реестр тегов
-9.  _system/views/HUB_INDEX.md             ← Индекс хабов
-10. _system/state/PROCESSED.md             ← Что обработано
-11. _system/state/CLARIFICATIONS.md        ← Pending clarifications
+9.  _system/registries/CONCEPT_NAMING.md   ← Concept-name format spec (autonomous resolution)
+10. _system/registries/AUDIENCES.md        ← `audience_tags` whitelist (canonical 5 + extensions)
+11. _system/views/HUB_INDEX.md             ← Индекс хабов
+12. _system/views/INDEX.md                 ← Content catalog (knowledge + hubs, faceted)
+13. _system/state/PROCESSED.md             ← Что обработано
+14. _system/state/CLARIFICATIONS.md        ← Pending clarifications
 ```
 
 ### Pipeline (Steps 0-6):
@@ -41,14 +44,15 @@ modified: '2026-04-26'
    3.1 Read transcript
    3.2 LLM Noise Gate
    3.3 Semantic Context Loading
-   3.4 14-Question Classification (incl. content potential)
+   3.4 16-Question Classification (incl. Q14 content potential, Q15 CONCEPTS — translate non-English / never transliterate, Q16 PRIVACY TRIO inference)
    3.5 Create Outputs (records, knowledge notes, hubs, ideas as living docs)
-   3.6 Structural Verification
+   3.6 Structural Verification (concept format autofix, trio defaults)
    3.7 Adversarial Source Audit
    3.8 People Profile Enrichment
    3.9 System Updates
-4. Post-Processing — TASKS, CALENDAR, HUB_INDEX, content potential verification
+4. Post-Processing — TASKS, CALENDAR, HUB_INDEX, content potential verification, concepts.upserts aggregation, sensitive_entities aggregation
 5. Completion Gate — mandatory checklist
+5.5 Batch Artifacts — emit `{batch-id}.md` (markdown) + `{batch-id}.json` (manifest via emit_batch_manifest.py)
 6. Report — текстовый отчёт о processed files + audit stats + clarifications
 ```
 
@@ -76,14 +80,16 @@ modified: '2026-04-26'
 8. **Adversarial audit** — обязателен для КАЖДОГО транскрипта
 9. **Идеи** — living documents (поиск существующих перед созданием)
 10. **Люди** — обязательное обогащение профиля при новом контексте
-11. **CLARIFICATIONS HARD RULE** — при `confidence < threshold` не принимать решение молча; писать вопрос в `_system/state/CLARIFICATIONS.md`, использовать conservative default, продолжать работу
+11. **CLARIFICATIONS HARD RULE** — при `confidence < threshold` не принимать решение молча; писать вопрос в `_system/state/CLARIFICATIONS.md`, использовать conservative default, продолжать работу. **Layer-specific exception:** concept-name format issues и `audience_tags` whitelist mismatches resolves autonomously через `_common.py` нормализаторы — никогда не raise CLARIFICATION (см. ENGINE_DOCTRINE §3.1)
+12. **Privacy trio per entity** — каждый record / knowledge note / hub / person profile / project profile несёт `origin` (personal/work/external) + `audience_tags[]` (canonical 5 + AUDIENCES.md extensions, default `[]`) + `is_sensitive` (bool). Hub trio auto-derived через `recompute_hub_trio` (preserve owner edits)
 
 ---
 
 ## Naming
 
 - **Files**: `YYYYMMDD-short-semantic-name.md`
-- **Tags**: `category/specific-tag`
+- **Tags**: `category/specific-tag` (kebab-case OK; **distinct axis** from `concepts:`)
+- **Concepts**: `snake_case_ascii` (English-only; per CONCEPT_NAMING.md). Translation, never transliteration; engine drops on impossibility
 - **People**: `firstname-lastname` (transliterated, lowercase, dash). Bare first name = CLARIFICATION
 - **Projects**: `short-descriptive-name`
 

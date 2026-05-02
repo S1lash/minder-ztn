@@ -17,6 +17,14 @@ Primary target: **Claude Desktop / Claude.ai** (where MCP support is most mature
 
 The MCP connector name is fixed at `minder-ztn` (platform standard, identical on every install). The prompts ship deliberately user-agnostic — they reference only ZTN platform conventions (PARA layout, `_system/` orientation files, frontmatter rules), no specific people, no owner-specific topics. Each operator can fork and tune them locally.
 
+**Per-entity frontmatter the MCP consumer may filter on.** Every record / knowledge note / hub / person profile / project profile carries:
+- `concepts: [...]` — snake_case ASCII concept names (open vocabulary; format spec in `_system/registries/CONCEPT_NAMING.md`)
+- `audience_tags: [...]` — whitelist labels (canonical 5: `family`/`friends`/`work`/`professional-network`/`world`; tenant extensions in `_system/registries/AUDIENCES.md`). Empty `[]` = owner-only.
+- `is_sensitive: true|false` — friction modifier (orthogonal to audience scope)
+- `origin: personal|work|external` — provenance tag
+
+These fields are conformant by ZTN-side construction (engine resolves all format issues autonomously); MCP queries can filter on them without re-validating shape.
+
 ## Files
 
 The two `.md` files contain **only the text to copy-paste into a chat client**. No headers, no explanations — paste the whole file as-is. All meta and rationale lives in this README.

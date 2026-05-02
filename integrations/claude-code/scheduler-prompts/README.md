@@ -21,6 +21,21 @@ is owner-only by design. The `agent-lens` tick runs daily because the
 skill itself filters lenses by per-lens cadence — daily ≠ daily lens
 runs.
 
+**Manifest emission per tick.** `/ztn:process` Step 5.5 writes both
+`{batch_id}.md` (markdown report) and `{batch_id}.json` (machine-
+parseable JSON manifest for the Minder consumer; schema in
+`minder-project/strategy/ARCHITECTURE.md` §4.5). `/ztn:maintain`
+Step 6.6 writes its own `{batch_id}-maintain.json`. Both files commit
+through `/ztn:save --auto` normally.
+
+**Concept and audience layer is fully autonomous.** Format issues
+never reach the CLARIFICATIONs queue from these layers — engine
+resolves via `_common.py` normalisers + lint Scan A.7 autofix. The
+scheduler tick should NOT see new owner-facing items from these
+classes (records / notes / hubs / profile concept-name and audience-
+tag format). If owner sees one, that's a bug in the producer-side
+guard, not a normal autonomy boundary.
+
 ## Plug-in — Claude Code `/schedule`
 
 The path of least friction. Two routines:
