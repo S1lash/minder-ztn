@@ -1182,7 +1182,7 @@ When a topic reaches 3+ KNOWLEDGE notes (Q12):
 5. Fill "Changelog" — initial entry
 6. Add to `_system/views/HUB_INDEX.md`
 
-Hub ID format: `hub-{topic-slug}` (e.g., `hub-api2-p2p`, `hub-delegation-pattern`)
+Hub ID format: `hub-{topic-slug}` (e.g., `hub-api-platform`, `hub-delegation-pattern`)
 
 **New hub privacy trio on creation.** Same helper
 (`_common.py::recompute_hub_trio`), same rules: dominant origin,

@@ -367,7 +367,7 @@ category/specific-tag
 ### Entity IDs (people, projects)
 - Lowercase
 - Короткое имя
-- `ivan-petrov`, `john-doe`, `psp-router`, `agentic-commerce`
+- `ivan-petrov`, `john-doe`, `acme-payments`, `agentic-commerce`
 
 ---
 
@@ -774,7 +774,7 @@ Pipeline обработки определён в SKILL.md (`/ztn:process`).
 
 ### Name normalization:
 - "Иван Петров" → "ivan-petrov"
-- "PSP Router" → "psp-router"
+- "Acme Payments" → "acme-payments"
 - "Career Promotion" → "career-promotion"
 - "AI Agents" → "ai-agents"
 

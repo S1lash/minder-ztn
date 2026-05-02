@@ -6,7 +6,7 @@ Two coupled install requirements per machine so that:
 2. The skills the hook invokes (`/ztn:capture-candidate`,
    `/ztn:check-decision`, `/ztn:regen-constitution`) and the ambient ZTN
    commands (`/ztn:search`, `/ztn:recap`) are discoverable outside this
-   repo too (radar sessions, HQ sessions, scheduler).
+   repo too (work-project sessions, HQ sessions, scheduler).
 
 All install steps are automated by `integrations/claude-code/install.sh`
 in the repo root. The script is idempotent and reads the absolute repo

@@ -69,9 +69,9 @@ If the user asked a question (not just "find X"), also provide a **synthesis** �
 ## Examples
 
 ```
-/ztn:search встречи с Василием про стратегию
+/ztn:search meetings with my team about strategy
 /ztn:search career promotion decisions
-/ztn:search что я думал про AI агентов в январе
-/ztn:search tasks related to psp-router
+/ztn:search what did I think about AI agents in January
+/ztn:search tasks related to acme-payments
 /ztn:search ideas about content publishing
 ```

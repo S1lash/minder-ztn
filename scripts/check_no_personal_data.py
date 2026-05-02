@@ -60,6 +60,23 @@ DEFAULT_BLACKLIST: list[str] = [
     r"\bvasily-grigoryev\b",
     r"\bVasily Grigoryev\b",
     r"\bВасилий\b(?! Иванов)",  # allow synthetic «Василий Иванов» if introduced
+    # Additional real-world identifiers caught during 2026-05-02 sweep —
+    # were leaking through engine docs as illustrative examples. Replace
+    # with synthetic placeholders (`ivan-petrov`, `acme-payments`).
+    r"\bmatvey-vasilyev\b",
+    r"\bMatvey Vasilyev\b",
+    r"\bМатвей\b(?! Иванов)",
+    r"\bМатвеем\b",
+    r"\bmisha-gapeev\b",
+    r"\bMisha Gapeev\b",
+    r"\bmarina-qa\w*",
+    r"\bpsp-router\b",
+    r"\bPSP Router\b",
+    r"\bapi2-p2p\b",
+    r"\bhub-api2-p2p\b",
+    r"\bapi_v2_payment_routing\b",
+    r"\bpayment_details_nesting\b",
+    r"\bp2p_architecture\b",
 ]
 
 # Filename suffixes considered text. Anything else skipped.

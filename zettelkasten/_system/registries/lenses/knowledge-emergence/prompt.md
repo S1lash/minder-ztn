@@ -131,9 +131,9 @@ hindsight, when scattered notes are read as one corpus).
 
 ## What does NOT count as a hit (anti-patterns)
 
-1. **Project-id co-occurrence.** 3 notes share `projects: [psp-router]`
+1. **Project-id co-occurrence.** 3 notes share `projects: [acme-payments]`
    — the project itself is the binding, not an emerging theme. Reject.
-   Project hubs (e.g. `hub-psp-router`) already cover this — the
+   Project hubs (e.g. `hub-acme-payments`) already cover this — the
    binding has a name and a home.
 2. **Person-name co-occurrence.** 3 notes mention the same person —
    that's a person-tier signal (handled in PEOPLE.md), not an

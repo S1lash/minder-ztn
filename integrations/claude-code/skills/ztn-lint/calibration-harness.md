@@ -82,9 +82,9 @@ Detect drift в LLM verdict prompt calibration. Each case has known-correct tier
 
 ### Case 6 — Bare-name unambiguous resolution, strong + high → reviewed
 
-**Candidate:** Frontmatter `people: [matvey]` в note. PEOPLE.md has exactly one `matvey-*` id (`matvey-vasilyev`). File context = API v2 technical session (matches Role: Tech Lead API v2).
+**Candidate:** Frontmatter `people: [ivan]` в note. PEOPLE.md has exactly one `ivan-*` id (`ivan-petrov`). File context = API v2 technical session (matches Role: Tech Lead API v2).
 
-**Context:** Single candidate in registry + context corroborates. Three-surface scan finds: 1 frontmatter ref + 1 tag `person/matvey` + 1 inline `[[matvey]]` wikilink.
+**Context:** Single candidate in registry + context corroborates. Three-surface scan finds: 1 frontmatter ref + 1 tag `person/ivan` + 1 inline `[[ivan]]` wikilink.
 
 **Expected rule-floor:** strong (registry unambiguous)
 **Expected LLM verdict:** high (context matches)

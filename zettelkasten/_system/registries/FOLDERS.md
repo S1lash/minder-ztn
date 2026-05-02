@@ -94,7 +94,7 @@ zettelkasten/
 ├── 1_projects/                   # Активные проекты с дедлайнами
 │   ├── PROJECTS.md               # реестр проектов (co-located since 4.75)
 │   ├── career-promotion/
-│   └── psp-router/
+│   └── acme-payments/
 │
 ├── 2_areas/                      # Области ответственности
 │   ├── work/

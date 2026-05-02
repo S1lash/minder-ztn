@@ -102,5 +102,5 @@ After creating the file:
 ```
 /ztn:recap
 /ztn:recap workspace reorganization
-/ztn:recap --tags #radar #refactoring
+/ztn:recap --tags #project #refactoring
 ```
