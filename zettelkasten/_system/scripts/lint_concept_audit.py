@@ -32,10 +32,13 @@ from pathlib import Path
 from typing import Iterable
 
 from _common import (
+    ALLOWED_DOMAINS,
     AUDIENCE_CANONICAL,
     normalize_audience_tag,
     normalize_concept_list,
     normalize_concept_name,
+    normalize_domain,
+    parse_extensions_table,
     read_frontmatter,
     repo_root,
     write_frontmatter,
@@ -289,6 +292,104 @@ def fix_audience_tags(
     return new_fm, events
 
 
+def fix_domains(
+    fm: dict, accept_set: set[str]
+) -> tuple[dict, list[dict]]:
+    """Filter `domains:` (plural list on notes / hubs / typed objects) to
+    canonical-13 ∪ active extensions; normalise where possible.
+
+    Scope: this pass touches only the plural `domains:` field. The singular
+    `domain:` field on constitution principles is parse-time validated by
+    `validate_frontmatter` against `ALLOWED_DOMAINS` and never enters lint
+    scope (the constitution tree is excluded via SCOPE_EXCLUDE).
+
+    Phase 1 substrate is deterministic-only. The LLM cascade
+    (remap-or-CLARIFICATION for unmappable values) is documented in
+    DOMAINS.md and will be wired in by `/ztn:process` Step 3.5 + the
+    `/ztn:backfill-concepts` SKILL.
+    """
+    events: list[dict] = []
+    raw = fm.get("domains")
+    if raw is None:
+        return fm, events
+    if isinstance(raw, str):
+        raw_list = [raw]
+    elif isinstance(raw, list):
+        raw_list = list(raw)
+    else:
+        events.append({
+            "fix_id": "domain-drop-autofix",
+            "field": "domains",
+            "raw": str(raw),
+            "result": None,
+            "reason": "invalid type",
+        })
+        new_fm = dict(fm)
+        new_fm["domains"] = []
+        return new_fm, events
+
+    accepted: list[str] = []
+    seen: set[str] = set()
+    changed = False
+
+    for orig in raw_list:
+        if not isinstance(orig, str):
+            events.append({
+                "fix_id": "domain-drop-autofix",
+                "field": "domains",
+                "raw": str(orig),
+                "result": None,
+                "reason": "non-string entry",
+            })
+            changed = True
+            continue
+        if orig in accept_set:
+            if orig not in seen:
+                accepted.append(orig)
+                seen.add(orig)
+            else:
+                changed = True
+            continue
+        norm = normalize_domain(orig)
+        if norm is None:
+            events.append({
+                "fix_id": "domain-drop-autofix",
+                "field": "domains",
+                "raw": orig,
+                "result": None,
+                "reason": "format-unfixable",
+            })
+            changed = True
+            continue
+        if norm in accept_set:
+            if norm not in seen:
+                accepted.append(norm)
+                seen.add(norm)
+            events.append({
+                "fix_id": "domain-normalise-autofix",
+                "field": "domains",
+                "raw": orig,
+                "result": norm,
+            })
+            changed = True
+            continue
+        events.append({
+            "fix_id": "domain-drop-autofix",
+            "field": "domains",
+            "raw": orig,
+            "result": None,
+            "reason": "not-in-whitelist",
+        })
+        changed = True
+
+    if not changed and accepted == raw_list:
+        return fm, events
+
+    new_fm = dict(fm)
+    new_fm["domains"] = accepted
+    return new_fm, events
+
+
 def fix_privacy_trio(fm: dict) -> tuple[dict, list[dict]]:
     """Backfill missing trio fields and coerce types."""
     events: list[dict] = []
@@ -339,7 +440,10 @@ def fix_privacy_trio(fm: dict) -> tuple[dict, list[dict]]:
 
 
 def process_file(
-    path: Path, accept_set: set[str], mode: str
+    path: Path,
+    audience_accept: set[str],
+    domain_accept: set[str],
+    mode: str,
 ) -> list[dict]:
     parsed = read_frontmatter(path)
     if parsed is None:
@@ -358,7 +462,10 @@ def process_file(
     fm, events = fix_concepts(fm)
     all_events.extend(events)
 
-    fm, events = fix_audience_tags(fm, accept_set)
+    fm, events = fix_audience_tags(fm, audience_accept)
+    all_events.extend(events)
+
+    fm, events = fix_domains(fm, domain_accept)
     all_events.extend(events)
 
     if has_layer:
@@ -392,18 +499,29 @@ def main(argv: list[str] | None = None) -> int:
         help="AUDIENCES.md path (default: "
              "{root}/_system/registries/AUDIENCES.md).",
     )
+    parser.add_argument(
+        "--domains", type=Path, default=None,
+        help="DOMAINS.md path (default: "
+             "{root}/_system/registries/DOMAINS.md).",
+    )
     args = parser.parse_args(argv)
 
     root = (args.root or repo_root()).resolve()
     audiences_path = args.audiences or (
         root / "_system" / "registries" / "AUDIENCES.md"
     )
+    domains_path = args.domains or (
+        root / "_system" / "registries" / "DOMAINS.md"
+    )
 
-    extensions = parse_audience_extensions(audiences_path)
-    accept_set = set(AUDIENCE_CANONICAL) | extensions
+    audience_extensions = parse_audience_extensions(audiences_path)
+    audience_accept = set(AUDIENCE_CANONICAL) | audience_extensions
+
+    domain_extensions = parse_extensions_table(domains_path)
+    domain_accept = set(ALLOWED_DOMAINS) | domain_extensions
 
     for md in walk_md_files(root):
-        events = process_file(md, accept_set, args.mode)
+        events = process_file(md, audience_accept, domain_accept, args.mode)
         for ev in events:
             sys.stdout.write(json.dumps(ev, ensure_ascii=False) + "\n")
 

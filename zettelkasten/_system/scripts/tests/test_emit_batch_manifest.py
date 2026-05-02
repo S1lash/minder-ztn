@@ -44,17 +44,41 @@ def _audiences_file(root: Path, extensions: list[str] | None = None) -> Path:
     return p
 
 
+def _domains_file(root: Path, extensions: list[str] | None = None) -> Path:
+    extensions = extensions or []
+    rows = "\n".join(
+        f"| {dom} | 2026-05-02 | active | test | — |" for dom in extensions
+    )
+    p = root / "DOMAINS.md"
+    p.write_text(
+        "# Domains\n"
+        "<!-- BEGIN extensions -->\n"
+        "| Domain | Added | Status | Purpose | Notes |\n"
+        "|---|---|---|---|---|\n"
+        + (rows + "\n" if rows else "")
+        + "<!-- END extensions -->\n",
+        encoding="utf-8",
+    )
+    return p
+
+
 def _run(input_data: dict, output: Path, audiences: Path,
-         dry_run: bool = False) -> tuple[int, str, str]:
+         dry_run: bool = False, *, domains: Path | None = None,
+         ) -> tuple[int, str, str]:
     with tempfile.NamedTemporaryFile(
         suffix=".json", delete=False, mode="w", encoding="utf-8"
     ) as fh:
         json.dump(input_data, fh)
         in_path = Path(fh.name)
+    # Always isolate from live registry — when caller did not provide a
+    # specific DOMAINS.md, write an empty one alongside AUDIENCES.md so
+    # tests use the canonical 13 with no extensions.
+    if domains is None:
+        domains = _domains_file(audiences.parent)
     out_buf = io.StringIO()
     err_buf = io.StringIO()
     args = ["--input", str(in_path), "--output", str(output),
-            "--audiences", str(audiences)]
+            "--audiences", str(audiences), "--domains", str(domains)]
     if dry_run:
         args.append("--dry-run")
     with redirect_stdout(out_buf), redirect_stderr(err_buf):
@@ -405,6 +429,115 @@ class IdempotenceTests(unittest.TestCase):
             _, _, err2 = _run(written_data, tmp / "out2.json", audiences)
             self.assertEqual(err2.strip(), "")
         clear_ztn_env()
+
+
+class DomainNormalisationTests(unittest.TestCase):
+    """`walk_and_normalise` handling of `domains:` (plural) and `domain:`
+    (singular). Phase 1 substrate — silent autofix or silent drop."""
+
+    def test_canonical_passthrough(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["records"] = [{"domains": ["work", "career", "health"]}]
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(
+                written["records"][0]["domains"],
+                ["work", "career", "health"],
+            )
+            domain_events = [
+                ln for ln in err.splitlines()
+                if ln.strip() and "domain" in ln
+            ]
+            self.assertEqual(domain_events, [])
+        clear_ztn_env()
+
+    def test_unknown_value_dropped_from_array(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["records"] = [{"domains": ["work", "payments", "career"]}]
+            _, _, err = _run(data, tmp / "out.json", audiences)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(
+                written["records"][0]["domains"], ["work", "career"],
+            )
+            self.assertIn("domain-drop-autofix", err)
+            self.assertIn("payments", err)
+
+    def test_slash_syntax_normalised(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["records"] = [{
+                "domains": ["work/process", "personal/psychology"],
+            }]
+            _, _, err = _run(data, tmp / "out.json", audiences)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(
+                written["records"][0]["domains"], ["work", "personal"],
+            )
+            self.assertIn("domain-normalise-autofix", err)
+
+    def test_extension_accepted(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            domains = _domains_file(tmp, extensions=["gardening"])
+            data = _minimal_manifest()
+            data["records"] = [{"domains": ["gardening", "work"]}]
+            _, _, err = _run(
+                data, tmp / "out.json", audiences, domains=domains,
+            )
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(
+                written["records"][0]["domains"], ["gardening", "work"],
+            )
+
+    def test_singular_domain_normalised(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["constitution"] = {
+                "principles": [{"id": "axiom-x-001", "domain": "ai_interaction"}],
+            }
+            _, _, err = _run(data, tmp / "out.json", audiences)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(
+                written["constitution"]["principles"][0]["domain"],
+                "ai-interaction",
+            )
+
+    def test_singular_domain_dropped_when_invalid(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["constitution"] = {
+                "principles": [{"id": "axiom-x-001", "domain": "junk"}],
+            }
+            _, _, err = _run(data, tmp / "out.json", audiences)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertNotIn(
+                "domain", written["constitution"]["principles"][0],
+            )
+            self.assertIn("domain-drop-autofix", err)
+
+    def test_dedupes_after_normalisation(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["records"] = [{"domains": ["Work", "work", "WORK"]}]
+            _, _, _ = _run(data, tmp / "out.json", audiences)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(written["records"][0]["domains"], ["work"])
 
 
 if __name__ == "__main__":

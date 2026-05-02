@@ -63,7 +63,7 @@ which one happened to capture the type field.
 |---|---|---|---|
 | Concept | `concepts:` | "What things does this note touch?" | Open-ended; new concepts emerge as the world expands |
 | Tag | `tags:` | "Which categorical buckets does this belong to?" | Closed registry of `category/value` labels |
-| Domain | `domains:` | "Which life area is this in?" | Tiny closed set: `work`, `identity`, `health`, `relationships`, `learning`, etc. |
+| Domain | `domains:` / `domain:` | "Which life area is this in?" | Closed registry — see `DOMAINS.md` for canonical thirteen + extensions. |
 
 If you can ask "is this note ABOUT X?" — X is probably a concept.
 If you'd ask "is this note OF KIND X?" — X is probably a tag.

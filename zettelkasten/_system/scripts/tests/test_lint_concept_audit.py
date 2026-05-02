@@ -320,5 +320,165 @@ class ScanModeNoWriteTests(unittest.TestCase):
         clear_ztn_env()
 
 
+def _write_domains(root: Path, extensions: list[str] | None = None) -> None:
+    """Seed DOMAINS.md with optional extensions table rows."""
+    extensions = extensions or []
+    rows = "\n".join(
+        f"| {dom} | 2026-05-02 | active | test | — |" for dom in extensions
+    )
+    (root / "_system" / "registries" / "DOMAINS.md").write_text(
+        "# Domains\n"
+        "<!-- BEGIN extensions -->\n"
+        "| Domain | Added | Status | Purpose | Notes |\n"
+        "|---|---|---|---|---|\n"
+        + (rows + "\n" if rows else "")
+        + "<!-- END extensions -->\n",
+        encoding="utf-8",
+    )
+
+
+class DomainAutofixTests(unittest.TestCase):
+    """`fix_domains` pass — Phase 1 deterministic substrate."""
+
+    def test_canonical_kept(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_audiences(root)
+            _write_md(
+                root / "1_projects" / "n.md",
+                "layer: knowledge\ndomains: [work, career]\n"
+                "origin: personal\naudience_tags: []\nis_sensitive: false\n",
+            )
+            events = _run(root, mode="scan")
+            domain_events = [e for e in events if "domain" in e.get("fix_id", "")]
+            self.assertEqual(domain_events, [])
+        clear_ztn_env()
+
+    def test_unknown_value_dropped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_audiences(root)
+            _write_md(
+                root / "1_projects" / "n.md",
+                "layer: knowledge\ndomains: [work, payments, career]\n"
+                "origin: personal\naudience_tags: []\nis_sensitive: false\n",
+            )
+            events = _run(root, mode="scan")
+            drops = [
+                e for e in events
+                if e.get("fix_id") == "domain-drop-autofix"
+                and e.get("raw") == "payments"
+            ]
+            self.assertEqual(len(drops), 1)
+            self.assertEqual(drops[0]["reason"], "not-in-whitelist")
+
+    def test_slash_syntax_normalised_to_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_audiences(root)
+            _write_md(
+                root / "2_areas" / "n.md",
+                "layer: knowledge\ndomains: [personal/psychology, work/process]\n"
+                "origin: personal\naudience_tags: []\nis_sensitive: false\n",
+            )
+            events = _run(root, mode="scan")
+            normalises = [
+                e for e in events
+                if e.get("fix_id") == "domain-normalise-autofix"
+            ]
+            results = sorted(e["result"] for e in normalises)
+            self.assertEqual(results, ["personal", "work"])
+
+    def test_case_normalised(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_audiences(root)
+            _write_md(
+                root / "1_projects" / "n.md",
+                "layer: knowledge\ndomains: [Work, AI-Interaction]\n"
+                "origin: personal\naudience_tags: []\nis_sensitive: false\n",
+            )
+            events = _run(root, mode="scan")
+            normalises = sorted(
+                e["result"] for e in events
+                if e.get("fix_id") == "domain-normalise-autofix"
+            )
+            self.assertEqual(normalises, ["ai-interaction", "work"])
+
+    def test_extension_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_audiences(root)
+            _write_domains(root, extensions=["gardening"])
+            _write_md(
+                root / "1_projects" / "n.md",
+                "layer: knowledge\ndomains: [gardening, junk]\n"
+                "origin: personal\naudience_tags: []\nis_sensitive: false\n",
+            )
+            events = _run(root, mode="scan")
+            domain_events = [e for e in events if "domain" in e.get("fix_id", "")]
+            # Only "junk" should drop; gardening is in extensions.
+            drops = [e for e in domain_events
+                     if e.get("fix_id") == "domain-drop-autofix"]
+            self.assertEqual(len(drops), 1)
+            self.assertEqual(drops[0]["raw"], "junk")
+
+    def test_format_unfixable_dropped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_audiences(root)
+            _write_md(
+                root / "1_projects" / "n.md",
+                "layer: knowledge\ndomains: [work, тема]\n"
+                "origin: personal\naudience_tags: []\nis_sensitive: false\n",
+            )
+            events = _run(root, mode="scan")
+            drops = [e for e in events
+                     if e.get("fix_id") == "domain-drop-autofix"]
+            self.assertEqual(len(drops), 1)
+            self.assertEqual(drops[0]["reason"], "format-unfixable")
+
+    def test_idempotent_after_fix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_audiences(root)
+            _write_md(
+                root / "1_projects" / "n.md",
+                "layer: knowledge\ndomains: [Work, payments, personal/psychology]\n"
+                "origin: personal\naudience_tags: []\nis_sensitive: false\n",
+            )
+            first = _run(root, mode="fix")
+            self.assertGreater(
+                len([e for e in first if "domain" in e.get("fix_id", "")]), 0
+            )
+            second = _run(root, mode="fix")
+            self.assertEqual(
+                [e for e in second if "domain" in e.get("fix_id", "")], []
+            )
+        clear_ztn_env()
+
+    def test_dedupes_after_normalisation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_audiences(root)
+            _write_md(
+                root / "1_projects" / "n.md",
+                "layer: knowledge\ndomains: [Work, work, WORK]\n"
+                "origin: personal\naudience_tags: []\nis_sensitive: false\n",
+            )
+            _run(root, mode="fix")
+            content = (root / "1_projects" / "n.md").read_text()
+            # Final list should contain a single 'work'.
+            self.assertEqual(content.count("- work\n"), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

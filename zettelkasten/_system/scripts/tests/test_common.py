@@ -483,5 +483,156 @@ class RecomputeHubTrioTests(unittest.TestCase):
         )
 
 
+class NormalizeDomainTests(unittest.TestCase):
+    """`normalize_domain`: kebab-case ASCII output, slash-prefix policy,
+    fail-closed on irrecoverable shape."""
+
+    def test_canonical_passthrough(self):
+        for d in ["work", "career", "personal", "ai-interaction", "meta"]:
+            self.assertEqual(c.normalize_domain(d), d)
+
+    def test_lowercase(self):
+        self.assertEqual(c.normalize_domain("Work"), "work")
+        self.assertEqual(c.normalize_domain("AI-Interaction"), "ai-interaction")
+
+    def test_snake_to_kebab(self):
+        self.assertEqual(c.normalize_domain("ai_interaction"), "ai-interaction")
+
+    def test_slash_keeps_prefix(self):
+        self.assertEqual(c.normalize_domain("work/process"), "work")
+        self.assertEqual(c.normalize_domain("personal/psychology"), "personal")
+        self.assertEqual(c.normalize_domain("work/team/sub"), "work")
+
+    def test_whitespace_strip(self):
+        self.assertEqual(c.normalize_domain("  health  "), "health")
+
+    def test_collapses_separators(self):
+        self.assertEqual(c.normalize_domain("ai__interaction"), "ai-interaction")
+        self.assertEqual(c.normalize_domain("ai - - interaction"), "ai-interaction")
+
+    def test_empty_returns_none(self):
+        self.assertIsNone(c.normalize_domain(""))
+        self.assertIsNone(c.normalize_domain("   "))
+        self.assertIsNone(c.normalize_domain("/"))
+
+    def test_none_returns_none(self):
+        self.assertIsNone(c.normalize_domain(None))
+
+    def test_too_short(self):
+        self.assertIsNone(c.normalize_domain("a"))
+
+    def test_too_long(self):
+        self.assertIsNone(c.normalize_domain("x" * 33))
+
+    def test_non_ascii_drops(self):
+        self.assertIsNone(c.normalize_domain("тема"))
+
+
+class NormalizeDomainListTests(unittest.TestCase):
+    def test_default_accept_set_is_canonical(self):
+        result = c.normalize_domain_list(["work", "career", "junk"])
+        self.assertEqual(result, ["work", "career"])
+
+    def test_dedupes_after_normalisation(self):
+        result = c.normalize_domain_list(["Work", "work", "WORK"])
+        self.assertEqual(result, ["work"])
+
+    def test_preserves_first_seen_order(self):
+        result = c.normalize_domain_list(["health", "work", "career"])
+        self.assertEqual(result, ["health", "work", "career"])
+
+    def test_explicit_accept_set_with_extension(self):
+        result = c.normalize_domain_list(
+            ["work", "custom-ext"], accept_set={"work", "custom-ext"},
+        )
+        self.assertEqual(result, ["work", "custom-ext"])
+
+    def test_drops_format_unfixable(self):
+        result = c.normalize_domain_list(["work", "тема", "career"])
+        self.assertEqual(result, ["work", "career"])
+
+    def test_empty_input(self):
+        self.assertEqual(c.normalize_domain_list([]), [])
+        self.assertEqual(c.normalize_domain_list(None), [])
+
+
+class ParseExtensionsTableTests(unittest.TestCase):
+    """Generic Extensions parser used by both AUDIENCES.md and DOMAINS.md."""
+
+    def test_missing_file_returns_empty(self):
+        self.assertEqual(c.parse_extensions_table(Path("/nonexistent.md")), set())
+
+    def test_no_extensions_block_returns_empty(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "registry.md"
+            p.write_text("# No markers here", encoding="utf-8")
+            self.assertEqual(c.parse_extensions_table(p), set())
+
+    def test_empty_block(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "registry.md"
+            p.write_text(
+                "<!-- BEGIN extensions -->\n"
+                "| Domain | Added | Status | Purpose | Notes |\n"
+                "|---|---|---|---|---|\n"
+                "| _(none yet)_ | — | — | — | — |\n"
+                "<!-- END extensions -->\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(c.parse_extensions_table(p), set())
+
+    def test_active_entries_collected(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "registry.md"
+            p.write_text(
+                "<!-- BEGIN extensions -->\n"
+                "| Domain | Added | Status | Purpose | Notes |\n"
+                "|---|---|---|---|---|\n"
+                "| gardening | 2026-05-01 | active | hobby | — |\n"
+                "| spouse | 2026-04-01 | active | one-person | — |\n"
+                "<!-- END extensions -->\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(c.parse_extensions_table(p), {"gardening", "spouse"})
+
+    def test_deprecated_excluded(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "registry.md"
+            p.write_text(
+                "<!-- BEGIN extensions -->\n"
+                "| Domain | Added | Status | Purpose | Notes |\n"
+                "|---|---|---|---|---|\n"
+                "| gardening | 2026-05-01 | active | hobby | — |\n"
+                "| oldtag | 2025-01-01 | deprecated:2026-04-01 | — | retired |\n"
+                "<!-- END extensions -->\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(c.parse_extensions_table(p), {"gardening"})
+
+
+class AllowedDomainsExtensionTests(unittest.TestCase):
+    """Lock the canonical 13 in place — changes here require coordinated
+    edits to DOMAINS.md and the corresponding test fixtures."""
+
+    def test_canonical_count(self):
+        self.assertEqual(len(c.ALLOWED_DOMAINS), 13)
+
+    def test_all_thirteen_present(self):
+        expected = {
+            "work", "career", "personal",
+            "identity", "ethics", "health",
+            "relationships",
+            "learning", "money", "time",
+            "ai-interaction", "tech", "meta",
+        }
+        self.assertEqual(set(c.ALLOWED_DOMAINS), expected)
+
+    def test_minder_concept_domain_mirror(self):
+        self.assertEqual(
+            set(c.MINDER_CONCEPT_DOMAIN),
+            {"work", "personal", "mixed", "unknown"},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

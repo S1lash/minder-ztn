@@ -34,11 +34,25 @@ REQUIRED_FIELDS: tuple[str, ...] = (
 )
 
 ALLOWED_TYPES = {"axiom", "principle", "rule"}
-ALLOWED_DOMAINS = {
-    "identity", "ethics", "work", "tech",
-    "relationships", "health", "money", "time",
-    "learning", "ai-interaction", "meta",
-}
+# Canonical thirteen — single source of truth for `domains:` / `domain:`.
+# Mirrored in `_system/registries/DOMAINS.md`. Treat as immutable at runtime;
+# changes require coordinated edits to DOMAINS.md and tests.
+ALLOWED_DOMAINS: frozenset[str] = frozenset({
+    "work", "career", "personal",
+    "identity", "ethics", "health",
+    "relationships",
+    "learning", "money", "time",
+    "ai-interaction", "tech", "meta",
+})
+
+# Mirror of Minder's `ConceptDomain` enum
+# (`minder/.../domain/value/ConceptDomain.java`). Per-concept-mention scope
+# derived downstream from a note's `domains:` + `origin`. NOT used for
+# ZTN-side validation — kept here as a documentation reference so future
+# manifest/consumer work can spot drift between the two axes.
+MINDER_CONCEPT_DOMAIN: frozenset[str] = frozenset({
+    "work", "personal", "mixed", "unknown",
+})
 ALLOWED_PRIORITY_TIERS = {1, 2, 3}
 ALLOWED_FRAMINGS = {"positive", "negative"}
 ALLOWED_BINDINGS = {"hard", "soft"}
@@ -329,6 +343,123 @@ def normalize_audience_tag(raw: str | None) -> str | None:
     if len(s) < AUDIENCE_TAG_MIN_LEN or len(s) > AUDIENCE_TAG_MAX_LEN:
         return None
     return s
+
+
+# -----------------------------------------------------------------------------
+# Domain normalisation per `_system/registries/DOMAINS.md`
+# -----------------------------------------------------------------------------
+#
+# Same shape as audience normalisation: kebab-case ASCII, length 2..32, caller
+# decides accept-vs-drop against canonical 13 ∪ active Extensions.
+#
+# Slash-syntax handling. Real corpus contains values like `work/process`,
+# `personal/psychology` — owner's notation for "domain:work, sub-aspect:process".
+# The ZTN axis is flat (no hierarchy); the deterministic substrate keeps the
+# prefix and discards the suffix. This is the autonomous-resolution choice
+# documented in DOMAINS.md «On violation»: prefix is the structural answer,
+# suffix is concept/tag drift that lint can't safely classify.
+
+DOMAIN_RE = re.compile(r"^[a-z0-9-]+$")
+DOMAIN_MIN_LEN = 2
+DOMAIN_MAX_LEN = 32
+
+
+def normalize_domain(raw: str | None) -> str | None:
+    """Normalise to kebab-case ASCII; return value if well-formed, else None.
+
+    Slash-syntax (`work/process`, `personal/psychology`) keeps the prefix and
+    drops everything from the first slash onward. Caller checks the result
+    against the canonical+extensions accept set to decide accept-vs-drop.
+
+    Autonomous-pipeline policy: never raises. On any irrecoverable shape, return
+    None so the caller drops the value silently.
+    """
+    if raw is None:
+        return None
+    s = unicodedata.normalize("NFKD", str(raw))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = s.lower().strip()
+    # Slash-split: keep prefix only.
+    if "/" in s:
+        s = s.split("/", 1)[0].strip()
+    s = re.sub(r"[\s_]+", "-", s)
+    s = re.sub(r"-+", "-", s).strip("-")
+    if not s:
+        return None
+    if not DOMAIN_RE.match(s):
+        return None
+    if len(s) < DOMAIN_MIN_LEN or len(s) > DOMAIN_MAX_LEN:
+        return None
+    return s
+
+
+def normalize_domain_list(raw_iter, accept_set: Iterable[str] | None = None) -> list[str]:
+    """Apply normalize_domain to each entry; drop None and not-in-accept-set;
+    dedup preserving first-seen order.
+
+    `accept_set` defaults to ALLOWED_DOMAINS — pass `ALLOWED_DOMAINS | extensions`
+    when extension-aware filtering is needed.
+    """
+    accept = frozenset(accept_set) if accept_set is not None else ALLOWED_DOMAINS
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in (raw_iter or []):
+        n = normalize_domain(raw)
+        if n is None or n not in accept or n in seen:
+            continue
+        seen.add(n)
+        out.append(n)
+    return out
+
+
+# -----------------------------------------------------------------------------
+# Generic Extensions-table parser (shared by AUDIENCES.md / DOMAINS.md / future)
+# -----------------------------------------------------------------------------
+
+_EXTENSIONS_BLOCK_RE = re.compile(
+    r"<!-- BEGIN extensions -->(.*?)<!-- END extensions -->", re.DOTALL,
+)
+
+
+def parse_extensions_table(path: Path) -> set[str]:
+    """Parse the `<!-- BEGIN extensions --> ... <!-- END extensions -->` block
+    from a registry markdown file (AUDIENCES.md, DOMAINS.md, ...).
+
+    Table shape: `| Name | Added | Status | Purpose | Notes |`. Returns the
+    set of NAME values whose Status does not start with `deprecated`. Tolerant
+    of missing file or malformed table — returns empty set on any failure.
+
+    Single source of truth — older lint / emit helpers carry their own
+    near-identical implementations and may migrate to this when their
+    callers are next touched.
+    """
+    if not path.exists():
+        return set()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return set()
+    m = _EXTENSIONS_BLOCK_RE.search(text)
+    if not m:
+        return set()
+    out: set[str] = set()
+    for line in m.group(1).splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        if "---" in line:  # table separator row
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 3:
+            continue
+        name, _added, status = cells[0], cells[1], cells[2]
+        if not name or name.lower() in {"tag", "domain", "name"}:
+            continue
+        if name.startswith("_(") or name in {"—", "-"}:
+            continue
+        if status.lower().startswith("deprecated"):
+            continue
+        out.add(name)
+    return out
 
 
 # Single-context model: every consumer loads every scope.

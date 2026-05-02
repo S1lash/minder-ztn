@@ -206,10 +206,11 @@ Read these system files (in parallel where possible):
 8. `{{MINDER_ZTN_BASE}}/_system/registries/TAGS.md` — tag registry (`tags:` namespace labels)
 9. `{{MINDER_ZTN_BASE}}/_system/registries/CONCEPT_NAMING.md` — canonical concept-name format. **Autonomous-pipeline policy:** the engine resolves all concept-name format issues with deterministic heuristics — never raises CLARIFICATIONs, never blocks owner. `_system/scripts/_common.py::normalize_concept_name()` is the single source of truth: normalisation algorithm + drop-on-impossibility (returns `None` to signal skip when non-ASCII residue or empty-after-strip). For non-English source terms, translate semantically to English; if genuinely untranslatable, drop the entry rather than transliterate (transliteration splits graph identity).
 10. `{{MINDER_ZTN_BASE}}/_system/registries/AUDIENCES.md` — `audience_tags` whitelist (canonical five + tenant Extensions). **Autonomous-pipeline policy:** unknown / non-canonical / non-whitelisted tags are silently dropped (entity stays `[]`, owner-only). Helper: `_system/scripts/_common.py::normalize_audience_tag()`. The fail-closed default (`[]`) is the right outcome on any uncertainty — false-positive sharing leaks; false-negative just keeps content owner-only.
-11. `{{MINDER_ZTN_BASE}}/_system/registries/SOURCES.md` — inbox source whitelist (consumed by Step 2.1)
-12. `{{MINDER_ZTN_BASE}}/_system/views/HUB_INDEX.md` — hub index (if not loaded in Step 0)
-13. `{{MINDER_ZTN_BASE}}/_system/state/PROCESSED.md` — already processed files
-14. `{{MINDER_ZTN_BASE}}/_system/state/CLARIFICATIONS.md` — pending clarifications.
+11. `{{MINDER_ZTN_BASE}}/_system/registries/DOMAINS.md` — `domains:` (plural — notes / hubs / typed objects) and `domain:` (singular — constitution principles) whitelist (canonical thirteen ∪ tenant Extensions). **Autonomous-pipeline policy (Phase 1 substrate):** unknown / non-canonical values are silently dropped after deterministic normalisation (slash-syntax `work/process` keeps the prefix; case + separator drift autofixes to canonical). Helper: `_system/scripts/_common.py::normalize_domain()`; canonical set: `ALLOWED_DOMAINS`. The forthcoming LLM-cascade layer (Phase 2 — concept-matcher subagent) extends this with remap-or-CLARIFICATION before the deterministic drop; until it lands, prefer the closest canonical at extraction time and let lint surface what couldn't be normalised. Domains answer "which life area" — keep them coarse and structural; concrete topics belong in `concepts:`, categorical buckets in `tags:`.
+12. `{{MINDER_ZTN_BASE}}/_system/registries/SOURCES.md` — inbox source whitelist (consumed by Step 2.1)
+13. `{{MINDER_ZTN_BASE}}/_system/views/HUB_INDEX.md` — hub index (if not loaded in Step 0)
+14. `{{MINDER_ZTN_BASE}}/_system/state/PROCESSED.md` — already processed files
+15. `{{MINDER_ZTN_BASE}}/_system/state/CLARIFICATIONS.md` — pending clarifications.
     Also scan **Resolved Archive** table: previously resolved name variants (e.g.,
     «Нуара» = Лара Непрокина, «Трафт» = Кравец). Use these to auto-resolve
     transcription artifacts in new transcripts without re-creating ambiguities.

@@ -124,6 +124,11 @@ template:
   # updates flow via /ztn:update or manual diff; sync_engine.sh skips
   # templates so owner extensions are never wiped.
   - zettelkasten/_system/registries/AUDIENCES.template.md
+  # DOMAINS ships as template — same rationale as AUDIENCES (spec sections
+  # + owner-mutable Extensions table). Canonical thirteen are duplicated
+  # in `_system/scripts/_common.py::ALLOWED_DOMAINS` (engine-synced); the
+  # markdown spec is the human-readable mirror that owner can extend.
+  - zettelkasten/_system/registries/DOMAINS.template.md
   - zettelkasten/1_projects/PROJECTS.template.md
   - zettelkasten/3_resources/people/PEOPLE.template.md
 
@@ -173,6 +178,7 @@ exclude:
   - zettelkasten/_system/registries/TAGS.md
   - zettelkasten/_system/registries/SOURCES.md
   - zettelkasten/_system/registries/AUDIENCES.md
+  - zettelkasten/_system/registries/DOMAINS.md
 
   # Runtime state
   - zettelkasten/_system/state/

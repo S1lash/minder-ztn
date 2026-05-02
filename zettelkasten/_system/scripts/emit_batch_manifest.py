@@ -45,10 +45,13 @@ import sys
 from pathlib import Path
 
 from _common import (
+    ALLOWED_DOMAINS,
     AUDIENCE_CANONICAL,
     normalize_audience_tag,
     normalize_concept_list,
     normalize_concept_name,
+    normalize_domain,
+    parse_extensions_table,
     repo_root,
 )
 
@@ -130,6 +133,71 @@ def parse_audience_extensions(path: Path) -> set[str]:
             continue
         extensions.add(tag)
     return extensions
+
+
+def normalise_domain_list(
+    raw: list, accept_set: set[str], events: list[dict], path: str,
+) -> list[str]:
+    """Filter `domains:` array against canonical-13 ∪ extensions; normalise
+    where possible. Mirrors `normalise_audience_list` shape; emits per-entry
+    `domain-normalise-autofix` / `domain-drop-autofix` events.
+    """
+    out: list[str] = []
+    for value in raw or []:
+        if isinstance(value, str) and value in accept_set:
+            if value not in out:
+                out.append(value)
+            continue
+        norm = normalize_domain(value) if isinstance(value, str) else None
+        if norm is not None and norm in accept_set:
+            if norm not in out:
+                out.append(norm)
+            if norm != value:
+                events.append({
+                    "fix_id": "domain-normalise-autofix",
+                    "field_path": path, "before": value, "after": norm,
+                })
+        else:
+            events.append({
+                "fix_id": "domain-drop-autofix",
+                "field_path": path, "before": value, "after": None,
+                "reason": "not-in-whitelist" if norm is not None
+                          else "format-unfixable",
+            })
+    return out
+
+
+def coerce_domain_singular(
+    value, accept_set: set[str], events: list[dict], path: str,
+) -> str | None:
+    """Singular `domain:` (constitution principles) → return value if in
+    accept set, else None (caller decides what to do; `validate_manifest`
+    will catch missing required fields). Emits autofix event on normalise
+    success, drop event on failure.
+
+    Reason for None-on-failure rather than fallback default: principle
+    schema requires `domain` to match `ALLOWED_DOMAINS` at parse time,
+    so a manifest reaching emission with an invalid domain has already
+    drifted past the schema gate. Conservative-safe is to surface the
+    drop, not to guess a default that would later contradict the
+    principle's id-prefix (`{type}-{domain}-{NNN}`).
+    """
+    if isinstance(value, str) and value in accept_set:
+        return value
+    norm = normalize_domain(value) if isinstance(value, str) else None
+    if norm is not None and norm in accept_set:
+        events.append({
+            "fix_id": "domain-normalise-autofix",
+            "field_path": path, "before": value, "after": norm,
+        })
+        return norm
+    events.append({
+        "fix_id": "domain-drop-autofix",
+        "field_path": path, "before": value, "after": None,
+        "reason": "not-in-whitelist" if norm is not None
+                  else "format-unfixable",
+    })
+    return None
 
 
 def normalise_audience_list(
@@ -262,7 +330,11 @@ def process_concepts_upserts(
 
 
 def walk_and_normalise(
-    node, accept_set: set[str], events: list[dict], path: str = "$",
+    node,
+    audience_accept: set[str],
+    domain_accept: set[str],
+    events: list[dict],
+    path: str = "$",
 ):
     """Recursively traverse the manifest structure, applying autonomous
     normalisation to known fields. Mutates in place.
@@ -285,8 +357,27 @@ def walk_and_normalise(
 
             if key == "audience_tags" and isinstance(value, list):
                 node[key] = normalise_audience_list(
-                    value, accept_set, events, child_path,
+                    value, audience_accept, events, child_path,
                 )
+                continue
+
+            if key == "domains" and isinstance(value, list):
+                node[key] = normalise_domain_list(
+                    value, domain_accept, events, child_path,
+                )
+                continue
+
+            if key == "domain" and isinstance(value, str):
+                # Singular `domain:` (constitution principles). Drop on
+                # failure rather than silently default — see
+                # coerce_domain_singular docstring.
+                norm = coerce_domain_singular(
+                    value, domain_accept, events, child_path,
+                )
+                if norm is None:
+                    del node[key]
+                else:
+                    node[key] = norm
                 continue
 
             if key == "origin":
@@ -305,11 +396,16 @@ def walk_and_normalise(
                     )
                 continue
 
-            walk_and_normalise(value, accept_set, events, child_path)
+            walk_and_normalise(
+                value, audience_accept, domain_accept, events, child_path,
+            )
 
     elif isinstance(node, list):
         for i, item in enumerate(node):
-            walk_and_normalise(item, accept_set, events, f"{path}[{i}]")
+            walk_and_normalise(
+                item, audience_accept, domain_accept, events,
+                f"{path}[{i}]",
+            )
 
 
 def validate_manifest(data: dict) -> None:
@@ -376,6 +472,11 @@ def main(argv: list[str] | None = None) -> int:
              "{repo_root}/_system/registries/AUDIENCES.md).",
     )
     parser.add_argument(
+        "--domains", type=Path, default=None,
+        help="DOMAINS.md path (default: "
+             "{repo_root}/_system/registries/DOMAINS.md).",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="Print normalised JSON to stdout without writing.",
     )
@@ -407,11 +508,23 @@ def main(argv: list[str] | None = None) -> int:
             f"{audiences_path} — extensions table not loaded; "
             f"accept_set limited to canonical 5\n"
         )
-    extensions = parse_audience_extensions(audiences_path)
-    accept_set = set(AUDIENCE_CANONICAL) | extensions
+    audience_extensions = parse_audience_extensions(audiences_path)
+    audience_accept = set(AUDIENCE_CANONICAL) | audience_extensions
+
+    domains_path = args.domains or (
+        repo_root() / "_system" / "registries" / "DOMAINS.md"
+    )
+    if not domains_path.exists():
+        sys.stderr.write(
+            f"emit_batch_manifest: warning: DOMAINS.md not found at "
+            f"{domains_path} — extensions table not loaded; "
+            f"accept_set limited to canonical 13\n"
+        )
+    domain_extensions = parse_extensions_table(domains_path)
+    domain_accept = set(ALLOWED_DOMAINS) | domain_extensions
 
     events: list[dict] = []
-    walk_and_normalise(data, accept_set, events)
+    walk_and_normalise(data, audience_accept, domain_accept, events)
 
     try:
         validate_manifest(data)
