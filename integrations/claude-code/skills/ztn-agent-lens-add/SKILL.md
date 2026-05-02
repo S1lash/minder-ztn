@@ -509,10 +509,16 @@ configuration. Used at Step 6 internal translation.
 | «strengths I underestimate» | psyche | records | monthly 1 | longitudinal | counterweight to imposter |
 | «overcommit / saying yes too easily» | psyche | records | weekly | longitudinal | behavioral pattern |
 
-Cadence anchor defaults:
-- mechanical work-themed → monday
-- psyche reflection-themed → sunday evening
-- meta navigator → sunday (after non-meta)
+Cadence anchor defaults (cron tick fires 07:00 each day; anchor = day
+the lens reads on, so trailing-window logic captures full prior week
+when anchored to Monday):
+- mechanical work-themed → monday (full Mon-Sun previous week)
+- psyche reflection-themed → monday (same — Sunday-fire would miss
+  Sunday's own data)
+- meta navigator → monday (after non-meta lenses; lens-outputs input
+  benefits from full Mon-Sun batch)
+- knowledge-layer-themed (rare) → saturday — isolated from Mon-cluster,
+  catches full work-week of crystallisation
 - monthly → 1st, clamp to 28
 
 User can override anchor in plain language («I want it Sunday

@@ -744,6 +744,26 @@ Compose snapshot from updated SOUL + OPEN_THREADS + TASKS + CALENDAR:
 
 Frontmatter: `generated_by: ztn:bootstrap`, `batch_id: bootstrap`, `generated: {now ISO 8601}`.
 
+### Step 5.5: INDEX.md generation
+
+Generate `_system/views/INDEX.md` following the same algorithm as
+`/ztn:maintain` Step 7.6 (input sources, fallback chain
+description→title→prose→`_(no description)_`, output format, sort
+order, atomicity).
+
+Bootstrap-time invariants:
+- Empty knowledge layer (fresh setup) → render INDEX with all
+  sections as `_(empty — no notes yet)_` placeholders, frontmatter
+  counts at zero.
+- Existing knowledge layer (bootstrap on populated base) → full
+  catalog rendering, identical output to a maintain-driven Step 7.6
+  pass.
+- Frontmatter: `generated_by: ztn:bootstrap`, `generator: ztn:bootstrap`,
+  `generated: {now ISO 8601}`.
+
+Atomicity: write to `_system/views/INDEX.md.tmp` then atomic `mv` over
+`INDEX.md` (same as Step 7.6).
+
 ### Step 6: log_maintenance.md entry
 
 Append to `_system/state/log_maintenance.md` (newest first, below the `<!-- Entries append BELOW -->` marker):
@@ -757,6 +777,7 @@ Append to `_system/state/log_maintenance.md` (newest first, below the `<!-- Entr
   - Tier 1: {N} | Tier 2: {N} | Tier 3: {N}
 - OPEN_THREADS.md: {N} active, {M} resolved
 - CURRENT_CONTEXT.md: generated
+- INDEX.md: generated (note_count: {N}, hub_count: {M}, domain_count: {D})
 
 ### Auto-Fixes
 - {anything auto-corrected — normally empty for bootstrap}
@@ -1012,6 +1033,7 @@ Write to `_system/state/CLARIFICATIONS.md` under `## bootstrap YYYY-MM-DD` heade
 | `_system/SOUL.md` | rewrite (draft) | Sections present in profile/interview filled; gaps marked TODO |
 | `_system/state/OPEN_THREADS.md` | populate | Active + Resolved sections |
 | `_system/views/CURRENT_CONTEXT.md` | rewrite | `generated_by: ztn:bootstrap`, `batch_id: bootstrap` |
+| `_system/views/INDEX.md` | rewrite | `generator: ztn:bootstrap`; full PARA + hubs catalog if base populated, empty placeholders if fresh setup |
 | `_system/state/log_maintenance.md` | append | One bootstrap entry |
 | `_system/state/CLARIFICATIONS.md` | append | Under `## bootstrap YYYY-MM-DD` header, grouped by subsection |
 | `_system/state/principle-candidates.jsonl` | append | One record per harvested principle; `origin: bootstrap-raw-scan` |

@@ -43,13 +43,12 @@ resolution.
 
 | Helper | Purpose |
 |---|---|
-| `normalize_concept_name(raw) -> str \| None` | CONCEPT_NAMING.md normalisation: diacritic-fold, lowercase, separator→`_`, ASCII guard, type-prefix strip, length truncate, transliteration safety net. Returns `None` to signal silent drop. |
+| `normalize_concept_name(raw) -> str \| None` | CONCEPT_NAMING.md normalisation: diacritic-fold, lowercase, separator→`_`, ASCII guard, type-prefix strip, reserved-word drop, length truncate. Returns `None` to signal silent drop. |
 | `normalize_concept_list(raw_iter) -> list[str]` | Apply normalize_concept_name to each entry; drop Nones; dedupe preserving first-seen order. |
 | `normalize_audience_tag(raw) -> str \| None` | AUDIENCES.md normalisation: kebab-case ASCII, length 2-32. Returns the well-formed value or `None` to drop. Caller checks against whitelist. |
 | `recompute_hub_trio(hub_fm, member_trios) -> tuple[dict, list[dict]]` | Hub privacy derivation — dominant origin / audience intersection / sensitivity contagion. Owner-edit preservation: only fills missing fields; never overwrites. |
 | `read_frontmatter(path) -> tuple[dict, str] \| None` | Generic YAML frontmatter reader, tolerant of read / parse errors (returns None). |
 | `write_frontmatter(path, fm, body)` | Round-trip writer preserving body verbatim; sort_keys=False, allow_unicode=True. |
-| `looks_transliterated(s) -> bool` | Heuristic detector for Russian-noun morphology patterns (`_tsiya`, `_ovaniye`, `_eniye`, `_atelnost`, `shch`). Used inside normalize_concept_name to drop transliterations. |
 
 ## CLI examples
 

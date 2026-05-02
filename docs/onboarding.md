@@ -83,7 +83,8 @@ The skill is the actual orchestrator from here. It will:
 - Scan your raw corpus in chunks via parallel subagents — extracting
   people, projects, hub candidates, principle candidates, open threads.
 - Seed `SOUL.md`, `PEOPLE.md`, `PROJECTS.md`, `OPEN_THREADS.md`,
-  `CURRENT_CONTEXT.md`, and the principle-candidates buffer.
+  `CURRENT_CONTEXT.md`, `INDEX.md` (content catalog), and the
+  principle-candidates buffer.
 - Surface decisions to `_system/state/CLARIFICATIONS.md` for your
   review.
 - Print an exit summary with explicit next steps and timing

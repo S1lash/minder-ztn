@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -83,46 +84,14 @@ EMITTED_CONCEPT_TYPES: frozenset[str] = frozenset({
     "constraint", "algorithm", "fact", "other",
 })
 
-# Transliteration heuristic. Q15 in /ztn:process tells the model to
-# translate non-English source terms semantically and never
-# transliterate; this is a mechanical post-check that catches the
-# common Russian-noun transliteration patterns if the model slips.
-# Rationale: transliteration splits graph identity across mentions
-# (`restrukturizatsiya` vs the next run's `restrukturisatsia`); drop
-# is safer than silently emitting a phantom node.
-#
-# Conservative pattern list — chosen for distinctively Russian
-# morphology that virtually never appears in compound English concept
-# names. False-positive risk: very low (e.g. `genie` would match the
-# `enie` ending, but `genie` is rarely a concept name in this corpus).
-_TRANSLIT_SUFFIXES: tuple[str, ...] = (
-    "tsiya", "tsia", "ciya",
-    "ovaniye", "ovanie",
-    "eniye", "enie",
-    "aniye", "anie",
-    "atelnost", "atelstvo",
-)
-_TRANSLIT_INDICATORS: tuple[str, ...] = ("shch",)
-
-
-def looks_transliterated(s: str) -> bool:
-    """Heuristic detector for Russian transliterations leaking past Q15.
-
-    Returns True if any underscore-delimited segment ends with a
-    distinctively Russian morphology, or if a Russian-only digraph
-    appears anywhere. Conservative — short segments (≤ suffix+2 chars)
-    excluded to avoid catching English roots that share a tail.
-    """
-    for ind in _TRANSLIT_INDICATORS:
-        if ind in s:
-            return True
-    for seg in s.split("_"):
-        if not seg:
-            continue
-        for suffix in _TRANSLIT_SUFFIXES:
-            if seg.endswith(suffix) and len(seg) > len(suffix) + 2:
-                return True
-    return False
+# Bare type-enum words that collapse to drop per Rule 8 (broad
+# classifiers belong in domains/tags, not as concepts). Includes
+# `person` and `project` which are reserved enum values but not
+# emitted by ZTN's concept channel (people/projects are first-class
+# entities with their own frontmatter slots).
+RESERVED_TYPE_WORDS: frozenset[str] = EMITTED_CONCEPT_TYPES | frozenset({
+    "person", "project",
+})
 
 
 def normalize_concept_name(raw: str | None) -> str | None:
@@ -139,7 +108,6 @@ def normalize_concept_name(raw: str | None) -> str | None:
     """
     if raw is None:
         return None
-    import unicodedata
     s = unicodedata.normalize("NFKD", str(raw))
     s = "".join(c for c in s if not unicodedata.combining(c))
     s = s.lower()
@@ -158,17 +126,13 @@ def normalize_concept_name(raw: str | None) -> str | None:
             break
     if not s:
         return None
-    # Bare type-enum words (`theme`, `tool`, `decision`, …) collapse
-    # via Rule 8 — broad classifiers belong in domains/tags, not as
-    # concepts. Same drop rule covers inputs like `theme_` (which
-    # trim to `theme`) and bare classifier inputs like `theme` or
-    # `decision` directly.
-    if s in EMITTED_CONCEPT_TYPES or s in {"person", "project"}:
-        return None
-    # Transliteration safety net — Q15 instructs the model to
-    # translate non-English terms; this catches the case where the
-    # model transliterates instead. See `looks_transliterated()`.
-    if looks_transliterated(s):
+    # Bare type-enum words (`theme`, `tool`, `decision`, `person`,
+    # `project`, …) collapse via Rule 8 — broad classifiers belong in
+    # domains/tags, not as concepts. Covers both `theme_` (which trims
+    # to `theme`) and bare inputs like `theme` directly. People and
+    # projects are first-class entities with their own slots, never
+    # routed through the concept channel.
+    if s in RESERVED_TYPE_WORDS:
         return None
     if len(s) > CONCEPT_NAME_MAX_LEN:
         truncated = s[:CONCEPT_NAME_MAX_LEN]
@@ -206,6 +170,15 @@ AUDIENCE_TAG_MIN_LEN = 2
 AUDIENCE_TAG_MAX_LEN = 32
 
 
+HUB_TRIO_FIELDS: tuple[str, ...] = ("origin", "audience_tags", "is_sensitive")
+
+_HUB_FIX_IDS: dict[str, str] = {
+    "origin": "hub-origin-derive-autofix",
+    "audience_tags": "hub-audience-derive-autofix",
+    "is_sensitive": "hub-sensitivity-derive-autofix",
+}
+
+
 def recompute_hub_trio(
     hub_fm: dict, member_trios: list[dict]
 ) -> tuple[dict, list[dict]]:
@@ -221,14 +194,31 @@ def recompute_hub_trio(
     - `is_sensitive` ← any-member contagion (`true` if any member is
       sensitive, else `false`)
 
-    **Owner-edit preservation contract.** A field already present in
-    `hub_fm` is NEVER overwritten — engine only fills missing fields.
-    Owner who manually sets `audience_tags: [work]` on a hub keeps
-    that value across every subsequent process/maintain touch. To
-    force re-derivation, owner removes the field from frontmatter.
+    **Owner-vs-engine ownership contract via `_engine_derived`.** Hub
+    frontmatter carries an `_engine_derived: [field, ...]` list that
+    enumerates which trio fields the engine currently owns. Behaviour:
 
-    Returns (modified_fm, events). Events list is empty when no
-    derivation fired (all fields already set by owner).
+    - Field missing from frontmatter → engine derives, writes value,
+      ADDS field name to `_engine_derived`. (First touch on a fresh
+      hub leaves all three engine-owned, continuously re-derived.)
+    - Field present AND its name in `_engine_derived` → engine
+      RE-DERIVES on every call, overwriting prior engine value.
+      Membership changed → trio updates automatically.
+    - Field present AND name NOT in `_engine_derived` → owner edit;
+      engine NEVER touches it. To re-engage the engine, owner removes
+      the value AND adds the field name back to `_engine_derived` (or
+      simply removes the value — engine re-adds the marker on next
+      derive).
+
+    Backward compatibility: if `_engine_derived` is absent and a trio
+    field IS present, the engine treats it as owner-set (preserves
+    it). This matches the legacy "set once, owner takes over"
+    semantics for hubs created before the marker existed; new hubs
+    get the marker on first derivation.
+
+    Returns (modified_fm, events). Events list captures every
+    re-derivation (not just first-touch) so audit logs reflect
+    continuous engine activity.
     """
     events: list[dict] = []
     new_fm = dict(hub_fm)
@@ -269,24 +259,49 @@ def recompute_hub_trio(
         derived_audience = []
         derived_sens = False
 
-    if "origin" not in new_fm:
-        new_fm["origin"] = derived_origin
-        events.append({
-            "fix_id": "hub-origin-derive-autofix",
-            "result": derived_origin,
-        })
-    if "audience_tags" not in new_fm:
-        new_fm["audience_tags"] = derived_audience
-        events.append({
-            "fix_id": "hub-audience-derive-autofix",
-            "result": derived_audience,
-        })
-    if "is_sensitive" not in new_fm:
-        new_fm["is_sensitive"] = derived_sens
-        events.append({
-            "fix_id": "hub-sensitivity-derive-autofix",
-            "result": derived_sens,
-        })
+    derived_values = {
+        "origin": derived_origin,
+        "audience_tags": derived_audience,
+        "is_sensitive": derived_sens,
+    }
+
+    raw_marker = new_fm.get("_engine_derived")
+    if isinstance(raw_marker, list):
+        engine_owned = {x for x in raw_marker if isinstance(x, str)}
+        marker_present = True
+    else:
+        engine_owned = set()
+        marker_present = False
+
+    for field in HUB_TRIO_FIELDS:
+        present = field in new_fm
+        if not present:
+            # Missing → engine derives, takes ownership.
+            new_fm[field] = derived_values[field]
+            engine_owned.add(field)
+            events.append({
+                "fix_id": _HUB_FIX_IDS[field],
+                "result": derived_values[field],
+                "reason": "missing-field",
+            })
+        elif marker_present and field in engine_owned:
+            # Engine-owned and value differs → re-derive.
+            if new_fm[field] != derived_values[field]:
+                events.append({
+                    "fix_id": _HUB_FIX_IDS[field],
+                    "result": derived_values[field],
+                    "reason": "rederived",
+                    "before": new_fm[field],
+                })
+                new_fm[field] = derived_values[field]
+        # else: owner-set (no marker, or marker without this field).
+        # Engine does not touch.
+
+    if engine_owned:
+        new_fm["_engine_derived"] = sorted(engine_owned)
+    elif "_engine_derived" in new_fm and not engine_owned:
+        # All fields owner-claimed; clean empty marker.
+        del new_fm["_engine_derived"]
 
     return new_fm, events
 
@@ -302,7 +317,6 @@ def normalize_audience_tag(raw: str | None) -> str | None:
     """
     if raw is None:
         return None
-    import unicodedata
     s = unicodedata.normalize("NFKD", str(raw))
     s = "".join(c for c in s if not unicodedata.combining(c))
     s = s.lower().strip()

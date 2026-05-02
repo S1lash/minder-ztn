@@ -166,22 +166,43 @@ continue. Never block; never silently choose. The owner reviews and
 resolves. CLARIFICATION types are canonicalised in
 `SYSTEM_CONFIG.md` and per-skill SKILL.md.
 
-**Layer-specific exception: the concept and audience surfaces.**
-Concept-name format normalisation, audience-tag whitelist checks,
-and privacy-trio backfill are **deterministic mechanical work, not
-judgment**. The shared helpers in `_system/scripts/_common.py`
-(`normalize_concept_name`, `normalize_concept_list`,
-`normalize_audience_tag`, `recompute_hub_trio`) resolve every case
-with a fixed algorithm, autofix or silent-drop on impossibility, and
-NEVER raise a CLARIFICATION. The cost-benefit favours autonomous
-resolution: per-decision low risk, high volume, and the algorithm is
-fully specified — surfacing would drown the owner queue without
-adding value the algorithm can't already provide. Every other layer
-(threading, dedup, drift detection, principle promotion, people
-identity, etc.) retains the surface-don't-decide rule unchanged.
-The exception is scoped — see `_system/registries/CONCEPT_NAMING.md`,
+**Layer-specific exception: autonomous resolution.** A layer of the
+engine qualifies for the «resolve silently» exception when **all three**
+of these properties hold:
+
+1. **Deterministic canonicalisation algorithm.** Every input has a
+   single correct output computable by a pure function — no model
+   judgment in the loop, no per-case reasoning. Re-running yields
+   identical results.
+2. **Conservative-safe failure mode.** When the algorithm cannot
+   produce a valid output, the fallback is *drop* (or the most-
+   restrictive default). The cost of one false negative is bounded
+   and recoverable (one missing entry, owner-only privacy); the cost
+   of guessing would be a leak or a phantom graph node.
+3. **High-volume / low-per-decision-value surface.** Surfacing each
+   case to the owner would drown the CLARIFICATIONS queue without
+   giving the owner anything actionable to decide — the algorithm is
+   already the right answer.
+
+Layers currently qualifying:
+
+- **Concept-name format** — `normalize_concept_name` /
+  `normalize_concept_list` (single SoT: `_common.py`).
+- **Audience-tag whitelist + format** — `normalize_audience_tag` +
+  AUDIENCES.md whitelist check.
+- **Privacy-trio backfill + hub derivation** — `recompute_hub_trio`,
+  trio backfill in `lint_concept_audit.py`.
+
+Any new layer added to the engine MUST be tested against the three
+properties before claiming the exception. If even one property fails,
+the universal «surface, don't decide silently» rule applies.
+**Threading, dedup, drift detection, principle promotion, people
+identity, content classification** — all of these involve judgment
+and are explicitly NOT covered by the exception.
+
+Per-layer rule sets: `_system/registries/CONCEPT_NAMING.md`,
 `_system/registries/AUDIENCES.md`, `_system/docs/batch-format.md`
-"Autonomous resolution" clause for the full rule set.
+"Autonomous resolution" clauses.
 
 ### 3.2 Inclusion bias on capture, curation on promotion
 

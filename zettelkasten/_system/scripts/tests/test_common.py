@@ -260,22 +260,22 @@ class NormalizeConceptNameTests(unittest.TestCase):
     def test_handles_none_input(self):
         self.assertIsNone(c.normalize_concept_name(None))
 
-    def test_drops_transliteration_tsiya(self):
-        # Q15 model slip: model transliterates "реструктуризация" instead
-        # of translating to "restructuring". Mechanical safety net drops.
-        self.assertIsNone(c.normalize_concept_name("restrukturizatsiya"))
-
-    def test_drops_transliteration_ovanie(self):
-        self.assertIsNone(c.normalize_concept_name("delegirovanie"))
-
-    def test_drops_transliteration_with_shch(self):
-        self.assertIsNone(c.normalize_concept_name("borshch_recipe"))
-
-    def test_drops_atelnost(self):
-        self.assertIsNone(c.normalize_concept_name("dejatelnost"))
-
-    def test_keeps_short_words_not_transliterations(self):
-        # `tsia` substring at end too short → not flagged
+    def test_no_transliteration_heuristic(self):
+        # Translation is the LLM's contract in /ztn:process Q15. There is
+        # no mechanical transliteration-detector — its false-positive cost
+        # (legitimate English borrowings like `intelligentsia`) outweighs
+        # its narrow Russian-morphology hit rate. If the model slips, the
+        # phantom node is the visible cost; the engine does not guess.
+        self.assertEqual(
+            c.normalize_concept_name("intelligentsia"), "intelligentsia"
+        )
+        self.assertEqual(
+            c.normalize_concept_name("restrukturizatsiya"),
+            "restrukturizatsiya",
+        )
+        self.assertEqual(
+            c.normalize_concept_name("borshch_recipe"), "borshch_recipe"
+        )
         self.assertEqual(c.normalize_concept_name("ratio"), "ratio")
 
 
@@ -426,6 +426,61 @@ class RecomputeHubTrioTests(unittest.TestCase):
         fm, _ = c.recompute_hub_trio({}, [{"origin": "work"}])
         _, events_again = c.recompute_hub_trio(fm, [{"origin": "work"}])
         self.assertEqual(events_again, [])
+
+    def test_engine_derived_marker_added_on_first_touch(self):
+        """First derive populates _engine_derived list with all
+        derived field names so the engine knows it owns them."""
+        fm, _ = c.recompute_hub_trio({}, [{"origin": "work"}])
+        self.assertEqual(
+            fm["_engine_derived"],
+            ["audience_tags", "is_sensitive", "origin"],
+        )
+
+    def test_engine_owned_field_rederived_when_members_change(self):
+        """If a field is in _engine_derived, engine re-derives on
+        member change — owner sees continuous tracking, not stale value."""
+        fm, _ = c.recompute_hub_trio({}, [{"origin": "personal"}])
+        self.assertEqual(fm["origin"], "personal")
+        # Members shifted to work-dominant; expect engine to follow.
+        fm2, events = c.recompute_hub_trio(
+            fm, [{"origin": "work"}, {"origin": "work"}]
+        )
+        self.assertEqual(fm2["origin"], "work")
+        rederive = [e for e in events if e["fix_id"] == "hub-origin-derive-autofix"]
+        self.assertEqual(len(rederive), 1)
+        self.assertEqual(rederive[0]["reason"], "rederived")
+        self.assertEqual(rederive[0]["before"], "personal")
+
+    def test_owner_takeover_via_marker_removal(self):
+        """Owner removes 'origin' from _engine_derived → engine stops
+        re-deriving that field; value preserved across runs."""
+        fm, _ = c.recompute_hub_trio({}, [{"origin": "personal"}])
+        # Owner edits: keeps origin: personal but removes from marker.
+        fm["_engine_derived"] = ["audience_tags", "is_sensitive"]
+        fm2, events = c.recompute_hub_trio(
+            fm, [{"origin": "work"}, {"origin": "work"}]
+        )
+        self.assertEqual(fm2["origin"], "personal")  # preserved
+        origin_events = [
+            e for e in events if e["fix_id"] == "hub-origin-derive-autofix"
+        ]
+        self.assertEqual(origin_events, [])
+
+    def test_legacy_field_without_marker_treated_as_owner_set(self):
+        """Backward compat: hub with origin set but NO _engine_derived
+        marker (created before marker existed) → engine treats as owner-set."""
+        fm, events = c.recompute_hub_trio(
+            {"origin": "personal"}, [{"origin": "work"}, {"origin": "work"}]
+        )
+        self.assertEqual(fm["origin"], "personal")
+        origin_events = [
+            e for e in events if e["fix_id"] == "hub-origin-derive-autofix"
+        ]
+        self.assertEqual(origin_events, [])
+        # Marker captures only newly-engine-derived fields.
+        self.assertEqual(
+            fm["_engine_derived"], ["audience_tags", "is_sensitive"]
+        )
 
 
 if __name__ == "__main__":

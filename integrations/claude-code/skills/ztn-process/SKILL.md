@@ -677,15 +677,14 @@ Be specific and cite evidence from the transcript.
     - «реструктуризация» → `restrukturizatsiya` ✗
     - «делегирование» → `delegirovanie` ✗
 
-    **Mechanical safety net.** `_common.py::normalize_concept_name()`
-    runs a transliteration-detector heuristic
-    (`looks_transliterated()`) on every emitted name and silently
-    drops likely-transliterations (Russian morphological endings
-    `_tsiya` / `_ovanie` / `_eniye` / `_atelnost`, the `shch`
-    digraph). If the model slips and transliterates anyway, the
-    drop happens at write-time — no phantom node enters the graph.
-    The transliteration check is the only mechanical defence; the
-    primary contract is "translate, don't transliterate."
+    **The translation contract is the only contract.** There is no
+    mechanical transliteration-detector — the LLM (you) is always
+    available in this pipeline and is the sole resolver. If you slip
+    and emit a transliteration, it lands as a phantom graph node
+    (`restrukturizatsiya` and the next run's `restrukturisatsia` are
+    two distinct identifiers). The cost of one mistake is a split
+    node forever; the cost of dropping an untranslatable term is one
+    lost mention. Translate or drop — never transliterate.
 
     **Translation-impossible fallback (autonomous, no owner action).**
     If a term is genuinely untranslatable (cultural/legal/domain jargon
@@ -859,7 +858,7 @@ Be specific and cite evidence from the transcript.
     | Record (meeting / observation) | from SOURCE TYPE | `[]` unless explicit sharing intent | per content scan |
     | Knowledge note | independent of parent record (a personal-reflection note from a work-meeting record can be `personal`) | per content_potential mapping above; default `[]` | per content scan |
     | Hub touched | inherit dominant member-note `origin` | `[]` (owner curates by hand) | `false` unless any member note is sensitive |
-    | Person profile (new / updated) | `personal` | `[]` always | `false` unless owner-curated content is sensitive |
+    | Person profile (new / updated) | inherit from creating record (work-meeting → `work`; personal-reflection → `personal`) | `[]` always | `false` unless owner-curated content is sensitive |
     | Project profile (new) | from project's domain (work-domain → `work`) | `[]` | `false` |
     | Task | inherit from parent note | inherit from parent note | inherit from parent note |
     | Event | inherit from parent note | inherit from parent note | inherit from parent note |
@@ -1129,30 +1128,49 @@ For each matching hub (from Q11):
 6. Update `modified` date in frontmatter
 7. Update `people`, `projects` lists if new entries
 
-**Hub privacy + member_concepts on update (autonomous, owner-edits
-preserved).** Hub frontmatter does NOT gain a `concepts:` field
-— `member_concepts[]` lives only in the manifest, derived at emission
-time (Step 4.7). Privacy trio on hub frontmatter (`origin` /
-`audience_tags` / `is_sensitive`) is derived by the deterministic
-helper `_system/scripts/_common.py::recompute_hub_trio()` which
-**fills only missing fields**:
+**Hub privacy + member_concepts on update (autonomous, owner edits
+preserved via explicit marker).** Hub frontmatter does NOT gain a
+`concepts:` field — `member_concepts[]` lives only in the manifest,
+derived at emission time (Step 4.7). Privacy trio on hub frontmatter
+(`origin` / `audience_tags` / `is_sensitive`) is derived by the
+deterministic helper `_system/scripts/_common.py::recompute_hub_trio()`.
+Derivation rules:
 
-- `origin` (when missing) ← dominant `origin` across member knowledge
-  notes; tie → `personal` (conservative default).
-- `audience_tags` (when missing) ← intersection of member-note
-  `audience_tags[]` (only audiences ALL members agree on widen the
-  hub; default `[]`). Intersection, not union — fail-closed across
-  members.
-- `is_sensitive` (when missing) ← `true` if ANY member is sensitive,
-  else `false`. Sensitivity is contagious upward.
+- `origin` ← dominant `origin` across member knowledge notes; tie →
+  `personal` (conservative default).
+- `audience_tags` ← intersection of member-note `audience_tags[]`
+  (only audiences ALL members agree on widen the hub; default `[]`).
+  Intersection, not union — fail-closed across members.
+- `is_sensitive` ← `true` if ANY member is sensitive, else `false`.
+  Sensitivity is contagious upward.
 
-**Owner-edit preservation contract.** A field already present in
-hub frontmatter is NEVER overwritten by derivation. Owner who
-manually sets `audience_tags: [work]` keeps that across every
-subsequent process touch. To force re-derivation, owner removes the
-field. This makes the engine "set once, owner takes over." No
-CLARIFICATIONs, no clobbering. The manifest emission step (4.7)
-reads the post-recompute frontmatter values verbatim.
+**Owner-vs-engine ownership contract.** Hub frontmatter carries an
+`_engine_derived: [field, ...]` list that names the trio fields the
+engine currently owns:
+
+- Field NOT in frontmatter → engine derives, writes value, ADDS field
+  name to `_engine_derived`. (Fresh hub: all three engine-owned;
+  membership changes flow through automatically on every touch.)
+- Field IN frontmatter AND name IN `_engine_derived` → engine
+  RE-DERIVES on every touch. New members shift dominant origin →
+  hub follows; owner doesn't have to babysit.
+- Field IN frontmatter AND name NOT IN `_engine_derived` → owner
+  edit. Engine NEVER touches.
+
+**To take over a field as owner:** remove the field name from
+`_engine_derived`. The current value stays as the owner's authoritative
+choice. To re-engage the engine on that field: add the name back to
+`_engine_derived` (or just delete the field — engine re-derives + re-marks
+on next run).
+
+**Backward compatibility.** Hubs created before the marker existed
+have trio fields without `_engine_derived`. The engine treats those
+as owner-set (preserves them) — matching the legacy "set once, owner
+takes over" semantics. New derivations on those hubs grow the marker
+incrementally; over time the hub transitions to the explicit model.
+
+The manifest emission step (4.7) reads the post-recompute frontmatter
+values verbatim. No CLARIFICATIONs at any point.
 
 #### D) New hub creation → CREATE in `5_meta/mocs/`
 
@@ -1646,8 +1664,24 @@ Accumulate:
 - **`timestamp`** = ISO 8601 UTC with trailing `Z` (run start).
 - **`processor`** = `ztn:process`.
 - **`batch_format_version`** = per `_system/docs/batch-format.md` current spec version (currently `2.0`).
-- **Counts:** `sources`, `records`, `notes`, `tasks`, `events`, `threads_opened = 0`, `threads_resolved = 0`, `clarifications_raised`, `people_candidates_appended`, `concepts_upserted`, `sensitive_entities` (see counter mechanics below).
+- **Counts:** `sources`, `records`, `notes`, `tasks`, `events`, `threads_opened = 0`, `threads_resolved = 0`, `clarifications_raised`, `people_candidates_appended`, `concepts_upserted`, `sensitive_entities`, `concept_type_conflicts`, `concept_translations_dropped` (see counter mechanics below).
 - **Lists for each section of the batch report:** Sources Processed (with source type ID), Records Created (id + title + people + projects), Knowledge Notes Created (id + title + types + domains + Evidence Trail status), Tasks Extracted (task-id + description + deadline + priority + from-note), Events Extracted (datetime + description + participants + from-note), People Updates (id + change type + mentions delta + tier note), Hubs Updated (id list), CLARIFICATIONS Raised (type + summary per item), Concepts Upserted (name + type + subtype + related_concepts), Sensitive Entities (path + kind + audience_tags).
+
+**Observability counters (engine self-watch — no owner action).**
+
+- `concept_type_conflicts` — increment when the same canonical concept
+  name appears in this batch with two or more different `type` values
+  across mentions. The first-chronological-mention wins (§4.7 below);
+  subsequent mentions silently coerce. The counter exists so a sustained
+  non-zero trend over weeks can be eyeballed in `BATCH_LOG.md` and
+  prompts a pipeline review — no per-batch CLARIFICATION.
+- `concept_translations_dropped` — increment for every concept candidate
+  Q15 dropped because the source term was genuinely untranslatable.
+  Same rationale: per-event invisible to owner; aggregate over time
+  surfaces a translation-quality regression worth investigating.
+
+Both counters land in `_system/state/log_process.md` per-run row and in
+`BATCH_LOG.md`. They are observability slots, never gating signals.
 
 **Concept registry aggregation.** Build `concepts.upserts[]` for
 the batch:
@@ -1788,6 +1822,8 @@ clarifications_raised: N
 people_candidates_appended: N
 concepts_upserted: N
 sensitive_entities: N
+concept_type_conflicts: N
+concept_translations_dropped: N
 ---
 ```
 
@@ -1840,10 +1876,22 @@ The helper:
 - writes the conformant JSON; emits any normalisation events on
   stderr for ingestion into the batch's audit log
 
-Failure semantics: helper exits non-zero only on structural input
-failure (invalid JSON, root not a dict). Field-level normalisations
-never fail — they autofix or drop per the autonomous-pipeline
-contract.
+Failure semantics:
+- exit `0` — manifest written
+- exit `2` — input is not parseable JSON or root is not an object
+- exit `3` — manifest fails the structural contract with downstream
+  Minder (missing required top-level key, unknown `processor`,
+  incompatible `format_version` major, or processor-required section
+  missing). Field-level concept / audience normalisation NEVER
+  produces non-zero exit — autofix or drop per the autonomous-
+  pipeline contract.
+
+If exit `3` fires: the in-memory accumulator is malformed (missing
+section the SKILL forgot to populate, or wrong processor enum). Do
+NOT retry blindly — read stderr message, fix the accumulator
+assembly, re-emit. Surface to owner as a `process-compatibility`
+CLARIFICATION ONLY if root cause cannot be auto-corrected (e.g.
+ARCHITECTURE.md spec changed and SKILL contract drifted).
 
 ### 5.5.2 Append row to `_system/state/BATCH_LOG.md`
 

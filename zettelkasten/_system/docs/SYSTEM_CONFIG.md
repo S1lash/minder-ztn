@@ -517,12 +517,18 @@ projects: []
 people: []
 
 # Privacy trio — auto-derived by `_common.py::recompute_hub_trio()`
-# from member-note trios; only fills missing fields (preserves owner
-# edits). Hub frontmatter does NOT carry `concepts:` — `member_concepts`
-# is manifest-only, derived at emission time.
+# from member-note trios. `_engine_derived` lists fields the engine
+# currently owns and re-derives on every touch. Owner takes over a
+# field by removing its name from `_engine_derived`; the value is then
+# preserved permanently. Hub frontmatter does NOT carry `concepts:` —
+# `member_concepts` is manifest-only, derived at emission time.
 origin: personal|work|external
 audience_tags: []
 is_sensitive: false
+_engine_derived:
+  - origin
+  - audience_tags
+  - is_sensitive
 
 related_notes: N
 first_mention: YYYY-MM-DD

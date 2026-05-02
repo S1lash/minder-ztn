@@ -4,7 +4,7 @@ name: Energy Pattern (records affect)
 type: psyche
 input_type: records
 cadence: weekly
-cadence_anchor: sunday
+cadence_anchor: monday
 self_history: longitudinal
 status: active
 ---

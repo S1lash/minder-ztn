@@ -23,7 +23,8 @@ you have a system that:
   install into `~/.claude/` with one script.
 - `zettelkasten/_system/` — system docs, registries, runtime state.
 - `zettelkasten/_system/scripts/` — Python pipeline (constitution
-  regen, evidence-trail compactor, candidate buffers, tests).
+  regen, evidence-trail compactor, candidate buffers, concept and
+  audience format autofix, batch JSON manifest emission, tests).
 - `zettelkasten/{0_constitution,1_projects,…,6_posts}/` — empty PARA
   layout you populate as you go.
 - `scripts/sync_engine.sh` — pull engine updates from upstream

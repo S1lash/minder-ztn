@@ -58,6 +58,13 @@ SCOPE_INCLUDE: tuple[str, ...] = (
 # Explicit excludes — owner-curated registries, generated views,
 # raw transcripts, audit logs, engine spec under 5_meta/, the
 # constitution tree (which has its own schema and skill).
+#
+# Defence-in-depth: most of these paths are ALREADY out of scope
+# because they don't match SCOPE_INCLUDE (e.g. `_system/SOUL.md`,
+# `5_meta/CONCEPT.md`). Listing them explicitly here is intentional
+# — if SCOPE_INCLUDE later expands (e.g. to scan `_system/` for some
+# new lint pass), these owner-curated / generated / spec files MUST
+# stay out. Belt and braces.
 SCOPE_EXCLUDE: tuple[str, ...] = (
     "_system/registries/",
     "_system/views/",

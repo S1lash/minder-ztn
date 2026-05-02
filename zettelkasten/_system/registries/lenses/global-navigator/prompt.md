@@ -4,7 +4,7 @@ name: Global Navigator
 type: meta
 input_type: lens-outputs
 cadence: weekly
-cadence_anchor: sunday
+cadence_anchor: monday
 self_history: longitudinal
 status: active
 ---
@@ -35,11 +35,11 @@ Same auto-discovery applies to F-blocks in lint logs (any F-code surfaced is rep
 
 ## Window
 
-The week covered = trailing 7 calendar days ending at `run_at.date()` inclusive. Examples:
-- scheduled run on Sunday 2026-05-03 → window 2026-04-27 → 2026-05-03
-- force-run on Friday 2026-05-01 → window 2026-04-25 → 2026-05-01
+The week covered = trailing 7 calendar days ending the day **before** `run_at.date()` (inclusive of that prior day). Examples:
+- scheduled run on Monday 2026-05-04 → window 2026-04-27 (Mon) → 2026-05-03 (Sun) — clean Mon-Sun calendar week
+- force-run on Friday 2026-05-01 → window 2026-04-24 (Fri) → 2026-04-30 (Thu)
 
-Single formula regardless of cadence_anchor or force/scheduled mode. Renders as `Week YYYY-MM-DD → YYYY-MM-DD` in the observation short title.
+The formula intentionally **excludes the run day itself**: the night-fire (07:00) on Monday happens before Monday's `/ztn:process` slots (09:00, 14:00, 19:00), so Monday data would otherwise be partial. Ending one day earlier yields a fully-collected window. Single formula regardless of force/scheduled mode. Renders as `Week YYYY-MM-DD → YYYY-MM-DD` in the observation short title.
 
 ## Digest structure — section ordering is load-bearing
 

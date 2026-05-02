@@ -263,8 +263,9 @@ back to these.
   segments unless that's how they read in prose.
 
 - **Ambiguous because the source is non-English?** That's a signal
-  the upstream extraction failed to translate. Raise
-  `concept-format-mismatch`; do not transliterate to "fix" it.
+  the upstream extraction failed to translate. The engine silently
+  drops the entry (graph identity stays clean); do not transliterate
+  to "fix" it. No CLARIFICATION — autonomous drop is the contract.
 
 - **Should this be a subtype or a separate concept?** Subtype lives
   inside one identity (`name=qdrant, type=tool, subtype=database`) —
@@ -279,16 +280,16 @@ back to these.
 
 ## Examples
 
-| Input | Normalised | Verdict |
+| Input | Normalised | Engine action |
 |---|---|---|
-| `team_restructuring` | `team_restructuring` | ✓ |
-| `Team Restructuring` | `team_restructuring` | normalise → ✓ |
-| `team-restructuring` | `team_restructuring` | normalise → ✓ |
-| `Node.js (v18)` | `node_js_v18` | normalise → ✓ |
-| `team — restructuring` (em dash) | `team_restructuring` | normalise → ✓ |
-| `theme_queue_prioritization` | — | ✗ `concept-type-prefix-in-name` |
-| `тема` | — | ✗ `concept-format-mismatch` |
-| 70-char string | — | ✗ `concept-name-too-long` |
+| `team_restructuring` | `team_restructuring` | pass-through |
+| `Team Restructuring` | `team_restructuring` | autofix (`concept-format-autofix`) |
+| `team-restructuring` | `team_restructuring` | autofix |
+| `Node.js (v18)` | `node_js_v18` | autofix |
+| `team — restructuring` (em dash) | `team_restructuring` | autofix |
+| `theme_queue_prioritization` | `queue_prioritization` | autofix — type prefix stripped |
+| `тема` | — | drop (`concept-drop-autofix`, reason `unnormalisable`) |
+| 70-char string | truncated at last `_` ≤ 64 | autofix |
 
 ---
 

@@ -362,7 +362,7 @@ surface-don't-decide правило.
 - **Manifest contract:** `_system/docs/batch-format.md` + downstream
   schema в `minder-project/strategy/ARCHITECTURE.md` §4.5.
 - **Helpers:** `_system/scripts/_common.py` (normalize_concept_name,
-  normalize_audience_tag, recompute_hub_trio, looks_transliterated).
+  normalize_audience_tag, recompute_hub_trio).
 - **Producer-side:** `/ztn:process` Step 3.4 Q15/Q16 + Step 4.7.
 - **Post-write defence-in-depth:** `/ztn:lint` Scan A.7 +
   `lint_concept_audit.py`.

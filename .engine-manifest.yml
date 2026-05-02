@@ -139,6 +139,7 @@ template:
   # Views (auto-generated, but file must exist for skills to write)
   - zettelkasten/_system/views/CURRENT_CONTEXT.template.md
   - zettelkasten/_system/views/HUB_INDEX.template.md
+  - zettelkasten/_system/views/INDEX.template.md
   # Stub so installer symlink resolves before first /ztn:regen-constitution
   - zettelkasten/_system/views/constitution-core.template.md
 

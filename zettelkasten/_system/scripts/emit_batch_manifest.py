@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
-"""Emit a /ztn:process or /ztn:maintain batch manifest as JSON.
+"""Emit a ZTN engine batch manifest as JSON.
 
 Reads structured batch data from a file (or stdin), runs every
 concept-name and audience-tag through the autonomous-resolution
-helpers in `_common.py`, validates required top-level keys, and writes
-the result to `_system/state/batches/{batch_id}.json`.
+helpers in `_common.py`, validates the manifest contract with
+downstream Minder (top-level keys, processor enum, format_version
+major, per-processor required sections), and writes the result to
+`_system/state/batches/{batch_id}.json`.
+
+Exit codes:
+- 0 — manifest written (or printed in --dry-run)
+- 2 — input is not parseable JSON or root is not an object
+- 3 — manifest fails the structural contract (missing required key,
+      unknown processor, incompatible major version, missing required
+      section). Concept / audience format issues NEVER cause non-zero
+      exit — they autofix or drop per the autonomous-pipeline contract.
 
 The format contract is owned by `minder-project/strategy/ARCHITECTURE.md`
 §4.5. ZTN-side guarantee: every concept name reaches Minder already
@@ -53,6 +63,38 @@ ALLOWED_ORIGINS: frozenset[str] = frozenset({"personal", "work", "external"})
 REQUIRED_TOP_LEVEL: tuple[str, ...] = (
     "batch_id", "timestamp", "format_version", "processor",
 )
+
+ALLOWED_PROCESSORS: frozenset[str] = frozenset({
+    "ztn:process", "ztn:maintain", "ztn:lint", "ztn:agent-lens",
+})
+
+# Major version this emitter / consumer pair speaks. Bump only on
+# breaking schema changes (per ARCHITECTURE.md §8.12.2). Manifests
+# with a different major are rejected — minor drift is forward-compat
+# via section_extras.
+SUPPORTED_FORMAT_MAJOR = 2
+
+# Per-processor required sections (presence check; the helper does
+# not enforce inner structure beyond walk_and_normalise). Keys are
+# dotted paths into the manifest dict.
+PROCESSOR_REQUIRED_SECTIONS: dict[str, tuple[str, ...]] = {
+    "ztn:process": (
+        "sources_processed", "records", "knowledge_notes",
+        "concepts", "stats",
+    ),
+    "ztn:maintain": ("stats",),
+    "ztn:lint": ("stats",),
+    "ztn:agent-lens": ("stats",),
+}
+
+
+class ManifestValidationError(Exception):
+    """Raised on structural failures that the autonomous-resolution
+    contract does NOT cover. The concept/audience layer is autonomous;
+    the manifest contract with downstream Minder is NOT — missing
+    `processor`, wrong major version, or missing section make the
+    manifest unroutable. Surface, don't decide.
+    """
 
 
 def parse_audience_extensions(path: Path) -> set[str]:
@@ -270,15 +312,51 @@ def walk_and_normalise(
             walk_and_normalise(item, accept_set, events, f"{path}[{i}]")
 
 
-def validate_top_level(data: dict) -> list[str]:
-    """Return list of warning messages for missing required keys.
-    Does not raise — autonomous-pipeline policy.
+def validate_manifest(data: dict) -> None:
+    """Raise ManifestValidationError on structural contract violations.
+
+    The contract with downstream Minder is non-negotiable — a manifest
+    that lacks `processor`, has an incompatible major version, or omits
+    a section the consumer requires is unroutable. Unlike concept /
+    audience format issues (which autofix or drop), these are routing-
+    layer faults: surface immediately, do not silently emit.
     """
-    warnings: list[str] = []
-    for key in REQUIRED_TOP_LEVEL:
-        if key not in data:
-            warnings.append(f"missing required top-level key: {key}")
-    return warnings
+    missing = [k for k in REQUIRED_TOP_LEVEL if k not in data]
+    if missing:
+        raise ManifestValidationError(
+            f"missing required top-level keys: {missing}"
+        )
+
+    processor = data["processor"]
+    if processor not in ALLOWED_PROCESSORS:
+        raise ManifestValidationError(
+            f"processor {processor!r} not in {sorted(ALLOWED_PROCESSORS)}"
+        )
+
+    fv = data["format_version"]
+    if not isinstance(fv, str) or "." not in fv:
+        raise ManifestValidationError(
+            f"format_version must be string 'MAJOR.MINOR', got {fv!r}"
+        )
+    try:
+        major = int(fv.split(".", 1)[0])
+    except ValueError as exc:
+        raise ManifestValidationError(
+            f"format_version major not parseable: {fv!r}"
+        ) from exc
+    if major != SUPPORTED_FORMAT_MAJOR:
+        raise ManifestValidationError(
+            f"format_version major {major} != supported "
+            f"{SUPPORTED_FORMAT_MAJOR} (manifest {fv!r})"
+        )
+
+    required_sections = PROCESSOR_REQUIRED_SECTIONS.get(processor, ())
+    missing_sections = [s for s in required_sections if s not in data]
+    if missing_sections:
+        raise ManifestValidationError(
+            f"processor {processor!r} requires sections "
+            f"{sorted(required_sections)}; missing: {missing_sections}"
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -319,15 +397,31 @@ def main(argv: list[str] | None = None) -> int:
     audiences_path = args.audiences or (
         repo_root() / "_system" / "registries" / "AUDIENCES.md"
     )
+    if not audiences_path.exists():
+        # AUDIENCES.md missing → accept_set collapses to canonical 5
+        # only. Owner extensions are silently lost. This is recoverable
+        # (just re-emit after fixing the path) but worth a stderr line
+        # so the operator notices the regression.
+        sys.stderr.write(
+            f"emit_batch_manifest: warning: AUDIENCES.md not found at "
+            f"{audiences_path} — extensions table not loaded; "
+            f"accept_set limited to canonical 5\n"
+        )
     extensions = parse_audience_extensions(audiences_path)
     accept_set = set(AUDIENCE_CANONICAL) | extensions
 
     events: list[dict] = []
     walk_and_normalise(data, accept_set, events)
 
-    warnings = validate_top_level(data)
-    for w in warnings:
-        sys.stderr.write(f"emit_batch_manifest: warning: {w}\n")
+    try:
+        validate_manifest(data)
+    except ManifestValidationError as exc:
+        sys.stderr.write(f"emit_batch_manifest: validation error: {exc}\n")
+        # Emit any normalisation events captured before the failure so
+        # the caller can correlate.
+        for ev in events:
+            sys.stderr.write(json.dumps(ev, ensure_ascii=False) + "\n")
+        return 3
 
     if args.dry_run:
         sys.stdout.write(json.dumps(data, ensure_ascii=False, indent=2))

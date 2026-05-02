@@ -227,10 +227,12 @@ every entry in `previous_slugs`) MUST conform to
 `_system/registries/CONCEPT_NAMING.md` — snake_case `[a-z0-9_]`, ≤64
 chars, no forbidden type prefix, English-only. Non-English source terms
 MUST be translated upstream (in `/ztn:process` Step 3.4 Q15) BEFORE
-emission, never transliterated. Any non-conformant value lands in the
-batch and is caught by `/ztn:lint` Scan A.7 with the appropriate
-CLARIFICATION code (`concept-format-mismatch`,
-`concept-type-prefix-in-name`, `concept-name-too-long`).
+emission. Any non-conformant value is silently autofixed or dropped
+by the autonomous-resolution helpers in `_system/scripts/_common.py` —
+at producer side (`emit_batch_manifest.py`) and again at lint Scan A.7
+(`lint_concept_audit.py`) as defence-in-depth. The owner sees no
+queue; see `_system/registries/CONCEPT_NAMING.md` "On violation" for
+the full action table.
 
 **Audience-tag format.** All `audience_tags[]` values MUST be either one
 of the canonical five (`family`, `friends`, `work`,

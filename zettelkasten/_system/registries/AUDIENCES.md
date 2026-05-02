@@ -68,7 +68,8 @@ a clearly distinct longer label — `work-platform` is fine alongside
 `work`, `family-extended` is fine alongside `family`. The test:
 would a reader instantly see them as different audiences? If yes,
 allowed. If a reader would think «that's just `family` spelt
-differently», raise `audience-tag-reserved-conflict`.
+differently», the engine treats it as a reserved-keyword conflict and
+silently drops the extension at load time (the canonical wins).
 
 ### Why flat (no hierarchy)
 
@@ -148,7 +149,7 @@ whitelist check (canonical 5 ∪ active Extensions) performed by
 | Condition | Engine action |
 |---|---|
 | Tag in canonical 5 verbatim | Pass-through. |
-| Tag normalises to a canonical or active extension entry | **Silent autofix** — rewrite to normalised form. Fix-id `audience-tag-normalise-autofix`. (Catches `Family` → `family`, `professional_network` → `professional-network`.) |
+| Tag normalises to a canonical or active extension entry | **Silent autofix** — rewrite to normalised form. Fix-id `audience-tag-normalise-autofix`. |
 | Tag well-formed but NOT in canonical or extension list | **Silent drop** — entity falls back to `[]` (owner-only). Fix-id `audience-tag-drop-autofix` with reason `not-in-whitelist`. |
 | Tag fails kebab-case ASCII / length 2-32 / contains non-ASCII | **Silent drop**. Fix-id `audience-tag-drop-autofix` with reason `format-unfixable`. |
 
@@ -158,11 +159,6 @@ default). The engine never coins new extensions on its own — the
 Extensions table below remains owner-curated outside the pipeline.
 When owner wants a new audience available to the engine, owner adds
 a row; subsequent emissions can use it.
-
-`/ztn:process` Q16 applies a heuristic canonical-mapping at extraction
-time when the model's intended audience semantically fits a canonical
-(e.g. "team" → `work`, "linkedin" → `professional-network`, "tweet" →
-`world`). Only after that mapping fails is the tag silently dropped.
 
 ---
 
@@ -195,10 +191,11 @@ time when the model's intended audience semantically fits a canonical
   concrete reason is exactly the drift this axis is designed to
   prevent.
 
-- **Is the owner using a tag I've never seen?** Don't guess what it
-  means. Raise `audience-tag-unknown`; offer the three resolutions.
-  Letting the owner explicitly classify is faster than recovering
-  from a wrong silent guess.
+- **Is the owner using a tag I've never seen?** Don't guess. The
+  engine silently drops it (entity falls back to `[]` — owner-only,
+  the safest outcome). If owner wants the tag accepted, they add a
+  row to the Extensions table below; subsequent emissions accept it.
+  No CLARIFICATION — fail-closed by drop is the contract.
 
 - **Is the same content captured for different audiences in
   different notes?** That's expected. Audience is per-entity, not

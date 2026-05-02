@@ -17,14 +17,21 @@ domains:
 projects: []
 people: []
 
-# Hub privacy trio. Hubs typically inherit the dominant audience of their
-# member notes; default conservatively to owner-only and widen on owner
-# review. `member_concepts[]` is NOT stored here — it's derived at
+# Hub privacy trio. Auto-derived by `_common.py::recompute_hub_trio()`
+# from member-note trios on every /ztn:process and /ztn:maintain touch.
+# `_engine_derived` enumerates fields the engine currently owns and
+# re-derives. Owner takes over a field by removing its name from
+# `_engine_derived`; engine then preserves the owner-set value
+# permanently. `member_concepts[]` is NOT stored here — derived at
 # manifest-emission time from member knowledge notes' `concepts:` lists.
 # See _system/registries/AUDIENCES.md + ENGINE_DOCTRINE §3.8.
 origin: {personal|work|external}
 audience_tags: []
 is_sensitive: false
+_engine_derived:
+  - origin
+  - audience_tags
+  - is_sensitive
 
 related_notes: N
 first_mention: YYYY-MM-DD

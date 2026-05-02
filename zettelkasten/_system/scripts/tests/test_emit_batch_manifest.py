@@ -68,6 +68,7 @@ def _minimal_manifest() -> dict:
         "timestamp": "2026-05-02T12:00:00Z",
         "format_version": "2.0",
         "processor": "ztn:process",
+        "sources_processed": [],
         "records": {"created": [], "updated": []},
         "knowledge_notes": {"created": [], "updated": []},
         "hubs": {"created": [], "updated": []},
@@ -274,17 +275,96 @@ class PrivacyCoercionTests(unittest.TestCase):
         clear_ztn_env()
 
 
-class TopLevelValidationTests(unittest.TestCase):
-    def test_missing_required_key_warns_but_writes(self):
+class ManifestContractValidationTests(unittest.TestCase):
+    def test_missing_required_top_level_key_rejects(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             audiences = _audiences_file(tmp)
             data = _minimal_manifest()
             del data["batch_id"]
             rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 3)
+            self.assertIn("missing required top-level keys", err)
+            self.assertFalse((tmp / "out.json").exists())
+        clear_ztn_env()
+
+    def test_unknown_processor_rejects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["processor"] = "ztn:bogus"
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 3)
+            self.assertIn("processor 'ztn:bogus' not in", err)
+            self.assertFalse((tmp / "out.json").exists())
+        clear_ztn_env()
+
+    def test_incompatible_major_version_rejects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["format_version"] = "3.0"
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 3)
+            self.assertIn("format_version major", err)
+            self.assertFalse((tmp / "out.json").exists())
+        clear_ztn_env()
+
+    def test_minor_version_drift_accepted(self):
+        # 2.5 still major-2 → accepted (forward-compat per ARCHITECTURE
+        # §8.12.2)
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["format_version"] = "2.5"
+            rc, _, _ = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            self.assertIn("missing required top-level key: batch_id", err)
             self.assertTrue((tmp / "out.json").exists())
+        clear_ztn_env()
+
+    def test_missing_required_section_rejects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            del data["concepts"]
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 3)
+            self.assertIn("requires sections", err)
+            self.assertFalse((tmp / "out.json").exists())
+        clear_ztn_env()
+
+    def test_malformed_format_version_rejects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["format_version"] = "two-point-zero"
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 3)
+            self.assertIn("format_version", err)
+        clear_ztn_env()
+
+    def test_other_processors_have_relaxed_section_requirements(self):
+        # ztn:lint / ztn:maintain / ztn:agent-lens require only `stats`
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            audiences = _audiences_file(tmp)
+            for proc in ("ztn:maintain", "ztn:lint", "ztn:agent-lens"):
+                data = {
+                    "batch_id": "20260502-120000",
+                    "timestamp": "2026-05-02T12:00:00Z",
+                    "format_version": "2.0",
+                    "processor": proc,
+                    "stats": {},
+                }
+                output = tmp / f"out-{proc.replace(':', '-')}.json"
+                rc, _, err = _run(data, output, audiences)
+                self.assertEqual(rc, 0, f"{proc}: {err}")
+                self.assertTrue(output.exists())
         clear_ztn_env()
 
 
