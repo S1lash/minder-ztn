@@ -38,7 +38,82 @@ Per-batch full-pipeline subagent (Step 3) + producer self-review (Step 3.7) guar
 - `--dry-run` — list new files without processing
 - `--file <path>` — process a single specific file (skip PROCESSED.md comparison)
 - `--reprocess` — re-process files already in PROCESSED.md
+- `--reprocess-corpus` — historical-corpus mode: walk existing records and
+  knowledge notes (instead of inbox), re-extract concepts via the matcher
+  subagent, UPDATE existing files in place. See **Mode: --reprocess-corpus**
+  below for the per-step delta. Mutually exclusive with `--file` and
+  `--reprocess` (which target raw transcripts in `_sources/`).
+- `--scope <records|knowledge|all>` — only meaningful with `--reprocess-corpus`;
+  narrows the corpus walk. Default `all`.
 - `--no-sync-check` — skip the data-freshness pre-flight (see below)
+
+---
+
+## Mode: --reprocess-corpus
+
+A single flag that re-routes the same pipeline at four well-defined points
+so that the historical corpus can be re-extracted for `concepts:` (and
+`domain_corrections[]`) without recreating any record or knowledge note.
+Reuses every other guarantee of `/ztn:process` — the same matcher
+subagent, the same registry-aware vocabulary, the same batch manifest
+emission with `concepts.upserts[]` carrying types.
+
+**Why this lives in `/ztn:process`, not its own SKILL.** The historical-
+backfill operation is structurally identical to processing inbox
+transcripts: open content, run the LLM-noise / classification /
+concept-matcher chain, emit a batch manifest. Forking it into a parallel
+SKILL means dual maintenance of every contract change (manifest schema,
+matcher prompt, batch partitioning, lock semantics). One SKILL, one
+mental model.
+
+**Per-step delta vs default mode.** All steps not listed run unchanged.
+
+| Step | Reprocess-corpus behaviour |
+|---|---|
+| Pre-flight, Early Exit, Concurrency Lock | Same `_sources/.processing.lock`. Lock matrix unchanged. Early Exit Check is replaced by «corpus scope is non-empty» check (the inbox glob is irrelevant). |
+| Step 0 Pre-Scan | Skipped. The corpus is already classified; pre-scan exists to seed inbox→records mapping which doesn't apply. People Resolution Map is not built; concept-matcher operates on already-resolved frontmatter. |
+| Step 2.1 Scan Directories | **Branch:** walk `_records/{meetings,observations}/` and PARA `1_projects/`, `2_areas/`, `3_resources/` for files with `layer:` ∈ {`record`, `knowledge`}. Skip `4_archive/` (history is not rewritten). `--scope records` → records only; `--scope knowledge` → PARA only; `--scope all` (default) → both. |
+| Step 2.2–2.3 File Selection / Sort | Sort chronologically by `created:` frontmatter (fall back to filename date prefix). |
+| Step 2.4 Move to Processed | **Skipped.** Sources are already in `_sources/processed/`; corpus files are themselves the artefacts being mutated. |
+| Step 3.0.1 Batch Partitioning | Token threshold T identical. Primary keys for batch grouping: by `extracted_from:` cluster (notes sharing a record) → by domain cluster → alphabetical fallback. Unchanged math. |
+| Step 3.1 Read Transcript | **Branch:** read the file ITSELF (frontmatter + body) AND, when present and accessible, read the underlying source via the file's `source:` frontmatter pointer for richer matcher context. If `source:` is missing or its target file does not exist on disk → log entry to `log_process.md` (`reprocess-corpus: missing-source`), continue with the note's body alone. NEVER raises CLARIFICATION (legacy state is expected). |
+| Step 3.2 LLM Noise Gate | Skipped. Corpus content is by definition non-noise. |
+| Step 3.3 Semantic Context Loading | Same as default mode (hubs / related notes loaded for matcher grounding). |
+| Step 3.4 LLM Classification | **Unchanged.** All 16 questions still run; Q15 (concepts) and Q16 (privacy) carry the load. Q1-Q14 outputs are accepted but not consumed by Step 3.5 in this mode (they remain available to the manifest for completeness). |
+| Step 3.4.5 Concept Matcher Subagent | **Unchanged.** Sees the populated CONCEPTS.md, prefers existing canonical names verbatim, coins new ones with type assignment. Idempotent on a clean state. |
+| Step 3.5 Create Outputs | **Branch:** UPDATE existing files. For each note, replace the `concepts:` array verbatim with the matcher output (post-`normalize_concept_name`). Apply `domain_corrections[]` (`drop` / `remap` per the same contract). Preserve every other frontmatter field verbatim; never touch the body. NO new records, NO new knowledge notes, NO hub creation, NO `Evidence Trail` mutation. |
+| Step 3.6 Structural Verification | Runs the same checks against the updated frontmatter. |
+| Step 3.7 Self-Review | Skipped. Self-review's coverage manifest assumes new extraction; reprocess re-uses prior atomization decisions. |
+| Step 3.7.5 Constitution Alignment | Skipped (extraction-time concern). |
+| Step 3.8 People Profiles | Skipped (no new mentions are introduced). |
+| Step 3.9 System Updates | Skipped (TASKS / CALENDAR / OPEN_THREADS already reflect the originally-extracted state). |
+| Step 3.10 Verify Source Integrity | Runs (cheap, read-only). |
+| Step 4.1 TASKS.md / 4.2 CALENDAR.md / 4.3 HUB_INDEX.md | Skipped — no new tasks / events / hubs created. |
+| Step 4.4 Content Potential Verification | Skipped. |
+| Step 4.5 Batch Verification | Runs (frontmatter integrity check). |
+| Step 4.6 Content Proportionality | Skipped (no creation ratio to evaluate). |
+| Step 4.7 Batch Data Accumulation | Runs. The accumulator's `records[]` and `knowledge_notes[]` lists are populated under the `updated[]` keys (not `created[]`). `concepts.upserts[]` IS populated — this is the load-bearing output of the mode. |
+| Step 5 Completion Gate | Runs unchanged. |
+| Step 5.5.1.5 Batch Manifest | **Branch (data-only):** identical schema; populates `records.updated[]`, `knowledge_notes.updated[]`, `concepts.upserts[]`. `created[]` arrays are emitted empty. `processor: "ztn:process"` unchanged; `format_version: "2.0"` unchanged. |
+| Step 6 Report | Renders «Reprocessed: N» instead of «Created: N». |
+
+**Idempotency.** Re-running `--reprocess-corpus` on a clean post-reprocess
+state produces zero frontmatter changes (matcher reuses canonical names
+from the registry) and zero `concepts.upserts[]` rows that materially
+shift `CONCEPTS.md` after maintain Step 4.5.
+
+**Drift handling.** When the matcher returns a `concepts:` set whose
+symmetric difference with the file's existing set exceeds 50 % of the
+union (i.e., the new extraction radically disagrees with the prior one),
+DO NOT silently overwrite. Surface a CLARIFICATION
+(`type: concept-drift-on-reprocess`) with the file path, prior set, new
+set, and apply the new set conservatively (the matcher run is canonical
+because it sees the current registry). Owner reviews; the buffer makes
+the decision recoverable.
+
+**Lock matrix.** Reprocess-corpus takes the same `_sources/.processing.lock`
+as default mode. Mutually exclusive with `/ztn:maintain`, `/ztn:lint`,
+`/ztn:agent-lens` (matrix unchanged).
 
 ---
 
@@ -88,6 +163,7 @@ Quick-scan `_sources/inbox/` subdirectories for any transcript files
 (`transcript*.md` or `.md` in `crafted/`). Use Glob, not full reads.
 
 - If `--file` or `--reprocess` flag: skip this check (files come from elsewhere).
+- If `--reprocess-corpus`: skip this check; instead glob the corpus per Step 2.1's reprocess-corpus branch and exit early only when the corpus walk yields zero in-scope files.
 - If 0 candidate files found: report `"No new transcripts in inbox — nothing to process."` and **exit immediately**. No lock, no context loading, no system file reads.
 - If `--dry-run` with 0 files: same — report empty and exit.
 
@@ -131,6 +207,9 @@ Partial derived views would poison downstream reasoning.
 ---
 
 ## Step 0: Pre-Scan
+
+> **Reprocess-corpus mode:** skip Step 0 entirely. Pre-scan exists to
+> seed inbox→records mapping; the corpus is already classified.
 
 Before any processing begins, scan ALL new transcripts to build shared context.
 
@@ -227,7 +306,19 @@ skill. Используются для лучшего понимания priorit
 
 ## Step 2: Find New Files
 
+> **Reprocess-corpus mode:** the «New Files» framing is repurposed as
+> «Files In Scope». Section 2.1 scans the corpus instead of the inbox;
+> section 2.4 is skipped. See the per-step delta table at top of file.
+
 ### 2.1 Scan Directories
+
+> **Reprocess-corpus branch:** ignore SOURCES.md entirely. Walk these
+> roots for files whose frontmatter `layer:` ∈ {`record`, `knowledge`}:
+> `_records/meetings/`, `_records/observations/`, `1_projects/`,
+> `2_areas/`, `3_resources/`. NEVER `4_archive/`. The `--scope` argument
+> further narrows: `records` → first two roots only; `knowledge` → last
+> three only; `all` (default) → all five. PARA `README.md` files are
+> excluded (no `layer:` frontmatter).
 
 Load `_system/registries/SOURCES.md` — the whitelist of inbox source types.
 SOURCES.md is the **only** place where source-specific behaviour lives; this
@@ -298,6 +389,10 @@ If 0 new files found: report "No new transcripts to process" and exit.
 If `--dry-run`: list new files with timestamps, then STOP.
 
 ### 2.4 Move to Processed (before processing)
+
+> **Reprocess-corpus mode:** skip this step entirely. Source transcripts
+> are already in `_sources/processed/`; corpus files are themselves the
+> artefacts being updated.
 
 For each file to be processed:
 1. Move from `_sources/inbox/{source}/{id}/` to `_sources/processed/{source}/{id}/`
@@ -420,6 +515,15 @@ explicit handoff document.
 
 ### 3.1 Read Transcript
 
+> **Reprocess-corpus branch:** the «file» here is an existing record or
+> knowledge note. Read its frontmatter + body. Then resolve the
+> underlying source via the note's `source:` frontmatter pointer and,
+> if the target file exists on disk, also read it for richer matcher
+> context. If `source:` is absent OR points at a non-existent path, log
+> `reprocess-corpus: missing-source — {note_id}` to `log_process.md` and
+> continue with the note's body alone. NEVER raise a CLARIFICATION for
+> missing legacy sources — that state is expected by design.
+
 Read full file content. The selected file (per §2.1 layout rule) is one of two formats — same contract regardless of source ID:
 
 - **`transcript_with_summary.md`** (combined): raw transcript + LLM summary in a single file, separated by the literal token `<transcript_to_summary_delimiter>` on its own line.
@@ -432,6 +536,9 @@ Read full file content. The selected file (per §2.1 layout rule) is one of two 
 For `flat-md` sources the file IS the content — no delimiter expected, no summary contract.
 
 ### 3.2 LLM Noise Gate
+
+> **Reprocess-corpus mode:** skip. Corpus content has already passed the
+> noise gate during its original `/ztn:process` run.
 
 Ask a single binary question about the transcript content:
 
@@ -1033,6 +1140,32 @@ SKILL contract is non-blocking.
 
 ### 3.5 Create Outputs
 
+> **Reprocess-corpus branch — UPDATE, not CREATE.** Skip subsections A
+> (records), B (knowledge), C (hubs update), D (hubs create), E (cross-
+> domain) below. Instead, for each note in the batch, perform a
+> minimal frontmatter mutation:
+>
+> 1. Read the note's existing frontmatter via
+>    `_common.py::read_frontmatter`.
+> 2. Replace the `concepts:` array verbatim with the matcher output
+>    (each entry already passed through `normalize_concept_name`).
+> 3. Apply `domain_corrections[]` against the note's `domains:` list:
+>    `action: drop` → remove the value; `action: remap` + valid
+>    `target` → replace; other actions → log
+>    `domain-correction-unknown-action`, leave the value.
+> 4. Preserve every other frontmatter key verbatim. NEVER touch the
+>    body. NEVER mutate Evidence Trail. NEVER create new files. NEVER
+>    update hubs (corpus already drove hub creation in original run).
+> 5. **Drift guard:** if the symmetric difference between prior
+>    `concepts:` set and new matcher set exceeds 50 % of the union,
+>    apply the new set AND surface a CLARIFICATION
+>    (`type: concept-drift-on-reprocess`) with note path, prior set,
+>    new set. The matcher run is canonical (it sees current registry);
+>    the CLARIFICATION exists for owner audit, not gating.
+> 6. Write back via `write_frontmatter`. Append the note to the in-
+>    memory accumulator's `knowledge_notes.updated[]` or
+>    `records.updated[]` (per `layer:`).
+
 Based on the 16-question classification, create outputs. Fully automatic, no confirmation needed.
 
 #### A) Records → RECORD in `_records/{kind}/`
@@ -1392,6 +1525,9 @@ If any check fails, fix immediately before proceeding.
 
 ### 3.7 Self-Review (subagent-internal coverage check)
 
+> **Reprocess-corpus mode:** skip. Self-review verifies coverage of the
+> source by newly-created notes; reprocess re-uses prior atomization.
+
 **Runs inside the subagent**, per transcript, **after** §3.6 structural
 verification, **before** the subagent moves to the next transcript or
 returns its manifest. NON-OPTIONAL. Every transcript must produce a
@@ -1461,6 +1597,8 @@ Subagent attaches per-transcript to its return manifest:
 
 ### 3.7.5 Constitution Alignment Check
 
+> **Reprocess-corpus mode:** skip. No new decisions are extracted; alignment was checked in the original run.
+
 For every record produced in this run with `types:` array containing
 `decision`, run an alignment check against the active constitution tree.
 Records carrying heavy `fixes_applied` from §3.7 self-review (≥ 3 fixes,
@@ -1522,6 +1660,8 @@ batch sizes sit below that threshold and the per-record contract is
 simpler to audit in `log_process.md`.
 
 ### 3.8 People Profiles
+
+> **Reprocess-corpus mode:** skip. No new mentions are introduced; PEOPLE.md is unchanged.
 
 **This step APPLIES the canonical rules from `_system/docs/SYSTEM_CONFIG.md` → "Data & Processing Rules".
 Those rules are the single source of truth. If a rule changes, update SYSTEM_CONFIG, not this step.**
@@ -1665,6 +1805,8 @@ first, then create one comprehensive profile.
 
 ### 3.9 System Updates
 
+> **Reprocess-corpus mode:** skip. TASKS / CALENDAR / OPEN_THREADS already reflect the original extraction.
+
 **Runs in orchestrator, post-aggregate.** Subagents do NOT touch
 PROCESSED.md or log_process.md — those updates are batched here from
 aggregated subagent manifests.
@@ -1724,6 +1866,8 @@ After ALL files in the batch are processed:
 
 ### 4.1 Update TASKS.md
 
+> **Reprocess-corpus mode:** skip (no new tasks).
+
 **Canonical structure & format: see `_system/docs/SYSTEM_CONFIG.md` → "Task Format" section.**
 Source of truth for section names, classification rules, header format, and stream grouping.
 
@@ -1764,6 +1908,8 @@ while preserving Stale.
 
 ### 4.2 Update CALENDAR.md
 
+> **Reprocess-corpus mode:** skip (no new events).
+
 **Canonical structure & format: see `_system/docs/SYSTEM_CONFIG.md` → "Event/Meeting Format" section.**
 
 Scan ALL notes for dated events (`📅` items) and future meetings.
@@ -1779,6 +1925,8 @@ Scan ALL notes for dated events (`📅` items) and future meetings.
 5. Update `Last Updated` in header.
 
 ### 4.3 Update HUB_INDEX.md
+
+> **Reprocess-corpus mode:** skip (no new hubs created).
 
 Rebuild the hub index table from all hub files in `5_meta/mocs/`.
 
@@ -2035,6 +2183,14 @@ concept_translations_dropped: N
 12. `## Sensitive Entities` — per entity emitted in this run with `is_sensitive: true`: `- {path-or-id} | {kind: record|note|hub|task|...} | audience_tags: [{tags or "[]"}]` — count MUST equal `sensitive_entities` in frontmatter. Use `(none)` if empty.
 
 ### 5.5.1.5 Write `_system/state/batches/{batch-id}.json`
+
+> **Reprocess-corpus mode:** identical schema, identical
+> `processor: "ztn:process"`, identical `format_version`. The
+> `records.created[]` and `knowledge_notes.created[]` arrays are
+> empty; populated entries land under `records.updated[]` /
+> `knowledge_notes.updated[]`. `concepts.upserts[]` IS populated —
+> this is the load-bearing output of the mode and the mechanism by
+> which `/ztn:maintain` Step 4.5 picks up types into `CONCEPTS.md`.
 
 Emit the machine-parseable JSON manifest alongside the markdown
 report. Schema: `minder-project/strategy/ARCHITECTURE.md` §4.5

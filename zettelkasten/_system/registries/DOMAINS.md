@@ -193,9 +193,10 @@ safest failure is "not classified" (`[]` or fewer entries), never
 Extensions table below is owner-curated outside the pipeline.
 
 **LLM cascade (cross-skill plan).** When the SKILL ecosystem invokes
-a Sonnet matching subagent (concept-matcher in `/ztn:process`,
-backfill in `/ztn:backfill-concepts`), the same call also receives
-unmatched domain values for remap-or-drop judgement. The cascade is:
+a Sonnet matching subagent (concept-matcher in `/ztn:process` —
+both inbox-scan and `--reprocess-corpus` modes share the same
+matcher), the same call also receives unmatched domain values for
+remap-or-drop judgement. The cascade is:
 
 1. `normalize_domain` (deterministic) →
 2. whitelist check (canonical ∪ extensions) →

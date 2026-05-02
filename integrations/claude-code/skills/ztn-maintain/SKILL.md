@@ -444,8 +444,8 @@ After hub linkage settles new structural edges, regenerate the
 canonical concept registry from the union of corpus frontmatter
 (`concepts:` arrays) and prior batch manifests
 (`concepts.upserts[]` for type / subtype). The registry is the
-loaded-vocabulary input to `/ztn:process` Step 3.5 (concept-matcher
-subagent) and `/ztn:backfill-concepts` (historical backfill SKILL).
+loaded-vocabulary input to `/ztn:process` Step 3.4.5 (concept-matcher
+subagent) — in both inbox-scan and `--reprocess-corpus` modes.
 
 **Invocation.** Run from the maintain orchestrator with:
 

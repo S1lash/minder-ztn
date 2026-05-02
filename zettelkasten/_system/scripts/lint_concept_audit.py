@@ -405,8 +405,9 @@ def fix_domains(
 
     Phase 1 substrate is deterministic-only. The LLM cascade
     (remap-or-CLARIFICATION for unmappable values) is documented in
-    DOMAINS.md and will be wired in by `/ztn:process` Step 3.5 + the
-    `/ztn:backfill-concepts` SKILL.
+    DOMAINS.md and is wired in by `/ztn:process` Step 3.4.5
+    (concept-matcher subagent), in both inbox-scan and
+    `--reprocess-corpus` modes.
     """
     events: list[dict] = []
     raw = fm.get("domains")

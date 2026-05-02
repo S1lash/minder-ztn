@@ -23,8 +23,8 @@ The set is **owned downstream**: Minder's Java enum is the source of
 truth. ZTN mirrors it for two reasons:
 
 1. **Subagent disambiguation.** When the concept-matcher subagent
-   coins a new concept (`/ztn:process` Step 3.5 or
-   `/ztn:backfill-concepts`), it must assign a type so downstream
+   coins a new concept (`/ztn:process` Step 3.4.5, in either inbox
+   mode or `--reprocess-corpus` mode), it must assign a type so downstream
    consumers route the node correctly. The 18-value vocabulary plus
    per-value descriptions gives the subagent enough context to
    disambiguate cases the prompt alone cannot resolve (`PROJECT` vs

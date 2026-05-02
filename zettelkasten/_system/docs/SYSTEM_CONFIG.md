@@ -62,6 +62,7 @@ migrating existing open items.
 | `principle-drift` | `/ztn:process` | `/ztn:check-decision` verdict violated at confidence ≥ 0.85 | Capture in trail; behaviour unchanged this batch |
 | `domain-resolution` | `/ztn:process` (Step 3.4.5) | Domain value cannot be resolved by the cascade `normalize_domain` → whitelist → LLM remap → trivial-vs-material | Drop the unmatched value; remaining `domains:` entries kept (possibly `[]`) |
 | `process-compatibility` | every skill writing manifests | Schema deviation that would break the manifest contract with downstream consumers | Suspend that section's manifest emission until owner resolves |
+| `concept-drift-on-reprocess` | `/ztn:process --reprocess-corpus` (Step 3.5) | Matcher's new `concepts:` set differs from prior set by > 50 % of the union (symmetric-difference / union ratio) | Apply the new (matcher-canonical) set; surface for owner audit, do not gate the write |
 
 Per-skill SKILL.md may add narrower types for skill-internal flows;
 this table covers the cross-skill canonical set referenced in
