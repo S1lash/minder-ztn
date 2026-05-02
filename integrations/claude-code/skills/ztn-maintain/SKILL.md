@@ -404,32 +404,37 @@ After topic filter applied:
 No hub Changelog entry added by maintain — that's semantic evolution, not
 structural link. `/ztn:lint` handles semantic drift if it becomes visible.
 
-**Hub frontmatter — concept and privacy fields are NEVER written by
-maintain.** Hubs do not carry a `concepts:` field (member_concepts is
-manifest-only, derived at emission time from member-note frontmatter).
-Privacy trio (`origin`, `audience_tags`, `is_sensitive`) on hubs is
-owner-curated; maintain inherits the existing values when writing
-`modified:` and never auto-flips them. A drift signal (e.g. dominant
-member origin shifted) surfaces a CLARIFICATION
-(`hub-origin-drift` / `hub-sensitivity-drift`) rather than mutation.
+**Hub privacy and member_concepts (autonomous, no CLARIFICATIONs).**
+Hubs do not carry a `concepts:` field — `member_concepts[]` is
+manifest-only. Privacy trio on hub frontmatter is **auto-recomputed**
+on every hub touch by maintain, using the same rules as `/ztn:process`
+hub C/D sections (single source of truth for the autonomous
+recomputation):
+
+- `origin` ← dominant `origin` across member knowledge notes; tie →
+  `personal`.
+- `audience_tags` ← intersection of member-note `audience_tags[]`
+  (only audiences ALL members agree on widen the hub; default `[]`).
+- `is_sensitive` ← `true` if ANY member note has `is_sensitive: true`,
+  else `false`.
+
+The recomputation runs deterministically on every hub linkage write;
+maintain writes the post-recompute values into hub frontmatter
+alongside `modified:`. No CLARIFICATIONS, no owner action.
 
 **Hub manifest emission for this batch.** When this maintain run
 emits its batch manifest (`_system/state/batches/{ts}-maintain.json`),
 each hub touched in this run gets a `hubs.updated[]` entry with:
 
 - `path`, `checksum_sha256`, `domains` (existing fields)
-- `member_concepts[]` — union of `concepts:` from all member knowledge
-  notes that exist on disk at the moment of manifest emission. Every
-  entry MUST conform to `_system/registries/CONCEPT_NAMING.md`. A
-  non-conformant member-note `concepts:` value is NOT silently
-  filtered; surface CLARIFICATION `concept-format-mismatch` (member
-  note path + raw value) and emit the entry verbatim into
-  `member_concepts[]` so `/ztn:lint` Scan A.7 catches it on the
-  manifest path too. The downstream Minder consumer is responsible
-  for failing closed on its side; ZTN does not silently sanitise.
-- `origin`, `audience_tags`, `is_sensitive` — read from hub
-  frontmatter as-is. No inference; owner is authoritative for hub
-  privacy.
+- `member_concepts[]` — every member-note `concepts:` value passed
+  through `_system/scripts/_common.py::normalize_concept_name()`,
+  Nones dropped, deduplicated. Non-conformant raw values are silently
+  normalised; entries that cannot be normalised are silently dropped.
+  Lint Scan A.7 stays silent on this manifest because every emission
+  is conformant by construction.
+- `origin`, `audience_tags`, `is_sensitive` — the auto-recomputed
+  values from the rules above (also written to hub frontmatter).
 
 ---
 

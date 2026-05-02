@@ -49,6 +49,143 @@ ALLOWED_APPLIES_TO = {
 ALLOWED_CONFIDENCES = {"proven", "working", "experimental"}
 ALLOWED_STATUSES = {"active", "candidate", "archived", "placeholder"}
 
+
+# -----------------------------------------------------------------------------
+# Concept-name normalisation per `_system/registries/CONCEPT_NAMING.md`
+# -----------------------------------------------------------------------------
+#
+# Autonomous-pipeline policy: ZTN engine resolves concept-name format
+# issues with deterministic heuristics — never raises, never blocks owner,
+# never surfaces a CLARIFICATION. `normalize_concept_name(raw)` returns
+# either a valid snake_case ASCII identifier or `None` to signal "drop
+# this entry" — the only fallback when normalisation cannot produce a
+# valid name. Callers MUST handle `None` as "skip silently."
+
+CONCEPT_NAME_MAX_LEN = 64
+CONCEPT_NAME_RE = re.compile(r"^[a-z0-9_]+$")
+_CONCEPT_SEP_RE = re.compile(
+    r"[\s\-‐-―−/\\.,;:!?()\[\]{}\"'~%+@#&*=<>^|`]+"
+)
+_CONCEPT_RUN_US = re.compile(r"_+")
+
+FORBIDDEN_TYPE_PREFIXES: tuple[str, ...] = (
+    "theme_", "decision_", "person_", "project_", "tool_", "idea_",
+    "event_", "goal_", "value_", "fact_", "organization_", "skill_",
+    "location_", "emotion_", "preference_", "constraint_", "algorithm_",
+    "other_",
+)
+
+# `type` enum emitted by ZTN (lowercase, excludes person/project per
+# §"Concept scope" in `_system/docs/batch-format.md`).
+EMITTED_CONCEPT_TYPES: frozenset[str] = frozenset({
+    "theme", "tool", "decision", "idea", "event", "organization",
+    "skill", "location", "emotion", "goal", "value", "preference",
+    "constraint", "algorithm", "fact", "other",
+})
+
+
+def normalize_concept_name(raw: str | None) -> str | None:
+    """Return a valid snake_case ASCII concept name or None to drop.
+
+    Pure function; no side effects. Mirrors CONCEPT_NAMING.md normalisation
+    algorithm with autonomous fallbacks:
+    - non-ASCII residue after diacritic-fold → drop (None)
+    - empty after type-prefix strip → drop (None)
+    - over-length → truncate at last `_` boundary `≤ 64`; hard-cut otherwise
+
+    The caller is responsible for emitting the returned value verbatim or
+    skipping the entry on None — never substitute, never raise.
+    """
+    if raw is None:
+        return None
+    import unicodedata
+    s = unicodedata.normalize("NFKD", str(raw))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = s.lower()
+    s = _CONCEPT_SEP_RE.sub("_", s)
+    s = _CONCEPT_RUN_US.sub("_", s)
+    s = s.strip("_")
+    if not s:
+        return None
+    if not all(ord(c) < 128 for c in s):
+        return None
+    if not CONCEPT_NAME_RE.match(s):
+        return None
+    for prefix in FORBIDDEN_TYPE_PREFIXES:
+        if s.startswith(prefix):
+            s = s[len(prefix):].lstrip("_")
+            break
+    if not s:
+        return None
+    # Bare type-enum words (`theme`, `tool`, `decision`, …) collapse
+    # via Rule 8 — broad classifiers belong in domains/tags, not as
+    # concepts. Same drop rule covers inputs like `theme_` (which
+    # trim to `theme`) and bare classifier inputs like `theme` or
+    # `decision` directly.
+    if s in EMITTED_CONCEPT_TYPES or s in {"person", "project"}:
+        return None
+    if len(s) > CONCEPT_NAME_MAX_LEN:
+        truncated = s[:CONCEPT_NAME_MAX_LEN]
+        last_us = truncated.rfind("_")
+        s = truncated[:last_us] if last_us > 0 else truncated
+    if not s:
+        return None
+    return s
+
+
+def normalize_concept_list(raw_iter) -> list[str]:
+    """Apply normalize_concept_name to each entry; drop Nones; dedup
+    preserving first-seen order.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in (raw_iter or []):
+        n = normalize_concept_name(raw)
+        if n is None or n in seen:
+            continue
+        seen.add(n)
+        out.append(n)
+    return out
+
+
+# -----------------------------------------------------------------------------
+# Audience-tag normalisation per `_system/registries/AUDIENCES.md`
+# -----------------------------------------------------------------------------
+
+AUDIENCE_CANONICAL: frozenset[str] = frozenset({
+    "family", "friends", "work", "professional-network", "world",
+})
+AUDIENCE_TAG_RE = re.compile(r"^[a-z0-9-]+$")
+AUDIENCE_TAG_MIN_LEN = 2
+AUDIENCE_TAG_MAX_LEN = 32
+
+
+def normalize_audience_tag(raw: str | None) -> str | None:
+    """Normalise to kebab-case ASCII; return value if well-formed,
+    else None. Caller checks against the canonical-five + Extensions
+    whitelist to decide accept-vs-drop.
+
+    Autonomous-pipeline policy: never raises; on any uncertainty, return
+    None so caller drops the tag. Default empty `[]` audience is always
+    safer than a guessed audience.
+    """
+    if raw is None:
+        return None
+    import unicodedata
+    s = unicodedata.normalize("NFKD", str(raw))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = s.lower().strip()
+    s = re.sub(r"[\s_]+", "-", s)
+    s = re.sub(r"-+", "-", s).strip("-")
+    if not s:
+        return None
+    if not AUDIENCE_TAG_RE.match(s):
+        return None
+    if len(s) < AUDIENCE_TAG_MIN_LEN or len(s) > AUDIENCE_TAG_MAX_LEN:
+        return None
+    return s
+
+
 # Single-context model: every consumer loads every scope.
 #
 # The `scope` field on principles (shared / personal / sensitive) stays as

@@ -201,5 +201,113 @@ class SoulMarkersTests(unittest.TestCase):
         self.assertIsNone(c.find_soul_auto_zone("no markers here"))
 
 
+class NormalizeConceptNameTests(unittest.TestCase):
+    """CONCEPT_NAMING.md autonomous heuristic — happy + edge cases."""
+
+    def test_passthrough_canonical(self):
+        self.assertEqual(c.normalize_concept_name("team_restructuring"),
+                         "team_restructuring")
+
+    def test_kebab_to_snake(self):
+        self.assertEqual(c.normalize_concept_name("team-restructuring"),
+                         "team_restructuring")
+
+    def test_uppercase_to_lower(self):
+        self.assertEqual(c.normalize_concept_name("Team-Restructuring"),
+                         "team_restructuring")
+
+    def test_em_dash_separator(self):
+        self.assertEqual(c.normalize_concept_name("team — restructuring"),
+                         "team_restructuring")
+
+    def test_diacritic_fold(self):
+        self.assertEqual(c.normalize_concept_name("naïve_bayes"),
+                         "naive_bayes")
+
+    def test_drops_non_ascii_residue(self):
+        self.assertIsNone(c.normalize_concept_name("тема"))
+
+    def test_strips_forbidden_type_prefix(self):
+        self.assertEqual(c.normalize_concept_name("theme_queue_prioritization"),
+                         "queue_prioritization")
+
+    def test_drops_when_only_type_prefix(self):
+        self.assertIsNone(c.normalize_concept_name("theme_"))
+
+    def test_drops_when_empty_after_strip(self):
+        self.assertIsNone(c.normalize_concept_name(""))
+        self.assertIsNone(c.normalize_concept_name("   "))
+        self.assertIsNone(c.normalize_concept_name("___"))
+
+    def test_collapses_runs_of_underscores(self):
+        self.assertEqual(c.normalize_concept_name("team___restructuring"),
+                         "team_restructuring")
+
+    def test_truncates_overlength(self):
+        long_name = "a_" * 40 + "tail"
+        result = c.normalize_concept_name(long_name)
+        self.assertIsNotNone(result)
+        self.assertLessEqual(len(result), 64)
+
+    def test_punctuation_separators(self):
+        self.assertEqual(c.normalize_concept_name("Node.js (v18)"),
+                         "node_js_v18")
+
+    def test_acronym_kept_lowercase(self):
+        self.assertEqual(c.normalize_concept_name("OAuth"), "oauth")
+        self.assertEqual(c.normalize_concept_name("p2p"), "p2p")
+
+    def test_handles_none_input(self):
+        self.assertIsNone(c.normalize_concept_name(None))
+
+
+class NormalizeConceptListTests(unittest.TestCase):
+    def test_dedupes_after_normalisation(self):
+        result = c.normalize_concept_list([
+            "Team-Restructuring", "team_restructuring", "TEAM-restructuring"
+        ])
+        self.assertEqual(result, ["team_restructuring"])
+
+    def test_preserves_first_seen_order(self):
+        result = c.normalize_concept_list(["alpha", "beta", "gamma"])
+        self.assertEqual(result, ["alpha", "beta", "gamma"])
+
+    def test_drops_unresolvable_keeps_others(self):
+        result = c.normalize_concept_list(["valid_one", "тема", "valid_two"])
+        self.assertEqual(result, ["valid_one", "valid_two"])
+
+    def test_empty_input_empty_output(self):
+        self.assertEqual(c.normalize_concept_list([]), [])
+        self.assertEqual(c.normalize_concept_list(None), [])
+
+
+class NormalizeAudienceTagTests(unittest.TestCase):
+    def test_canonical_passthrough(self):
+        for tag in ("family", "friends", "work",
+                    "professional-network", "world"):
+            self.assertEqual(c.normalize_audience_tag(tag), tag)
+
+    def test_uppercase_normalised(self):
+        self.assertEqual(c.normalize_audience_tag("Family"), "family")
+
+    def test_underscore_to_hyphen(self):
+        self.assertEqual(c.normalize_audience_tag("professional_network"),
+                         "professional-network")
+
+    def test_drops_non_ascii(self):
+        self.assertIsNone(c.normalize_audience_tag("семья"))
+
+    def test_drops_too_short(self):
+        self.assertIsNone(c.normalize_audience_tag("a"))
+
+    def test_drops_too_long(self):
+        self.assertIsNone(c.normalize_audience_tag("a" * 33))
+
+    def test_passes_through_well_formed_extension(self):
+        # caller decides accept/drop based on AUDIENCES.md Extensions
+        self.assertEqual(c.normalize_audience_tag("team-platform"),
+                         "team-platform")
+
+
 if __name__ == "__main__":
     unittest.main()

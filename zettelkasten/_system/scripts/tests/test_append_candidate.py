@@ -237,46 +237,98 @@ class AppendCandidateTests(unittest.TestCase):
             )
         clear_ztn_env()
 
-    def test_applies_in_concepts_rejects_format_violation(self):
+    def test_applies_in_concepts_normalises_kebab_and_case(self):
+        """Autonomous-pipeline: kebab-case + caps → snake_case lowercase silently."""
         with tempfile.TemporaryDirectory() as tmp:
             fx = make_fixture(Path(tmp))
             buf = fx.system / "state" / "principle-candidates.jsonl"
-            with self.assertRaises(SystemExit):
-                a.main([
-                    "--situation", "x",
-                    "--suggested-type", "principle",
-                    "--suggested-domain", "tech",
-                    "--applies-in-concepts", "Delegation-Pattern",  # kebab + caps
-                    "--buffer", str(buf),
-                ])
+            rc = a.main([
+                "--situation", "x",
+                "--suggested-type", "principle",
+                "--suggested-domain", "tech",
+                "--applies-in-concepts", "Delegation-Pattern",
+                "--buffer", str(buf),
+            ])
+            self.assertEqual(rc, 0)
+            self.assertEqual(
+                _read_buffer(buf)[-1]["applies_in_concepts"],
+                ["delegation_pattern"],
+            )
         clear_ztn_env()
 
-    def test_applies_in_concepts_rejects_type_prefix(self):
+    def test_applies_in_concepts_strips_type_prefix(self):
+        """Autonomous-pipeline: forbidden type prefix stripped silently."""
         with tempfile.TemporaryDirectory() as tmp:
             fx = make_fixture(Path(tmp))
             buf = fx.system / "state" / "principle-candidates.jsonl"
-            with self.assertRaises(SystemExit):
-                a.main([
-                    "--situation", "x",
-                    "--suggested-type", "principle",
-                    "--suggested-domain", "tech",
-                    "--applies-in-concepts", "theme_delegation",
-                    "--buffer", str(buf),
-                ])
+            rc = a.main([
+                "--situation", "x",
+                "--suggested-type", "principle",
+                "--suggested-domain", "tech",
+                "--applies-in-concepts", "theme_delegation",
+                "--buffer", str(buf),
+            ])
+            self.assertEqual(rc, 0)
+            self.assertEqual(
+                _read_buffer(buf)[-1]["applies_in_concepts"],
+                ["delegation"],
+            )
         clear_ztn_env()
 
-    def test_applies_in_concepts_rejects_non_ascii(self):
+    def test_applies_in_concepts_drops_non_ascii(self):
+        """Autonomous-pipeline: non-ASCII residue → drop silently, never raise."""
         with tempfile.TemporaryDirectory() as tmp:
             fx = make_fixture(Path(tmp))
             buf = fx.system / "state" / "principle-candidates.jsonl"
-            with self.assertRaises(SystemExit):
-                a.main([
-                    "--situation", "x",
-                    "--suggested-type", "principle",
-                    "--suggested-domain", "tech",
-                    "--applies-in-concepts", "тема",
-                    "--buffer", str(buf),
-                ])
+            rc = a.main([
+                "--situation", "x",
+                "--suggested-type", "principle",
+                "--suggested-domain", "tech",
+                "--applies-in-concepts", "тема,delegation_pattern",
+                "--buffer", str(buf),
+            ])
+            self.assertEqual(rc, 0)
+            self.assertEqual(
+                _read_buffer(buf)[-1]["applies_in_concepts"],
+                ["delegation_pattern"],
+            )
+        clear_ztn_env()
+
+    def test_applies_in_concepts_truncates_overlength(self):
+        """Autonomous-pipeline: > 64 chars → truncate at last underscore."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = make_fixture(Path(tmp))
+            buf = fx.system / "state" / "principle-candidates.jsonl"
+            very_long = "a_" * 40 + "tail"  # 84 chars
+            rc = a.main([
+                "--situation", "x",
+                "--suggested-type", "principle",
+                "--suggested-domain", "tech",
+                "--applies-in-concepts", very_long,
+                "--buffer", str(buf),
+            ])
+            self.assertEqual(rc, 0)
+            entry = _read_buffer(buf)[-1]
+            self.assertEqual(len(entry["applies_in_concepts"]), 1)
+            self.assertLessEqual(len(entry["applies_in_concepts"][0]), 64)
+        clear_ztn_env()
+
+    def test_applies_in_concepts_dedups_after_normalisation(self):
+        """Autonomous-pipeline: two raw forms collapsing to same canonical → one entry."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = make_fixture(Path(tmp))
+            buf = fx.system / "state" / "principle-candidates.jsonl"
+            a.main([
+                "--situation", "x",
+                "--suggested-type", "principle",
+                "--suggested-domain", "tech",
+                "--applies-in-concepts", "Delegation-Pattern,delegation_pattern,theme_delegation_pattern",
+                "--buffer", str(buf),
+            ])
+            self.assertEqual(
+                _read_buffer(buf)[-1]["applies_in_concepts"],
+                ["delegation_pattern"],
+            )
         clear_ztn_env()
 
 

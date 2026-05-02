@@ -235,10 +235,49 @@ CLARIFICATION code (`concept-format-mismatch`,
 **Audience-tag format.** All `audience_tags[]` values MUST be either one
 of the canonical five (`family`, `friends`, `work`,
 `professional-network`, `world`) or appear in the Extensions table of
-`_system/registries/AUDIENCES.md`. Unknown values trigger
-`audience-tag-unknown` CLARIFICATION at lint time;
-reserved-keyword conflicts trigger `audience-tag-reserved-conflict`;
-format violations trigger `audience-tag-format-mismatch`.
+`_system/registries/AUDIENCES.md`. Unknown / non-conformant values are
+**silently dropped** by the autonomous pipeline (the engine never coins
+new extensions); the entity falls back to its remaining accept-set
+audiences, or to `[]` if all entries dropped. Lint Scan A.7 applies the
+same drop-or-normalise rule against ZTN-internal manifest files as a
+post-write safety net.
+
+**Autonomous resolution — no CLARIFICATIONs for the concept layer.**
+The concept and audience layers are 100% autonomous: every format issue
+(non-snake_case concept name, forbidden type prefix, over-length name,
+non-canonical audience tag, reserved-keyword conflict) is resolved
+deterministically by `_system/scripts/_common.py` helpers
+(`normalize_concept_name`, `normalize_concept_list`,
+`normalize_audience_tag`). On unresolvable input (non-ASCII residue,
+empty after strip, audience tag not in whitelist that cannot be mapped
+to canonical) the helpers return `None` and callers drop the entry
+silently. The owner sees no CLARIFICATION queue for these issues —
+heuristic resolution is the contract. Violations that DO surface
+(format issues persisting after autofix at write-time, e.g. due to a
+helper bug) are caught by lint A.7's defence-in-depth pass and logged
+under `concept-*-autofix` / `audience-tag-*-autofix` fix-ids in
+`log_lint.md` for traceability.
+
+**Owner-curated registries (privacy trio NOT applicable).** The
+following files are owner-curated outside the `/ztn:process` pipeline
+and intentionally do NOT carry the privacy trio (origin /
+audience_tags / is_sensitive). Lint Scan A.7 explicitly skips them:
+
+- `_system/SOUL.md` (identity, focus, values — owner's calibration
+  layer; entire file is owner-only by definition)
+- `_system/TASKS.md` (task aggregation — entire surface is owner-only
+  operational state)
+- `_system/CALENDAR.md` (calendar aggregation — same)
+- `_system/POSTS.md` (publishing log — owner-controlled publication
+  records; sharing decisions made at compose-time, not via trio)
+- `_system/registries/{TAGS,SOURCES,PEOPLE,PROJECTS,AGENT_LENSES,
+  CONCEPT_NAMING,AUDIENCES}.md` (engine registries — meta-spec, not
+  content)
+- `_system/views/*.md` (auto-generated derived views — derive
+  privacy from inputs at consumption time, do not store)
+- `_sources/processed/**/*.md` (raw transcripts — pre-processing
+  artefacts)
+- `_system/state/log_*.md` (append-only audit trails)
 
 ### v2.0 Manifest Section Sketch (JSON, illustrative)
 

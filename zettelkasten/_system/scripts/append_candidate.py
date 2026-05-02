@@ -39,7 +39,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -49,6 +48,7 @@ from _common import (
     ALLOWED_TYPES,
     ConstitutionError,
     die,
+    normalize_concept_list,
     state_dir,
     today_iso,
 )
@@ -59,62 +59,21 @@ ALLOWED_SUGGESTED_TYPES: frozenset[str] = frozenset(ALLOWED_TYPES | {"unknown"})
 ALLOWED_SUGGESTED_DOMAINS: frozenset[str] = frozenset(ALLOWED_DOMAINS | {"unknown"})
 ALLOWED_ORIGINS: frozenset[str] = frozenset({"personal", "work", "external"})
 
-CONCEPT_NAME_RE = re.compile(r"^[a-z0-9_]+$")
-CONCEPT_NAME_MAX_LEN = 64
-FORBIDDEN_TYPE_PREFIXES: tuple[str, ...] = (
-    "theme_", "decision_", "person_", "project_", "tool_", "idea_",
-    "event_", "goal_", "value_", "fact_", "organization_", "skill_",
-    "location_", "emotion_", "preference_", "constraint_", "algorithm_",
-    "other_",
-)
-
-
-def validate_concept_name(name: str) -> None:
-    """Enforce CONCEPT_NAMING.md format on a single concept-name string.
-
-    Raises ConstitutionError on any of: format mismatch (non-snake_case
-    ASCII, runs of underscores, leading/trailing `_`), forbidden type
-    prefix, or length > 64. Mirrors the rules in
-    `_system/registries/CONCEPT_NAMING.md`.
-    """
-    if not name:
-        raise ConstitutionError("concept name must not be empty")
-    if len(name) > CONCEPT_NAME_MAX_LEN:
-        raise ConstitutionError(
-            f"concept name {name!r} exceeds {CONCEPT_NAME_MAX_LEN} chars "
-            "(rule 7); shorten or extract the load-bearing noun"
-        )
-    if not CONCEPT_NAME_RE.match(name):
-        raise ConstitutionError(
-            f"concept name {name!r} violates snake_case ASCII (rules 1–4); "
-            "expect ^[a-z0-9_]+$, no leading/trailing/consecutive '_'"
-        )
-    if "__" in name or name.startswith("_") or name.endswith("_"):
-        raise ConstitutionError(
-            f"concept name {name!r} violates rule 4 (no leading, trailing, "
-            "or consecutive '_')"
-        )
-    for prefix in FORBIDDEN_TYPE_PREFIXES:
-        if name.startswith(prefix):
-            raise ConstitutionError(
-                f"concept name {name!r} starts with forbidden type prefix "
-                f"{prefix!r} (rule 5); type lives in metadata, not in name"
-            )
-
 
 def parse_applies_in_concepts(raw: str | None) -> list[str]:
-    """Parse comma-separated concept names; validate each.
+    """Parse comma-separated concept names → list of canonical snake_case
+    names, normalising silently per CONCEPT_NAMING.md.
 
-    Empty / None -> []. Whitespace around commas tolerated. On any
-    invalid entry, raises ConstitutionError citing the bad name —
-    helper does not silently sanitise per CONCEPT_NAMING §"On violation".
+    Empty / None → []. Whitespace around commas tolerated. Format
+    violations are auto-resolved by `normalize_concept_list` (drop on
+    impossibility, normalise otherwise) — the helper NEVER raises for
+    concept format issues. This matches the autonomous-pipeline policy:
+    no owner action, no CLARIFICATION; the engine resolves heuristically.
     """
     if not raw:
         return []
-    names = [chunk.strip() for chunk in raw.split(",") if chunk.strip()]
-    for name in names:
-        validate_concept_name(name)
-    return names
+    chunks = [c.strip() for c in raw.split(",") if c.strip()]
+    return normalize_concept_list(chunks)
 
 
 def resolve_origin(explicit: str | None) -> str:
@@ -225,13 +184,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--record-ref", default=None,
                         help="wiki-link to a record, e.g. [[_records/...]]")
     parser.add_argument("--applies-in-concepts", default=None,
-                        help="comma-separated concept names per "
-                             "_system/registries/CONCEPT_NAMING.md "
+                        help="comma-separated concept names. Each entry "
+                             "auto-normalised per CONCEPT_NAMING.md "
                              "(snake_case ASCII, English-only, ≤64 chars, "
-                             "no forbidden type prefix). Empty / omitted "
-                             "→ []. Each entry validated; non-conformant "
-                             "name fails the append, never silently "
-                             "rewritten.")
+                             "no forbidden type prefix). Format violations "
+                             "are resolved silently by the normaliser; "
+                             "entries that cannot be normalised (non-ASCII "
+                             "residue after diacritic-fold, empty after "
+                             "type-prefix strip) are dropped. Helper "
+                             "never rejects the append for concept format. "
+                             "Empty / omitted → [].")
     parser.add_argument("--buffer", type=Path, default=None,
                         help=f"override buffer path (default: "
                              f"_system/state/{BUFFER_FILENAME})")

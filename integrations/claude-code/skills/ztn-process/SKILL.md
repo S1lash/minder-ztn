@@ -204,8 +204,8 @@ Read these system files (in parallel where possible):
 6. `{{MINDER_ZTN_BASE}}/3_resources/people/PEOPLE.md` — people registry. Schema: `ID | Name | Role | Org | Profile | Tier | Mentions | Last`. Preserve all columns when writing
 7. `{{MINDER_ZTN_BASE}}/1_projects/PROJECTS.md` — project registry
 8. `{{MINDER_ZTN_BASE}}/_system/registries/TAGS.md` — tag registry (`tags:` namespace labels)
-9. `{{MINDER_ZTN_BASE}}/_system/registries/CONCEPT_NAMING.md` — canonical concept-name format (snake_case ASCII; emit `concepts:` and manifest concept fields conformant to this spec; non-conformant raw input from non-English sources MUST be translated to English upstream of manifest emission, never transliterated)
-10. `{{MINDER_ZTN_BASE}}/_system/registries/AUDIENCES.md` — `audience_tags` whitelist (canonical five + tenant Extensions; emit `audience_tags` only with whitelisted values; unknown values raise `audience-tag-unknown` CLARIFICATION rather than silent inclusion)
+9. `{{MINDER_ZTN_BASE}}/_system/registries/CONCEPT_NAMING.md` — canonical concept-name format. **Autonomous-pipeline policy:** the engine resolves all concept-name format issues with deterministic heuristics — never raises CLARIFICATIONs, never blocks owner. `_system/scripts/_common.py::normalize_concept_name()` is the single source of truth: normalisation algorithm + drop-on-impossibility (returns `None` to signal skip when non-ASCII residue or empty-after-strip). For non-English source terms, translate semantically to English; if genuinely untranslatable, drop the entry rather than transliterate (transliteration splits graph identity).
+10. `{{MINDER_ZTN_BASE}}/_system/registries/AUDIENCES.md` — `audience_tags` whitelist (canonical five + tenant Extensions). **Autonomous-pipeline policy:** unknown / non-canonical / non-whitelisted tags are silently dropped (entity stays `[]`, owner-only). Helper: `_system/scripts/_common.py::normalize_audience_tag()`. The fail-closed default (`[]`) is the right outcome on any uncertainty — false-positive sharing leaks; false-negative just keeps content owner-only.
 11. `{{MINDER_ZTN_BASE}}/_system/registries/SOURCES.md` — inbox source whitelist (consumed by Step 2.1)
 12. `{{MINDER_ZTN_BASE}}/_system/views/HUB_INDEX.md` — hub index (if not loaded in Step 0)
 13. `{{MINDER_ZTN_BASE}}/_system/state/PROCESSED.md` — already processed files
@@ -677,22 +677,28 @@ Be specific and cite evidence from the transcript.
     - «реструктуризация» → `restrukturizatsiya` ✗
     - «делегирование» → `delegirovanie` ✗
 
-    If translation is genuinely ambiguous (term has no clean English
-    equivalent, or the Russian carries domain-specific nuance the
-    English loses) — emit **no concept entry for it** and raise
-    CLARIFICATION `concept-format-mismatch` with: source path, raw
-    Russian phrase, 2–3 candidate English translations, brief
-    rationale. Do NOT guess.
+    **Translation-impossible fallback (autonomous, no owner action).**
+    If a term is genuinely untranslatable (cultural/legal/domain jargon
+    with no clean English equivalent — `dacha`-class) → **drop the
+    entry**, do not emit. Dropping loses one mention but keeps graph
+    identity stable (transliterating across mentions would create
+    multiple variants of the same node). When multiple plausible
+    translations exist, pick the one most consistent with surrounding
+    concepts in the same transcript (lexical-context heuristic). Never
+    raise a CLARIFICATION; the model is the only resolver.
 
-    **Normalisation (run on every emitted name).** Lowercase; replace
-    every separator (whitespace, hyphens, dashes, `/`, `\`, `.`, `,`,
-    `;`, `:`, `!`, `?`, brackets, quotes, `~ % + @ # & * = < > ^ |`
-    backtick) with `_`; collapse runs of `_`; trim leading/trailing
-    `_`. Validate `^[a-z0-9_]+$`, length ∈ [1, 64]. Reject forbidden
-    type prefixes (`theme_`, `decision_`, `person_`, `project_`,
-    `tool_`, `idea_`, `event_`, `goal_`, `value_`, `fact_`,
+    **Normalisation (autonomous, run on every emitted name).** Apply
+    `_system/scripts/_common.py::normalize_concept_name()` heuristic:
+    diacritic-fold → lowercase → separator→`_` → collapse runs → trim
+    `_` → drop if non-ASCII residue → drop if charset fails → strip
+    forbidden type prefix → drop if empty after strip → truncate at
+    last `_` boundary `≤ 64`. The function returns `None` when
+    normalisation cannot produce a valid identifier; callers MUST
+    treat `None` as «skip silently». Forbidden type prefixes (auto-
+    stripped, not raised): `theme_`, `decision_`, `person_`,
+    `project_`, `tool_`, `idea_`, `event_`, `goal_`, `value_`, `fact_`,
     `organization_`, `skill_`, `location_`, `emotion_`, `preference_`,
-    `constraint_`, `algorithm_`, `other_`). Type lives in metadata,
+    `constraint_`, `algorithm_`, `other_`. Type lives in metadata,
     not in name.
 
     **Selectivity (Rule 8).** Reject broad classifiers — if a name
@@ -801,13 +807,18 @@ Be specific and cite evidence from the transcript.
     **Multiple tags allowed** (`[work, friends]`) when the audience
     genuinely overlaps. Flat union, no hierarchy.
 
-    **Unknown / extension tags.** If you'd want to set a tag NOT in
-    the canonical 5 AND NOT in `_system/registries/AUDIENCES.md`
-    Extensions table → emit `audience_tags: []` for the entity AND
-    raise CLARIFICATION `audience-tag-unknown` with: proposed tag,
-    raw content phrase that triggered the suggestion, source path,
-    suggested resolutions (add-to-registry / map-to-existing / drop).
-    Do NOT silently coin a new tag.
+    **Unknown / extension tags (autonomous resolution).** If you'd
+    want to set a tag NOT in the canonical 5 AND NOT in
+    `_system/registries/AUDIENCES.md` Extensions table → silently drop
+    that tag and emit `audience_tags: []` for the entity. The
+    fail-closed default is the right outcome on any uncertainty —
+    false-positive sharing leaks; false-negative just keeps content
+    owner-only. Never coin a new tag, never raise CLARIFICATION; the
+    AUDIENCES Extensions table is owner-curated outside the
+    `/ztn:process` pipeline. **Heuristic mapping before drop:** if the
+    intended audience semantically maps to a canonical (e.g. "team" →
+    `work`, "linkedin" → `professional-network`, "tweet" → `world`),
+    use the canonical. Only drop when no canonical applies.
 
     **`is_sensitive` (bool):**
 
@@ -1108,22 +1119,27 @@ For each matching hub (from Q11):
 6. Update `modified` date in frontmatter
 7. Update `people`, `projects` lists if new entries
 
-**Hub privacy + member_concepts on update.** Hub frontmatter does NOT
-gain a `concepts:` field — `member_concepts[]` lives only in the
-manifest, derived at emission time (Step 4.7). Privacy trio on hub
-frontmatter (`origin` / `audience_tags` / `is_sensitive`):
+**Hub privacy + member_concepts on update (autonomous, no
+CLARIFICATIONs).** Hub frontmatter does NOT gain a `concepts:` field
+— `member_concepts[]` lives only in the manifest, derived at emission
+time (Step 4.7). Privacy trio on hub frontmatter (`origin` /
+`audience_tags` / `is_sensitive`) is **auto-recomputed** from current
+members on every hub touch:
 
-- Re-evaluate after this update. If a freshly added member knowledge
-  note pushes the dominant `origin` of members across a threshold
-  (e.g. hub was `personal`, now 3 of 5 members are `work`-origin) →
-  surface CLARIFICATION `hub-origin-drift` rather than auto-flipping;
-  hub identity matters, owner curates.
-- `audience_tags` and `is_sensitive` on hubs default to `[]` / `false`
-  and are owner-curated only — `/ztn:process` never auto-widens. If
-  any member note added in this run is `is_sensitive: true` and the
-  hub itself is currently `is_sensitive: false` → raise CLARIFICATION
-  `hub-sensitivity-drift` with the note id and ask whether the hub
-  should be flagged.
+- `origin` ← dominant `origin` across member knowledge notes (count
+  votes; tie → `personal`, the conservative default).
+- `audience_tags` ← intersection of member-note `audience_tags[]`
+  (only audiences ALL members agree on widen the hub; default `[]`).
+  Intersection (not union) keeps the hub at the most-restrictive
+  shared audience — fail-closed across members.
+- `is_sensitive` ← `true` if ANY member note has `is_sensitive:
+  true`, else `false`. Sensitivity is contagious upward (one
+  sensitive member taints the aggregate for sync-friction purposes);
+  on member sensitivity removal, the hub re-derives down freely.
+
+The recomputation is deterministic and runs on every hub
+emission — no CLARIFICATIONS, no owner action. The manifest
+emission step (4.7) reads the post-recompute frontmatter values.
 
 #### D) New hub creation → CREATE in `5_meta/mocs/`
 
@@ -1137,15 +1153,21 @@ When a topic reaches 3+ KNOWLEDGE notes (Q12):
 
 Hub ID format: `hub-{topic-slug}` (e.g., `hub-api2-p2p`, `hub-delegation-pattern`)
 
-**New hub privacy trio on creation.**
+**New hub privacy trio on creation (autonomous, same rules as
+update).**
 
-- `origin` — inherit dominant member-note `origin`. Tie → `personal`
-  (conservative default).
-- `audience_tags` — `[]` always at creation. Owner widens later.
-- `is_sensitive` — `true` if ANY member note is `is_sensitive: true`,
-  else `false`. Hubs aggregate, so any sensitive member taints the
-  hub for sync-friction purposes (per privacy-trio orthogonality:
-  audience may stay `[]` while sensitivity is `true`).
+- `origin` — dominant member-note `origin`. Tie → `personal`.
+- `audience_tags` — **intersection** of member-note
+  `audience_tags[]`. Hub adopts only audiences every member agrees
+  on. With at least one member at `[]`, the intersection is `[]` —
+  the conservative outcome.
+- `is_sensitive` — `true` if ANY member note has `is_sensitive:
+  true`, else `false`. Hubs aggregate, so any sensitive member
+  taints the hub for sync-friction purposes (per privacy-trio
+  orthogonality: audience may stay `[]` while sensitivity is `true`).
+
+Same rule on UPDATE and CREATE keeps the contract symmetric. No
+owner action ever required for hub privacy.
 
 #### E) Cross-domain insights
 
@@ -1172,10 +1194,10 @@ After creating EACH note (record or knowledge), verify:
 - [ ] `extracted_from:` (if present) references an existing or just-created record ID
 - [ ] `supersedes:` (if present) references an existing note ID
 - [ ] ID matches filename (without `.md` extension)
-- [ ] `concepts:` field present (list, possibly empty `[]`); every entry conforms to `_system/registries/CONCEPT_NAMING.md` — snake_case ASCII, English-only, no forbidden type prefix, length ≤ 64. Apply the normalisation algorithm at this check; raw differs from normalised → halt and raise CLARIFICATION (`concept-format-mismatch` / `concept-type-prefix-in-name` / `concept-name-too-long`)
-- [ ] `origin:` field present — value ∈ {`personal`, `work`, `external`}
-- [ ] `audience_tags:` field present (list, possibly empty `[]`); every non-empty entry is either one of the canonical 5 (`family`, `friends`, `work`, `professional-network`, `world`) OR appears in `_system/registries/AUDIENCES.md` Extensions table. Unknown value → halt and raise CLARIFICATION `audience-tag-unknown` (set field to `[]` in the meantime)
-- [ ] `is_sensitive:` field present — boolean
+- [ ] `concepts:` field present (list, possibly empty `[]`). Each entry passed through `normalize_concept_name()`; non-conformant raw values are silently rewritten to the canonical normalised form; entries that cannot be normalised are silently dropped. **Never halt; never CLARIFICATION** — autonomous resolution per the engine doctrine for the concept layer.
+- [ ] `origin:` field present — value ∈ {`personal`, `work`, `external`}. Missing / unknown value → coerce to `personal` silently (the conservative default).
+- [ ] `audience_tags:` field present (list, possibly empty `[]`). Each entry passed through `normalize_audience_tag()`; result accepted only if it matches canonical 5 OR an Extensions row in `_system/registries/AUDIENCES.md`; otherwise silently dropped. Final list may collapse to `[]` — that is the correct fail-closed outcome.
+- [ ] `is_sensitive:` field present — boolean. String `"true"` / `"false"` coerced silently; any other type coerced to `false`.
 
 If any check fails, fix immediately before proceeding.
 
@@ -1576,7 +1598,7 @@ Run these checks over the ENTIRE processing run's output:
 - [ ] No duplicate notes: no two notes cover the same topic from the same source
 - [ ] PROCESSED.md complete: every processed source file has an entry
 - [ ] People registry consistent: every person ID in any note's frontmatter exists in PEOPLE.md
-- [ ] Concept aggregation: every distinct concept name appearing in any frontmatter `concepts:` field across the run has exactly one entry in `concepts.upserts[]` (deduplication by case-folded snake_case). No name appears in two upserts with different `type` (conflict surfaces as CLARIFICATION `concept-type-conflict`, not silent merge).
+- [ ] Concept aggregation: every distinct concept name appearing in any frontmatter `concepts:` field across the run has exactly one entry in `concepts.upserts[]` (deduplication by case-folded snake_case). When the same name was emitted with different `type` values across mentions, the **first-chronological-mention wins** (deterministic by transcript timestamp); subsequent mentions silently coerce to that type for the upsert. No CLARIFICATION raised — autonomous tie-break.
 - [ ] Hub `member_concepts[]` consistency: for every hub touched, manifest `member_concepts[]` equals the union of `concepts:` from member knowledge notes that exist on disk after this run. No phantom concept names (in member_concepts but in no member note's frontmatter).
 
 ### 4.6 Content Proportionality Check + Coverage Fix Rate
@@ -1629,24 +1651,25 @@ the batch:
 1. Walk every record + knowledge note + hub touched in this run; collect
    their `concepts:` frontmatter values (plus, for hubs, the union of
    member-note `concepts:` → `member_concepts[]`).
-2. Deduplicate by `name` (case-folded snake_case). For each distinct
-   name, consolidate metadata captured during Q15 extraction:
-   - `type` — single value; if same name was tagged with two types in
-     different transcripts (e.g. `qdrant` as `tool` in one and `theme`
-     in another), pick the most specific (`tool` > `theme`) and raise
-     CLARIFICATION `concept-type-conflict` with both candidates.
-   - `subtype` — same conflict rule.
+2. Run every collected name through `normalize_concept_name()`. Drop
+   `None` returns silently. Deduplicate the surviving list by canonical
+   name (case-folded snake_case). For each distinct name, consolidate
+   metadata captured during Q15 extraction:
+   - `type` — first-chronological-mention wins (deterministic by
+     transcript timestamp). If `qdrant` was tagged `tool` in transcript
+     T1 and `theme` in T2, the upsert carries `type: tool`. Subsequent
+     mentions silently coerce.
+   - `subtype` — same first-wins rule.
    - `related_concepts[]` — set-union of all related lists across
-     mentions; each entry MUST itself conform to CONCEPT_NAMING.
+     mentions, each entry passed through `normalize_concept_name()` and
+     filtered to exclude the parent `name` (no self-loops).
    - `previous_slugs[]` — present only if a Q15 rename was detected;
-     otherwise omitted.
-3. Validate every name + subtype + related_concepts entry against
-   CONCEPT_NAMING normalisation. Any non-conforming entry → halt batch
-   and raise CLARIFICATION (`concept-format-mismatch` /
-   `concept-type-prefix-in-name` / `concept-name-too-long`); do NOT
-   silently rewrite. The conformance check at this aggregation step
-   is the producer-side guard before manifest emission; `/ztn:lint`
-   Scan A.7 is the post-write double-check.
+     each entry passed through normaliser; otherwise omitted.
+3. **Autonomous post-normalisation guard.** Every value emitted into
+   `concepts.upserts[]` was already produced by `normalize_concept_name()`
+   in step 2 — by construction it is conformant. No additional halt,
+   no CLARIFICATION. Lint Scan A.7 is a post-write double-check that
+   stays silent on a clean batch.
 4. Final list = `concepts.upserts[]`. `concepts_upserted` counter =
    `len(concepts.upserts)`.
 
@@ -1714,11 +1737,11 @@ If any item is incomplete, go back and complete it. No deferring as "follow-up."
 - [ ] In-memory batch data accumulated (Step 4.7): `batch_id` fixed; count fields reconcile with actually created artifacts; `clarifications_raised` matches the in-memory counter value
 - [ ] `threads_opened = 0` AND `threads_resolved = 0` (process does not touch threads)
 - [ ] `people_candidates_appended` matches both (a) the in-memory counter and (b) actual line-count delta in `_system/state/people-candidates.jsonl` since run start. If mismatch — do NOT write batch; investigate the gap (typically missed append invocation or double-count on escape-hatch path)
-- [ ] **Concept extraction (Q15) ran for every transcript.** Every produced record + knowledge note carries a `concepts:` frontmatter field (list, possibly `[]`). Every non-empty entry conforms to CONCEPT_NAMING normalisation. Non-English source terms were translated, not transliterated.
-- [ ] **Privacy trio (Q16) set on every emitted entity.** Every record, knowledge note, hub touched, person profile created/updated, project profile, task, event, idea has all three fields (`origin`, `audience_tags`, `is_sensitive`) present in frontmatter. `audience_tags` defaults `[]` unless explicit sharing intent surfaced — no speculative tagging.
-- [ ] **`concepts.upserts[]` aggregation passed (§4.7).** Every name, subtype, and `related_concepts[]` entry validated against CONCEPT_NAMING. `concepts_upserted` counter matches `len(concepts.upserts)`.
+- [ ] **Concept extraction (Q15) ran for every transcript.** Every produced record + knowledge note carries a `concepts:` frontmatter field (list, possibly `[]`). Every non-empty entry is the output of `normalize_concept_name()` (post-normalisation values are conformant by construction).
+- [ ] **Privacy trio (Q16) set on every emitted entity.** Every record, knowledge note, hub touched, person profile created/updated, project profile, task, event, idea has all three fields (`origin`, `audience_tags`, `is_sensitive`) present in frontmatter. Defaults applied silently where Q16 didn't infer.
+- [ ] **`concepts.upserts[]` aggregation passed (§4.7).** Every entry produced by `normalize_concept_name()` chain; first-chronological-mention wins for `type` ties. `concepts_upserted` counter matches `len(concepts.upserts)`.
 - [ ] **`sensitive_entities[]` aggregation passed (§4.7).** Every entity with `is_sensitive: true` listed once in `sensitive_entities[]` with `{path, kind, audience_tags}`. `sensitive_entities` counter matches `len(...)`.
-- [ ] **No silent audience-tag coining.** Every novel audience tag triggered CLARIFICATION `audience-tag-unknown` (counted in `clarifications_raised`); none was silently inserted into entity frontmatter.
+- [ ] **Hub privacy auto-derivation passed.** Every hub touched in this run had `origin` / `audience_tags` / `is_sensitive` re-derived from current members (dominant origin / audience-intersection / any-sensitive) before manifest emission.
 
 **Note on batch artifacts:** the files `_system/state/batches/{batch-id}.md` and the new row in
 `_system/state/BATCH_LOG.md` are NOT yet on disk at this point, and therefore are NOT checked in

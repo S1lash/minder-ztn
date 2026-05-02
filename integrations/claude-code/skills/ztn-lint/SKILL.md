@@ -256,6 +256,35 @@ Iterate `3_resources/people/*.md`:
 
 Idempotent — re-running finds no missing sections → no writes.
 
+### 1.D — Privacy-trio backfill (one-time, autonomous)
+
+Gate: check `migration_completed.privacy_trio_backfill` flag in Step
+0 (same mechanism as 1.A / 1.B). Run only on first lint after the
+v2.0 batch-format rollout; subsequent lints skip silently.
+
+Pipeline:
+
+1. Glob every `.md` in scope of Scan A.7 (records, knowledge notes,
+   hubs, person profiles, project profiles — same exclusions: skip
+   registries, generated views, raw transcripts, append-only log
+   files, owner-curated SOUL/TASKS/CALENDAR/POSTS).
+2. For each file with frontmatter, check `origin` / `audience_tags` /
+   `is_sensitive`. Missing fields → insert with conservative defaults
+   (`origin: personal`, `audience_tags: []`, `is_sensitive: false`).
+3. Same `_common.py::normalize_concept_name()` chain over `concepts:`
+   field if present (covers any pre-existing entries that are
+   non-conformant).
+4. **One commit per migration class.** Aggregate all backfills into
+   a single migration log entry under §1.C, marked
+   `migration: privacy-trio-backfill`. The diff is owner-visible
+   through git but no CLARIFICATION queue entry — the backfill is
+   deterministic and conservative-safe.
+5. Set `migration_completed.privacy_trio_backfill = {YYYY-MM-DD}` in
+   `_system/state/log_lint.md` first-run frontmatter.
+
+Idempotent: re-running finds no missing fields → no writes (Scan A.7
+takes over for ongoing autofix).
+
 ### 1.C — Write Migration log entry
 
 Structured subsection для Step 7 log_lint.md entry:
@@ -285,8 +314,8 @@ Load into memory (streamed on-demand where noted):
 **Core live state:**
 - `_system/SOUL.md` (Focus + Values + Working Style — used by Scan E + monthly SOUL advice)
 - `_system/docs/SYSTEM_CONFIG.md` (Data & Processing Rules, Tier thresholds, Profile template, CLARIFICATIONS format contract)
-- `_system/registries/CONCEPT_NAMING.md` (concept name format — drives Scan A.7 frontmatter + manifest validation; normalisation algorithm + 18-enum + forbidden type prefixes; CLARIFICATION codes `concept-format-mismatch`/`concept-type-prefix-in-name`/`concept-name-too-long` raised by A.7)
-- `_system/registries/AUDIENCES.md` (audience tag whitelist — drives Scan A.7 `audience_tags[]` validation; parse `<!-- BEGIN extensions -->` … `<!-- END extensions -->` block for tenant extensions, exclude `Status: deprecated:*` rows; CLARIFICATION codes `audience-tag-unknown`/`audience-tag-reserved-conflict`/`audience-tag-format-mismatch` raised by A.7)
+- `_system/registries/CONCEPT_NAMING.md` (concept name format — informational; Scan A.7 enforces via the autonomous helpers in `_system/scripts/_common.py` (`normalize_concept_name`, `normalize_concept_list`). All format issues resolved by silent autofix or silent drop — never raises CLARIFICATION. Fix-ids `concept-format-autofix` / `concept-drop-autofix` / `concept-manifest-autofix` logged in `log_lint.md`)
+- `_system/registries/AUDIENCES.md` (audience tag whitelist — Scan A.7 parses `<!-- BEGIN extensions -->` … `<!-- END extensions -->` block, excludes `Status: deprecated:*` rows. Tags failing whitelist (canonical 5 ∪ active extensions) silently dropped via `_common.py::normalize_audience_tag`. Fix-ids `audience-tag-normalise-autofix` / `audience-tag-drop-autofix` / `audience-tag-manifest-autofix`. Engine never coins new extensions; AUDIENCES.md extensions remain owner-curated outside the pipeline)
 - `3_resources/people/PEOPLE.md` (all persons, Tier/Mentions/Last — used by Scan C)
 - `_system/state/OPEN_THREADS.md` (Active + recent Resolved — used by Scan B)
 - `_system/TASKS.md` (Waiting/Action/Delegate sections — thread activity detection)
@@ -405,93 +434,92 @@ The 7-day grace window absorbs the «no maintain run for a few days»
 case (e.g. owner travelling) without spamming. Beyond 7 days drift
 warrants surfacing — the catalog is materially behind the corpus.
 
-**A.7 Concept and audience-tag format validation:**
+**A.7 Concept and audience-tag format autofix (autonomous, no CLARIFICATIONs):**
 
 Frontmatter and manifest double-check for the privacy + concept fields
 emitted by `/ztn:process` Steps 3.4 Q15/Q16 and §4.7. Lint is the
-post-write enforcement gate against the registries in
-`_system/registries/CONCEPT_NAMING.md` and
-`_system/registries/AUDIENCES.md`.
+post-write **autofix** gate. **The concept layer is fully autonomous —
+A.7 raises ZERO CLARIFICATIONs. Every violation is resolved
+deterministically by `_system/scripts/_common.py` helpers
+(`normalize_concept_name`, `normalize_concept_list`,
+`normalize_audience_tag`).** All fix-ids are `strong` floor (silent
+autofix, log entry only).
 
 Pipeline:
 
-1. **Concept-name conformance — frontmatter.** Iterate every `.md`
-   file with frontmatter. Inspect each value in `concepts:`. For each
-   string, run the CONCEPT_NAMING normalisation algorithm (lowercase;
-   replace separators with `_`; collapse runs; trim). Compare raw vs
-   normalised:
-   - Raw equals normalised AND `^[a-z0-9_]+$` AND length ∈ [1, 64]
-     AND no forbidden type prefix → OK.
-   - Raw differs from normalised (whitespace / case / hyphens / unicode
-     dashes / non-ASCII) → `weak` floor, CLARIFICATION
-     `concept-format-mismatch`. Body: `{path}` + `{raw}` + `{proposed canonical}`.
-   - Starts with a forbidden type prefix (`theme_`, `decision_`,
-     `person_`, `project_`, `tool_`, `idea_`, `event_`, `goal_`,
-     `value_`, `fact_`, `organization_`, `skill_`, `location_`,
-     `emotion_`, `preference_`, `constraint_`, `algorithm_`,
-     `other_`) → `weak` floor, CLARIFICATION `concept-type-prefix-in-name`.
-     Body: `{path}` + `{raw}` + suggestion to drop the prefix.
-   - Length > 64 after normalisation → `weak` floor, CLARIFICATION
-     `concept-name-too-long`. Body: `{path}` + `{raw}` + suggested
-     shortening + reminder of Rule 8 (extract load-bearing noun).
+1. **Concept-name autofix — frontmatter.** Iterate every `.md` file
+   with frontmatter. For each value in `concepts:`, call
+   `normalize_concept_name(raw)`:
+   - `raw == result` → OK, no fix.
+   - `raw != result` (got back a normalised name) → `strong` floor,
+     **silent autofix**, fix-id reason `concept-format-autofix` with
+     `{path}` + `{raw}` + `{normalised}` in `log_lint.md`. Frontmatter
+     value rewritten in place.
+   - `result is None` (cannot normalise — non-ASCII residue,
+     forbidden-type-prefix-only, empty after strip) → `strong` floor,
+     **silent drop** of that entry; fix-id reason `concept-drop-autofix`
+     with `{path}` + `{raw}` + reason. The `concepts:` list shrinks;
+     other entries preserved.
 
-2. **Concept-name conformance — manifest.** Read the most recent batch
+2. **Concept-name autofix — manifest.** Read the most recent batch
    manifest at `_system/state/batches/{ts}-process.json` (if present)
-   and validate `concept_hints[]` per record/note, `member_concepts[]`
-   per hub, `applies_in_concepts[]` per principle, and every field in
-   `concepts.upserts[]` (`name`, `subtype` if present, every entry of
-   `related_concepts[]` and `previous_slugs[]`). Same three CLARIFICATION
-   codes apply. Manifest violations indicate `/ztn:process` Step 4.7
-   producer-side guard missed something — this is the post-write
-   safety net.
+   and apply `normalize_concept_list` to `concept_hints[]` per
+   record/note, `member_concepts[]` per hub, `applies_in_concepts[]`
+   per principle, and the `name` / `subtype` / `related_concepts[]` /
+   `previous_slugs[]` of every `concepts.upserts[]` entry. Manifest
+   files are ZTN-internal artifacts — autofix the values in place,
+   log fix-id `concept-manifest-autofix`, no CLARIFICATION. Manifest
+   violations after `/ztn:process` are functionally impossible
+   (producer-side normalisation in §4.7) but the post-write check
+   stays as defence-in-depth.
 
-3. **Audience-tag conformance.** Iterate every `.md` file with
-   frontmatter `audience_tags:`. For each non-empty entry:
-   - Belongs to canonical 5 (`family`, `friends`, `work`,
-     `professional-network`, `world`) → OK.
-   - Belongs to AUDIENCES.md Extensions table (parse rows between
-     `<!-- BEGIN extensions -->` and `<!-- END extensions -->`,
-     status NOT `deprecated:*`) → OK.
-   - Case-folded equals a canonical word but raw form differs
-     (`Family`, `family_`, `family.`) OR is a single longer label
-     that a reader would read as the canonical word with extra chars
-     → `weak` floor, CLARIFICATION `audience-tag-reserved-conflict`.
-     Body: `{path}` + `{raw}` + the canonical it conflicts with +
-     suggestion to drop or rename to a clearly distinct longer label.
-   - Fails format (not kebab-case, ASCII `[a-z0-9-]`, length 2–32) →
-     `weak` floor, CLARIFICATION `audience-tag-format-mismatch`.
-     Body: `{path}` + `{raw}` + suggested correction.
-   - Otherwise (well-formed but unknown) → `weak` floor, CLARIFICATION
-     `audience-tag-unknown`. Body: `{path}` + `{raw}` + the three
-     resolutions per AUDIENCES.md (add-to-registry / map-to-existing
-     / drop). Resolution write-path is `/ztn:resolve-clarifications` —
-     lint never auto-extends the registry.
+3. **Audience-tag autofix — frontmatter.** Iterate every `.md` file
+   with frontmatter `audience_tags:`. Load AUDIENCES.md and parse the
+   Extensions table (rows between `<!-- BEGIN extensions -->` and
+   `<!-- END extensions -->`, status NOT `deprecated:*`). Build the
+   accept-set = canonical 5 ∪ active extensions. For each tag:
+   - In accept-set verbatim → OK, no fix.
+   - `normalize_audience_tag(raw)` returns a value that IS in the
+     accept-set → `strong` floor, autofix to normalised, fix-id
+     `audience-tag-normalise-autofix`. Catches case / punctuation
+     drift and reserved-word conflicts (`Family` → `family`).
+   - `normalize_audience_tag(raw)` returns a value NOT in accept-set
+     OR returns `None` → `strong` floor, **silent drop** of the tag,
+     fix-id `audience-tag-drop-autofix`. List collapses to `[]` if
+     all entries dropped. Fail-closed: the engine never coins a new
+     extension; AUDIENCES.md Extensions remains owner-curated outside
+     the pipeline.
 
-4. **Manifest audience-tag conformance.** Same checks against
-   manifest's per-entity `audience_tags[]` arrays (records,
-   knowledge_notes, hubs, person profiles, project profiles, tasks,
-   events, ideas, principles).
+4. **Manifest audience-tag autofix.** Same rules over manifest
+   per-entity `audience_tags[]` arrays. Fix-id
+   `audience-tag-manifest-autofix`.
 
-5. **Privacy-trio presence.** For every record / knowledge note / hub
-   / person profile / project profile, verify all three fields
+5. **Privacy-trio presence autofix.** For every record / knowledge
+   note / hub / person profile / project profile, check
    (`origin`, `audience_tags`, `is_sensitive`) present in frontmatter.
-   Missing field → `strong` floor, autofix candidate (insert default:
-   `origin: personal` for files without clear context, `audience_tags:
-   []`, `is_sensitive: false`). Autofix is `strong` because defaults
-   are explicitly conservative-safe; no leaking risk. CLARIFICATION
-   `privacy-trio-missing` raised on autofix application so owner sees
-   which files were touched.
+   Missing → `strong` floor, **silent autofix** with conservative
+   defaults (`origin: personal`, `audience_tags: []`,
+   `is_sensitive: false`). Fix-id `privacy-trio-backfill-autofix`.
+   No CLARIFICATION; defaults are conservative-safe by construction.
 
-6. **`is_sensitive` value type.** Must be boolean. String `"true"` /
-   `"false"` → `strong` floor, autofix to bool. Any other type
-   (int, list, null) → `weak` floor, CLARIFICATION
-   `privacy-trio-bad-type`.
+6. **`is_sensitive` type coercion.** Must be boolean. String `"true"`
+   / `"True"` → `true`; string `"false"` / `"False"` → `false`. Any
+   other non-bool type (int 0/1 → bool; null / list / number / other
+   string → coerce to `false` — the safer outcome). All `strong`
+   floor autofix, fix-id `is-sensitive-coerce-autofix`. No CLARIFICATION.
 
-Scope: this scan ignores files where the doctrine intentionally
-omits the trio (e.g. registries themselves under
-`_system/registries/`, generated views under `_system/views/`, the
-`_sources/processed/` raw transcripts, and `_system/state/log_*.md`
-audit logs).
+7. **`origin` value coercion.** Must be one of `personal | work |
+   external`. Any other value or type → coerce to `personal`
+   (conservative default), `strong` floor autofix, fix-id
+   `origin-coerce-autofix`.
+
+Scope: this scan ignores files where the trio intentionally does not
+apply (registries themselves under `_system/registries/`, generated
+views under `_system/views/`, raw transcripts under
+`_sources/processed/`, append-only audit logs under
+`_system/state/log_*.md`, and owner-curated registries SOUL.md /
+TASKS.md / CALENDAR.md / POSTS.md — see batch-format.md
+"Owner-curated registries" note).
 
 ### Scan B — Thread Lifecycle
 
@@ -923,6 +951,9 @@ Input: `principle-candidates.jsonl` + visible active principles (via
 whitespace). Compare against each active principle's normalised
 `statement`. On equality: append Evidence Trail entry to the active
 principle (`automerge-exact` event type, reference the candidate record),
+**propagate the candidate's `applies_in_concepts[]` to the principle
+frontmatter** (set-union with existing, then
+`_common.py::normalize_concept_list()` to dedupe/sanitise; write back),
 remove the candidate from the buffer, raise CLARIFICATION
 `principle-automerge-exact` (info-only).
 
@@ -943,9 +974,17 @@ Invoke reasoning LLM with prompt:
 
 - `(a) confidence > 0.8` → automerge as in Level 1, CLARIFICATION
   `principle-automerge-llm` (info, with LLM reasoning preserved).
+  **Propagate `applies_in_concepts[]` from the candidate buffer entry
+  to the target principle's frontmatter:** read existing
+  `applies_in_concepts:` (default `[]`), set-union with the candidate's
+  `applies_in_concepts[]`, run the result through
+  `_common.py::normalize_concept_list()` to dedupe and sanitise, write
+  back. Never raises — autonomous propagation under the same concept-
+  layer policy as A.7.
 - `(b) confidence > 0.8` → add candidate to the target principle's
   `## Related` section as an edge-case reference. CLARIFICATION
-  `principle-extended-llm` (info, owner may override).
+  `principle-extended-llm` (info, owner may override). Same
+  `applies_in_concepts[]` propagation rule as (a).
 - `(c)` or low-confidence → candidate stays in buffer for F.3 weekly
   aggregate.
 - `(d) confidence > 0.9` → tag candidate as suggested-noise in the
@@ -1495,20 +1534,36 @@ The skill clusters items by theme, reminds context + verbatim quotes inline, and
 - `profile-context-missing` — existing profile без `## Контекст`, semantic content needed
 - `profile-non-canonical-sections` — profile has extra sections beyond canonical template (surfaced — policy decision pending between strict / allowed extensions / whitelist)
 
-**Concept naming (A.7):**
-- `concept-format-mismatch` — concept-name string violates snake_case ASCII or contains non-ASCII (frontmatter `concepts:` or any manifest concept field)
-- `concept-type-prefix-in-name` — concept name begins with a forbidden type prefix (`theme_`, `decision_`, `person_`, `project_`, `tool_`, etc. — type lives in metadata, not in name)
-- `concept-name-too-long` — concept name exceeds 64 chars after normalisation
-- `concept-type-conflict` — same concept name appears with two different `type` values across mentions in the run (raised by `/ztn:process` §4.7 producer-side aggregation; lint surfaces if it leaks past)
+**Concept and audience autofix (A.7) — autonomous, fix-codes only.**
+These are NOT CLARIFICATION codes; they are fix-ids logged in
+`log_lint.md` for traceability. The concept layer is 100% autonomous:
+the engine resolves every concept/audience format issue with
+deterministic heuristics in `_common.py`. Owner sees no queue,
+takes no action.
 
-**Audience tags (A.7):**
-- `audience-tag-unknown` — `audience_tags[]` value not in canonical 5 (`family`, `friends`, `work`, `professional-network`, `world`) and not in `_system/registries/AUDIENCES.md` Extensions table
-- `audience-tag-reserved-conflict` — extension tag matches a canonical word case-folded or with extra punctuation/casing chars (`Family`, `family_`, etc.)
-- `audience-tag-format-mismatch` — `audience_tags[]` value violates kebab-case ASCII or length 2–32
-
-**Privacy trio (A.7):**
-- `privacy-trio-missing` — record / knowledge note / hub / person profile / project profile missing one or more of `origin`, `audience_tags`, `is_sensitive` in frontmatter (autofix inserts conservative defaults; CLARIFICATION informs owner)
-- `privacy-trio-bad-type` — `is_sensitive` is not a boolean (string, int, list, null)
+- `concept-format-autofix` — concept-name rewritten in place by
+  `normalize_concept_name()` (case / kebab→snake / diacritic-fold)
+- `concept-drop-autofix` — concept-name entry dropped silently
+  (non-ASCII residue, empty after type-prefix strip, or
+  unnormalisable). The `concepts:` list shrinks; other entries kept.
+- `concept-manifest-autofix` — same fixes applied to manifest concept
+  fields (`concept_hints[]`, `member_concepts[]`,
+  `applies_in_concepts[]`, `concepts.upserts[].name|subtype|related_concepts|previous_slugs`)
+- `audience-tag-normalise-autofix` — audience-tag rewritten to
+  normalised form when normalised version is in canonical 5 or
+  AUDIENCES.md Extensions
+- `audience-tag-drop-autofix` — audience-tag entry dropped (not in
+  whitelist, can't be normalised to whitelisted form). Fail-closed:
+  engine never coins an extension.
+- `audience-tag-manifest-autofix` — same against manifest entity
+  `audience_tags[]` arrays
+- `privacy-trio-backfill-autofix` — missing `origin` / `audience_tags`
+  / `is_sensitive` field inserted with conservative defaults
+  (`personal` / `[]` / `false`)
+- `is-sensitive-coerce-autofix` — non-bool `is_sensitive` value
+  coerced to bool (`"true"`/`"True"` → `true`, anything else → `false`)
+- `origin-coerce-autofix` — out-of-enum `origin` value coerced to
+  `personal`
 
 **Migration (first run only):**
 - `migration-item-needs-review` — legacy Resolved Archive item migrated with low LLM confidence

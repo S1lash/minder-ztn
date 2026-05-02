@@ -76,14 +76,15 @@ from the owner's own corpus, not from this skill's prompt.
   principle plausibly applies to, captured **only** when the observation
   context names ≥1 concept clearly (e.g. the trade-off was about
   `delegation_pattern` or `code_review_quality`). When uncertain, leave
-  the list empty `[]`. Every entry MUST conform to
-  `_system/registries/CONCEPT_NAMING.md` — snake_case ASCII,
-  English-only (translate non-English source terms; never
-  transliterate), ≤64 chars, no forbidden type prefix. The capture
-  helper validates format on write; non-conformant entries fail the
-  append, not silently rewritten. Empty default is the right choice
-  in the buffer — Scan F.5 LLM-judge merge can attach concepts at
-  promotion using the active concept graph as context.
+  the list empty `[]`. Format target: `_system/registries/CONCEPT_NAMING.md`
+  — snake_case ASCII, English-only (translate non-English source terms),
+  ≤64 chars, no forbidden type prefix. The capture helper auto-normalises
+  silently per the autonomous-pipeline policy: case / kebab→snake,
+  diacritic-fold, type-prefix strip, length truncate. Entries that
+  cannot be normalised (non-ASCII residue, empty after stripping) are
+  dropped silently. **The helper never rejects the append for concept
+  format issues**; the engine resolves heuristically without owner
+  action.
 - No proper nouns of real people in any field except `record_ref`.
   Names belong to `/ztn:process` → PEOPLE.md.
 
@@ -128,10 +129,12 @@ from the owner's own corpus, not from this skill's prompt.
    ```
 
    `--applies-in-concepts` is optional and accepts a comma-separated
-   list of snake_case concept names (e.g.
-   `delegation_pattern,code_review_quality`). The helper validates each
-   entry against `_system/registries/CONCEPT_NAMING.md` and rejects the
-   append on any format violation rather than silently sanitising.
+   list of concept names (e.g. `delegation_pattern,code_review_quality`).
+   The helper auto-normalises each entry per CONCEPT_NAMING.md
+   (case / kebab→snake / diacritic-fold / type-prefix strip / length
+   truncate) and dedupes the result. Entries that cannot be normalised
+   are dropped. The helper does NOT reject the append for concept
+   format — autonomous resolution is the contract.
 
    `origin` is resolved automatically from `CLAUDE_CONTEXT`:
    - `personal` (or unset) → `personal`
