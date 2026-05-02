@@ -104,3 +104,26 @@ If you ever want to reset a `template:` file back to the upstream seed
 git checkout upstream/main -- zettelkasten/_system/SOUL.template.md
 mv zettelkasten/_system/SOUL.template.md zettelkasten/_system/SOUL.md
 ```
+
+## Owner-data migrations (manual, opt-in)
+
+Some changes touch your data (frontmatter shape, registry rows). Those
+do NOT run via `scripts/migrations/` (which is engine-only and
+forbidden from rewriting owner data). Instead they ship as scripts
+under `_system/scripts/` that you invoke manually when relevant:
+
+- `_system/scripts/migrate_legacy_frontmatter.py` — one-shot rewrite
+  of pre-canonical frontmatter field names left over from older
+  `/ztn:process` versions: `participants:` → `people:`, `date:` →
+  `created:`, `project_refs:` → `projects:`, drop `hub_refs:`, fold
+  singular `type:` (note-style values only) into `types: [list]`,
+  backfill `title:` from body H1 when missing. Project / person / hub
+  profiles keep their canonical singular `type:` untouched.
+
+  ```bash
+  python3 zettelkasten/_system/scripts/migrate_legacy_frontmatter.py --mode scan
+  python3 zettelkasten/_system/scripts/migrate_legacy_frontmatter.py --mode fix
+  ```
+
+  Idempotent — re-running on a migrated corpus is a no-op. Run only if
+  scan reports events.

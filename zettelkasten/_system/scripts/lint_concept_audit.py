@@ -506,14 +506,40 @@ def fix_domains(
     return new_fm, events
 
 
-def fix_privacy_trio(fm: dict) -> tuple[dict, list[dict]]:
-    """Backfill missing trio fields and coerce types."""
+def derive_origin_from_path(path: Path | None) -> str:
+    """Path-based origin heuristic — deterministic, autonomous-resolution
+    qualifying per ENGINE_DOCTRINE §3.1 (algorithm-driven, conservative-safe).
+
+    Multi-person work events → `work`. Solo Plaud / personal folders →
+    `personal`. Career thinking lives in `personal` per the spec
+    (career = owner's identity work, not work-context). Falls back to
+    `personal` when no rule matches.
+    """
+    if path is None:
+        return "personal"
+    rel = path.as_posix()
+    if "/_records/meetings/" in rel or rel.startswith("_records/meetings/"):
+        return "work"
+    if "/2_areas/work/" in rel:
+        return "work"
+    return "personal"
+
+
+def fix_privacy_trio(fm: dict, path: Path | None = None) -> tuple[dict, list[dict]]:
+    """Backfill missing trio fields and coerce types.
+
+    `origin` is derived from path when missing (see `derive_origin_from_path`).
+    `audience_tags` defaults to `[]` (owner-only, conservative). `is_sensitive`
+    defaults to `False`. Owner reviews via `/ztn:lint` summary on first run
+    and refines with intelligent assignment if the corpus has rich legacy
+    content the path heuristic cannot resolve.
+    """
     events: list[dict] = []
     new_fm = dict(fm)
     fields_added: list[str] = []
 
     if "origin" not in new_fm:
-        new_fm["origin"] = "personal"
+        new_fm["origin"] = derive_origin_from_path(path)
         fields_added.append("origin")
     if "audience_tags" not in new_fm:
         new_fm["audience_tags"] = []
@@ -526,6 +552,7 @@ def fix_privacy_trio(fm: dict) -> tuple[dict, list[dict]]:
         events.append({
             "fix_id": "privacy-trio-backfill-autofix",
             "fields_added": fields_added,
+            "origin_source": "path-derived" if "origin" in fields_added else None,
         })
 
     origin = new_fm.get("origin")
@@ -591,7 +618,7 @@ def process_file(
     all_events.extend(events)
 
     if has_layer:
-        fm, events = fix_privacy_trio(fm)
+        fm, events = fix_privacy_trio(fm, path)
         all_events.extend(events)
 
     if all_events and mode == "fix":

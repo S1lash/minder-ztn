@@ -191,6 +191,52 @@ class PrivacyTrioBackfillTests(unittest.TestCase):
             self.assertIn("is_sensitive: false", text)
         clear_ztn_env()
 
+    def test_origin_derived_from_meetings_path(self):
+        """Meeting record gets origin=work from path heuristic, not personal default."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_audiences(root)
+            f = _write_md(
+                root / "_records" / "meetings" / "20260501-meeting.md",
+                'id: m1\nlayer: record\ntitle: "M"\n',
+            )
+            _run(root, mode="fix")
+            text = f.read_text(encoding="utf-8")
+            self.assertIn("origin: work", text)
+        clear_ztn_env()
+
+    def test_origin_derived_from_areas_work_path(self):
+        """Note in 2_areas/work/ gets origin=work."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            (root / "2_areas" / "work").mkdir(parents=True, exist_ok=True)
+            _write_audiences(root)
+            f = _write_md(
+                root / "2_areas" / "work" / "n.md",
+                'id: w1\nlayer: knowledge\ntitle: "W"\n',
+            )
+            _run(root, mode="fix")
+            text = f.read_text(encoding="utf-8")
+            self.assertIn("origin: work", text)
+        clear_ztn_env()
+
+    def test_origin_personal_default_outside_work_paths(self):
+        """Solo-capture paths and unmatched folders fall back to personal."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_audiences(root)
+            f = _write_md(
+                root / "_records" / "observations" / "obs.md",
+                'id: o1\nlayer: record\ntitle: "O"\n',
+            )
+            _run(root, mode="fix")
+            text = f.read_text(encoding="utf-8")
+            self.assertIn("origin: personal", text)
+        clear_ztn_env()
+
     def test_origin_coerced(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

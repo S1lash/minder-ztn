@@ -274,7 +274,18 @@ python3 _system/scripts/lint_concept_audit.py \
 
 The helper covers all backfill needs:
 - privacy-trio defaults inserted on every record / knowledge note /
-  hub / person profile / project profile that lacks the fields
+  hub / person profile / project profile that lacks the fields:
+  - `origin` is **path-derived**: `_records/meetings/*` and
+    `2_areas/work/*` → `work`; everything else → `personal`. The
+    derivation is deterministic and qualifies for autonomous resolution
+    per `ENGINE_DOCTRINE §3.1` (algorithm-driven, conservative-safe).
+    Owner refines manually after Step 1.D's first run if the path
+    heuristic mis-classifies any file (e.g. a personal reflection in
+    `2_areas/work/`).
+  - `audience_tags` defaults to `[]` (owner-only) — sharing intent is
+    owner-curated, never auto-assigned.
+  - `is_sensitive` defaults to `false` — content-driven judgment, owner
+    flips manually for therapy/health/family/financial/promotion content.
 - `concepts:` autofix on any pre-existing non-conformant entries (rare
   in current corpus but possible after manual edits)
 - `audience_tags:` whitelist enforcement on any pre-existing entries

@@ -36,7 +36,7 @@ import json
 import re
 import sys
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -119,6 +119,8 @@ def _date_from_frontmatter(fm: dict) -> date | None:
     raw = fm.get("date") or fm.get("created") or fm.get("first_seen")
     if raw is None:
         return None
+    if isinstance(raw, datetime):
+        return raw.date()
     if isinstance(raw, date):
         return raw
     if isinstance(raw, str):

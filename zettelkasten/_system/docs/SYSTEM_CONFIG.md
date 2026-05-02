@@ -657,7 +657,7 @@ Spec: `_system/registries/AUDIENCES.md` for `audience_tags`.
 
 | Field | Type | Default | Spec |
 |---|---|---|---|
-| `origin` | enum `personal \| work \| external` | `personal` | Source provenance — does NOT determine sharing scope |
+| `origin` | enum `personal \| work \| external` | path-derived (see Lint Step 1.D); else `personal` | Source provenance — does NOT determine sharing scope |
 | `audience_tags` | `text[]` | `[]` (owner-only) | Whitelist: canonical 5 (`family`/`friends`/`work`/`professional-network`/`world`) ∪ active extensions in AUDIENCES.md |
 | `is_sensitive` | bool | `false` | Friction modifier on share — orthogonal to audience |
 
@@ -666,9 +666,13 @@ Spec: `_system/registries/AUDIENCES.md` for `audience_tags`.
 - **Hub auto-derivation:** `recompute_hub_trio()` fills MISSING fields
   from members (dominant origin / audience intersection / sensitivity
   contagion); never overwrites owner-set values.
-- **Lint Step 1.D backfill** applies conservative defaults to existing
-  entities lacking the trio (one-time migration on first lint run
-  after the engine adopts the trio).
+- **Lint Step 1.D backfill** fills missing trio on existing entities
+  (one-time migration on first lint run after the engine adopts the
+  trio). `origin` derives from path:
+  `_records/meetings/*` and `2_areas/work/*` → `work`; everything else
+  → `personal`. `audience_tags` defaults to `[]` (sharing intent is
+  owner-curated, never auto-assigned). `is_sensitive` defaults to
+  `false` (content-driven, owner refines).
 
 ## Content Potential Fields
 
