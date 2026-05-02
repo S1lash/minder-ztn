@@ -66,13 +66,18 @@ zettelkasten/
 │   │   ├── agent-lens-runs.jsonl # машинный индекс agent-lens runs (one JSON per line)
 │   │   ├── agent-lens-rejected/  # raw Stage 2 outputs (validator rejected)
 │   │   ├── batches/              # полные batch-отчёты
+│   │   │   ├── {batch_id}.md            # human-readable markdown report (per-batch)
+│   │   │   ├── {batch_id}.json          # machine-parseable JSON manifest (Minder consumer contract)
+│   │   │   └── {batch_id}-maintain.json # /ztn:maintain manifest (per maintain integration batch)
 │   │   └── lint-context/         # Lint Context Store: daily/ (30d rolling) + monthly/ (forever)
 │   ├── agent-lens/               # agent-lens outputs (private, owner-only review)
 │   │   └── {lens-id}/{date}.md   # one snapshot per run per lens
 │   ├── scripts/                  # Python pipeline (см. scripts/README.md)
-│   └── registries/               # реестры сущностей (schema-only после 4.75)
-│       ├── TAGS.md               # реестр тегов
+│   └── registries/               # реестры сущностей
+│       ├── TAGS.md               # реестр тегов (`tags:` axis)
 │       ├── SOURCES.md            # реестр источников
+│       ├── CONCEPT_NAMING.md     # canonical concept-name format (`concepts:` axis)
+│       ├── AUDIENCES.md          # `audience_tags` whitelist (canonical 5 + extensions)
 │       ├── AGENT_LENSES.md       # agent-lens registry + concept + lifecycle
 │       ├── lenses/               # per-lens definitions
 │       │   ├── _frame.md         # two-stage frame + validator rules

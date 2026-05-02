@@ -43,11 +43,13 @@
 - ❌ `ZTN v4.5`, `ZTN v4.6`, `v4.7 One-Shot Populator` в SKILL headers/descriptions
 - ❌ `**Version:** 4.7` в SYSTEM_CONFIG или других system files
 - ❌ `ztn:process v4.5` как processor identity
-- ❌ `batch-format v1.0` в references (кроме самого `batch-format.md`, где spec version = content)
+- ❌ `batch-format v2.0` в references (кроме самого `batch-format.md`, где spec version = content)
 
 **Правило:** SKILL describes itself by name, не by version. Если контракт между
 компонентами требует версию — это живёт только в `batch-format.md` frontmatter
-как single-point spec version (`version: 1.0`).
+как single-point spec version + Version History section. Per-version narratives
+("в v2.0 добавилось X", "со времён v1.0...") НЕ цитируются в других файлах —
+они уйдут в git log при следующем bump.
 
 ### 2. Phase references
 
@@ -125,9 +127,9 @@ territory.
 
 ### 3. Spec-file version references (only in that spec itself)
 
-- ✓ `batch-format.md` has `version: 1.0` в frontmatter + Version History section
+- ✓ `batch-format.md` carries `version: N.M` в frontmatter + Version History section
   (this is the one place version-bump rules are appropriate — spec evolution is
-  the document's own metadata)
+  the document's own metadata; everywhere else describe behaviour, not version)
 
 ### 4. Operational historical data в logs
 
