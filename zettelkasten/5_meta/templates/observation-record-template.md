@@ -20,6 +20,17 @@ people:
   - {любой упомянутый по имени}
 projects:
   - {проекты, если затронуты}
+# Concepts touched in the observation (snake_case per CONCEPT_NAMING.md;
+# excludes people/projects). Empty list allowed when nothing concrete
+# enough surfaced.
+concepts:
+  - concept_name_1
+# Privacy trio — defaults personal / [] / false on solo Plaud capture.
+# Set is_sensitive: true on therapy / health / family / financial content.
+# See _system/registries/AUDIENCES.md + ENGINE_DOCTRINE §3.8.
+origin: personal
+audience_tags: []
+is_sensitive: false
 tags:
   - record/observation
   - person/{speaker}

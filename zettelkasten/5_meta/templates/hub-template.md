@@ -17,6 +17,15 @@ domains:
 projects: []
 people: []
 
+# Hub privacy trio. Hubs typically inherit the dominant audience of their
+# member notes; default conservatively to owner-only and widen on owner
+# review. `member_concepts[]` is NOT stored here — it's derived at
+# manifest-emission time from member knowledge notes' `concepts:` lists.
+# See _system/registries/AUDIENCES.md + ENGINE_DOCTRINE §3.8.
+origin: {personal|work|external}
+audience_tags: []
+is_sensitive: false
+
 related_notes: N
 first_mention: YYYY-MM-DD
 last_mention: YYYY-MM-DD

@@ -205,6 +205,80 @@ class AppendCandidateTests(unittest.TestCase):
             self.assertEqual(entry["origin"], "external")
         clear_ztn_env()
 
+    def test_applies_in_concepts_default_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = make_fixture(Path(tmp))
+            buf = fx.system / "state" / "principle-candidates.jsonl"
+            a.main([
+                "--situation", "x",
+                "--suggested-type", "principle",
+                "--suggested-domain", "tech",
+                "--buffer", str(buf),
+            ])
+            entry = _read_buffer(buf)[-1]
+            self.assertEqual(entry["applies_in_concepts"], [])
+        clear_ztn_env()
+
+    def test_applies_in_concepts_valid_names_persisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = make_fixture(Path(tmp))
+            buf = fx.system / "state" / "principle-candidates.jsonl"
+            a.main([
+                "--situation", "x",
+                "--suggested-type", "principle",
+                "--suggested-domain", "tech",
+                "--applies-in-concepts", "delegation_pattern, code_review_quality",
+                "--buffer", str(buf),
+            ])
+            entry = _read_buffer(buf)[-1]
+            self.assertEqual(
+                entry["applies_in_concepts"],
+                ["delegation_pattern", "code_review_quality"],
+            )
+        clear_ztn_env()
+
+    def test_applies_in_concepts_rejects_format_violation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = make_fixture(Path(tmp))
+            buf = fx.system / "state" / "principle-candidates.jsonl"
+            with self.assertRaises(SystemExit):
+                a.main([
+                    "--situation", "x",
+                    "--suggested-type", "principle",
+                    "--suggested-domain", "tech",
+                    "--applies-in-concepts", "Delegation-Pattern",  # kebab + caps
+                    "--buffer", str(buf),
+                ])
+        clear_ztn_env()
+
+    def test_applies_in_concepts_rejects_type_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = make_fixture(Path(tmp))
+            buf = fx.system / "state" / "principle-candidates.jsonl"
+            with self.assertRaises(SystemExit):
+                a.main([
+                    "--situation", "x",
+                    "--suggested-type", "principle",
+                    "--suggested-domain", "tech",
+                    "--applies-in-concepts", "theme_delegation",
+                    "--buffer", str(buf),
+                ])
+        clear_ztn_env()
+
+    def test_applies_in_concepts_rejects_non_ascii(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = make_fixture(Path(tmp))
+            buf = fx.system / "state" / "principle-candidates.jsonl"
+            with self.assertRaises(SystemExit):
+                a.main([
+                    "--situation", "x",
+                    "--suggested-type", "principle",
+                    "--suggested-domain", "tech",
+                    "--applies-in-concepts", "тема",
+                    "--buffer", str(buf),
+                ])
+        clear_ztn_env()
+
 
 if __name__ == "__main__":
     unittest.main()

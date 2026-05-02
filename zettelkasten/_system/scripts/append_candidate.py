@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -57,6 +58,63 @@ BUFFER_FILENAME = "principle-candidates.jsonl"
 ALLOWED_SUGGESTED_TYPES: frozenset[str] = frozenset(ALLOWED_TYPES | {"unknown"})
 ALLOWED_SUGGESTED_DOMAINS: frozenset[str] = frozenset(ALLOWED_DOMAINS | {"unknown"})
 ALLOWED_ORIGINS: frozenset[str] = frozenset({"personal", "work", "external"})
+
+CONCEPT_NAME_RE = re.compile(r"^[a-z0-9_]+$")
+CONCEPT_NAME_MAX_LEN = 64
+FORBIDDEN_TYPE_PREFIXES: tuple[str, ...] = (
+    "theme_", "decision_", "person_", "project_", "tool_", "idea_",
+    "event_", "goal_", "value_", "fact_", "organization_", "skill_",
+    "location_", "emotion_", "preference_", "constraint_", "algorithm_",
+    "other_",
+)
+
+
+def validate_concept_name(name: str) -> None:
+    """Enforce CONCEPT_NAMING.md format on a single concept-name string.
+
+    Raises ConstitutionError on any of: format mismatch (non-snake_case
+    ASCII, runs of underscores, leading/trailing `_`), forbidden type
+    prefix, or length > 64. Mirrors the rules in
+    `_system/registries/CONCEPT_NAMING.md`.
+    """
+    if not name:
+        raise ConstitutionError("concept name must not be empty")
+    if len(name) > CONCEPT_NAME_MAX_LEN:
+        raise ConstitutionError(
+            f"concept name {name!r} exceeds {CONCEPT_NAME_MAX_LEN} chars "
+            "(rule 7); shorten or extract the load-bearing noun"
+        )
+    if not CONCEPT_NAME_RE.match(name):
+        raise ConstitutionError(
+            f"concept name {name!r} violates snake_case ASCII (rules 1–4); "
+            "expect ^[a-z0-9_]+$, no leading/trailing/consecutive '_'"
+        )
+    if "__" in name or name.startswith("_") or name.endswith("_"):
+        raise ConstitutionError(
+            f"concept name {name!r} violates rule 4 (no leading, trailing, "
+            "or consecutive '_')"
+        )
+    for prefix in FORBIDDEN_TYPE_PREFIXES:
+        if name.startswith(prefix):
+            raise ConstitutionError(
+                f"concept name {name!r} starts with forbidden type prefix "
+                f"{prefix!r} (rule 5); type lives in metadata, not in name"
+            )
+
+
+def parse_applies_in_concepts(raw: str | None) -> list[str]:
+    """Parse comma-separated concept names; validate each.
+
+    Empty / None -> []. Whitespace around commas tolerated. On any
+    invalid entry, raises ConstitutionError citing the bad name —
+    helper does not silently sanitise per CONCEPT_NAMING §"On violation".
+    """
+    if not raw:
+        return []
+    names = [chunk.strip() for chunk in raw.split(",") if chunk.strip()]
+    for name in names:
+        validate_concept_name(name)
+    return names
 
 
 def resolve_origin(explicit: str | None) -> str:
@@ -89,6 +147,9 @@ def build_entry(args: argparse.Namespace) -> dict:
         "hypothesis": args.hypothesis.strip() if args.hypothesis else None,
         "suggested_type": args.suggested_type,
         "suggested_domain": args.suggested_domain,
+        "applies_in_concepts": parse_applies_in_concepts(
+            args.applies_in_concepts
+        ),
         "origin": resolve_origin(args.origin),
         "session_id": args.session_id or default_session_id(),
         "record_ref": args.record_ref,
@@ -163,6 +224,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="session or source identifier; default: timestamp")
     parser.add_argument("--record-ref", default=None,
                         help="wiki-link to a record, e.g. [[_records/...]]")
+    parser.add_argument("--applies-in-concepts", default=None,
+                        help="comma-separated concept names per "
+                             "_system/registries/CONCEPT_NAMING.md "
+                             "(snake_case ASCII, English-only, ≤64 chars, "
+                             "no forbidden type prefix). Empty / omitted "
+                             "→ []. Each entry validated; non-conformant "
+                             "name fails the append, never silently "
+                             "rewritten.")
     parser.add_argument("--buffer", type=Path, default=None,
                         help=f"override buffer path (default: "
                              f"_system/state/{BUFFER_FILENAME})")

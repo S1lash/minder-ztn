@@ -4,6 +4,7 @@
 ---
 id: YYYYMMDD-short-semantic-name
 title: "Title на языке оригинала"
+description: "1-line summary (≤100 chars) — what this note is about, used in INDEX.md"
 aliases:
   - alias1
   - alias2
@@ -26,6 +27,21 @@ projects:
   - project-id
 people:
   - person-id
+# Concepts — canonical concept names per _system/registries/CONCEPT_NAMING.md
+# (snake_case ASCII, English-only, no type prefix). People and projects
+# go through `people:` / `projects:` above; do NOT duplicate them here.
+concepts:
+  - concept_name_1
+  - concept_name_2
+
+# Privacy trio — see _system/registries/AUDIENCES.md + ENGINE_DOCTRINE §3.8
+# origin: personal | work | external (default personal)
+# audience_tags: list from canonical 5 (family / friends / work /
+#   professional-network / world) or AUDIENCES.md Extensions; [] = owner-only
+# is_sensitive: true on NDA / salary / health / financial / intimate content
+origin: personal
+audience_tags: []
+is_sensitive: false
 
 # Content summary (OPTIONAL — include only when note has tasks/ideas/meetings)
 # Omit entirely if all counts are 0 or if the only non-zero count is obvious from type.

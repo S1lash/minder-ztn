@@ -10,6 +10,17 @@ created: YYYY-MM-DD
 deadline: YYYY-MM-DD
 domains:
   - domain
+# Concepts the project touches (snake_case per CONCEPT_NAMING.md).
+# Owner-curated; do NOT include the project itself or its participants
+# (those live in their own first-class fields).
+concepts:
+  - concept_name_1
+# Privacy trio — pick origin matching the project context (work / personal).
+# audience_tags default [] — widen explicitly when sharing intent is clear.
+# See _system/registries/AUDIENCES.md + ENGINE_DOCTRINE §3.8.
+origin: work
+audience_tags: []
+is_sensitive: false
 tags:
   - type/project
   - project/project-id

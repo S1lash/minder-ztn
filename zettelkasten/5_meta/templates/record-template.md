@@ -19,6 +19,16 @@ people:
   - person-id-2
 projects:
   - project-id
+# Concepts mentioned in the meeting (snake_case per CONCEPT_NAMING.md;
+# excludes people/projects which live in their own fields above).
+concepts:
+  - concept_name_1
+  - concept_name_2
+# Privacy trio — defaults work / [] / false on a work-meeting record;
+# see _system/registries/AUDIENCES.md + ENGINE_DOCTRINE §3.8.
+origin: work
+audience_tags: []
+is_sensitive: false
 tags:
   - record/meeting
   - project/{project}

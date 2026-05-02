@@ -72,6 +72,18 @@ from the owner's own corpus, not from this skill's prompt.
   owner stated the rule explicitly.
 - `suggested_type` and `suggested_domain` — pick `unknown` over a forced
   guess. The owner re-classifies on review.
+- `applies_in_concepts` — optional list of canonical concept names the
+  principle plausibly applies to, captured **only** when the observation
+  context names ≥1 concept clearly (e.g. the trade-off was about
+  `delegation_pattern` or `code_review_quality`). When uncertain, leave
+  the list empty `[]`. Every entry MUST conform to
+  `_system/registries/CONCEPT_NAMING.md` — snake_case ASCII,
+  English-only (translate non-English source terms; never
+  transliterate), ≤64 chars, no forbidden type prefix. The capture
+  helper validates format on write; non-conformant entries fail the
+  append, not silently rewritten. Empty default is the right choice
+  in the buffer — Scan F.5 LLM-judge merge can attach concepts at
+  promotion using the active concept graph as context.
 - No proper nouns of real people in any field except `record_ref`.
   Names belong to `/ztn:process` → PEOPLE.md.
 
@@ -111,8 +123,15 @@ from the owner's own corpus, not from this skill's prompt.
        ${HYPOTHESIS:+--hypothesis "$HYPOTHESIS"} \
        --suggested-type "$SUGGESTED_TYPE" \
        --suggested-domain "$SUGGESTED_DOMAIN" \
-       ${RECORD_REF:+--record-ref "$RECORD_REF"}
+       ${RECORD_REF:+--record-ref "$RECORD_REF"} \
+       ${APPLIES_IN_CONCEPTS:+--applies-in-concepts "$APPLIES_IN_CONCEPTS"}
    ```
+
+   `--applies-in-concepts` is optional and accepts a comma-separated
+   list of snake_case concept names (e.g.
+   `delegation_pattern,code_review_quality`). The helper validates each
+   entry against `_system/registries/CONCEPT_NAMING.md` and rejects the
+   append on any format violation rather than silently sanitising.
 
    `origin` is resolved automatically from `CLAUDE_CONTEXT`:
    - `personal` (or unset) → `personal`
@@ -141,12 +160,16 @@ Each line is one JSON object:
   "hypothesis": "prefer-higher-quality-path",
   "suggested_type": "principle",
   "suggested_domain": "work",
+  "applies_in_concepts": ["migration_strategy", "production_risk"],
   "origin": "personal",
   "session_id": "session-2026-04-20-154233-UTC",
   "record_ref": null,
   "captured_by": "ztn:capture-candidate"
 }
 ```
+
+`applies_in_concepts` is `[]` when not captured. Concept-name format
+per `_system/registries/CONCEPT_NAMING.md` enforced by the helper.
 
 ## Invariants
 

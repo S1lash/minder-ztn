@@ -654,9 +654,199 @@ Be specific and cite evidence from the transcript.
     Filtering is `/ztn:check-content`'s job, not this step's.
     False positives are cheap; false negatives lose content opportunities.
 
+15. CONCEPTS: Extract every meaningful "thing-in-the-world" mentioned that
+    warrants a node in the knowledge graph. Concepts span themes, tools,
+    decision classes, ideas, events, organizations, skills, locations,
+    emotions, goals, values, preferences, constraints, algorithms, facts,
+    other. **People and projects are NOT concepts here** — they have
+    first-class channels (`people:` / `projects:` frontmatter,
+    `tier1_objects.{people,projects}` in manifest); do NOT duplicate.
+
+    **Translation rule (HARD, non-negotiable).** Source language can be
+    Russian, English, or mixed. Concept names emit in **English snake_case
+    only** per `_system/registries/CONCEPT_NAMING.md`. When the source
+    uses a non-English term, **translate semantically at extraction**:
+
+    - «реструктуризация команды» → `team_restructuring` ✓
+    - «приоритизация очереди» → `queue_prioritization` ✓
+    - «ежедневник» → `daily_planner` ✓
+    - «делегирование как контроль» → `delegation_control_pattern` ✓
+
+    NEVER transliterate (would split graph identity across languages):
+
+    - «реструктуризация» → `restrukturizatsiya` ✗
+    - «делегирование» → `delegirovanie` ✗
+
+    If translation is genuinely ambiguous (term has no clean English
+    equivalent, or the Russian carries domain-specific nuance the
+    English loses) — emit **no concept entry for it** and raise
+    CLARIFICATION `concept-format-mismatch` with: source path, raw
+    Russian phrase, 2–3 candidate English translations, brief
+    rationale. Do NOT guess.
+
+    **Normalisation (run on every emitted name).** Lowercase; replace
+    every separator (whitespace, hyphens, dashes, `/`, `\`, `.`, `,`,
+    `;`, `:`, `!`, `?`, brackets, quotes, `~ % + @ # & * = < > ^ |`
+    backtick) with `_`; collapse runs of `_`; trim leading/trailing
+    `_`. Validate `^[a-z0-9_]+$`, length ∈ [1, 64]. Reject forbidden
+    type prefixes (`theme_`, `decision_`, `person_`, `project_`,
+    `tool_`, `idea_`, `event_`, `goal_`, `value_`, `fact_`,
+    `organization_`, `skill_`, `location_`, `emotion_`, `preference_`,
+    `constraint_`, `algorithm_`, `other_`). Type lives in metadata,
+    not in name.
+
+    **Selectivity (Rule 8).** Reject broad classifiers — if a name
+    would match half the corpus (`work`, `general`, `meetings`), it's
+    a domain or tag, not a concept. Reject sentence-fragments that
+    only describe one specific moment (`q3_2026_team_offsite_notes`)
+    — extract the load-bearing noun (`team_restructuring`) instead.
+    The selectivity test: would this name plausibly recur across
+    multiple future notes that the owner would want to link?
+
+    **For each emitted concept, capture metadata for the manifest:**
+
+    | Field | Required | Notes |
+    |---|---|---|
+    | `name` | yes | Canonical snake_case identifier |
+    | `type` | yes | One of (lowercase): `theme`, `tool`, `decision`, `idea`, `event`, `organization`, `skill`, `location`, `emotion`, `goal`, `value`, `preference`, `constraint`, `algorithm`, `fact`, `other`. **NOT** `person` / `project`. |
+    | `subtype` | optional | Finer category within type (e.g. type=`tool`, subtype=`database`). Same snake_case format. |
+    | `related_concepts` | optional | Other concepts mentioned alongside this one in the same transcript context. Same snake_case format on every entry. |
+    | `previous_slugs` | optional | Past names this concept was known by — chain via this field on rename. Same snake_case format. |
+
+    **Output for downstream steps:**
+
+    - **Per record:** the canonical concept-name list will populate
+      the record's `concepts:` frontmatter (Step 3.5 §A) and the
+      manifest's `records.created[].concept_hints[]` (Step 4 batch
+      assembly).
+    - **Per knowledge note:** subset of the parent record's concepts
+      that this specific knowledge stream covers — populates the
+      note's `concepts:` frontmatter and the manifest's
+      `knowledge_notes.created[].concept_hints[]`.
+    - **Per hub touched:** union of `concepts:` from member knowledge
+      notes — populates the manifest's `hubs.{updated|created}[].member_concepts[]`
+      at emission time. Hub frontmatter does NOT carry `concepts:`
+      (would invite drift between hub field and member-aggregate);
+      the field is manifest-only.
+    - **Batch level:** every distinct concept emitted across the run
+      → one entry in `concepts.upserts[]` with `name` + `type` +
+      optional `subtype` / `related_concepts` / `previous_slugs`.
+      Deduplicated by `name` (case-folded snake_case is canonical).
+      Two notes mentioning `org_structure` → ONE upsert entry; their
+      consolidated `related_concepts` is the union.
+
+    **Edge cases:**
+
+    - **Acronyms / versions:** lowercase wins (`oauth`, not `o_auth`;
+      `api_v2`, not `api_v_2`). Treat acronym as one segment.
+    - **Subtype vs separate concept:** if the would-be subtype could
+      stand on its own and be referenced by other notes (`vector_database`
+      as its own concept), make it a separate concept with a
+      `related_concepts` link instead of a subtype. Subtype is only
+      for "this particular tool happens to be of subtype X."
+    - **Compound names:** if parts mean meaningfully different things,
+      split into multiple concepts. If the long form is a context-
+      sentence dressed as an identifier, pick the load-bearing noun.
+
+16. PRIVACY TRIO (origin / audience_tags / is_sensitive): Decide privacy
+    fields for every entity emitted in this transcript pass — record(s),
+    each knowledge note, hubs touched, person profiles created/updated,
+    project profiles, tasks, events, ideas. The trio is **slot-only at
+    this layer**: this skill emits values; downstream consumers (Minder
+    backend, sync targets) apply policy.
+
+    **HARD invariant — fail closed.** Defaults are chosen so that absence
+    of inference yields owner-only access (`audience_tags: []`). The
+    inclusion-bias from Principle 1 does NOT apply here — false-positive
+    audience inference leaks content. When uncertain, leave `[]`.
+
+    **`origin` (single value):**
+
+    | Value | When |
+    |---|---|
+    | `personal` | SOURCE TYPE (Q1) ∈ {personal-reflection, idea-brainstorm, therapy}. Solo Plaud captures. Family / health / life-decision content. **Default when ambiguous.** |
+    | `work` | SOURCE TYPE = work-meeting. Content explicitly about work projects, work team, work decisions. Mixed transcripts where the dominant content is work-context. |
+    | `external` | Content extracted from external sources (clipped articles, third-party documents, AI-generated profile summaries). Rare in `/ztn:process` since `Skip Subdirs` typically excludes external reference. |
+
+    Mixed transcripts: pick the dominant context for the record's
+    origin; per-knowledge-note `origin` is set independently per the
+    note's content (a personal-reflection knowledge note extracted
+    from a work-meeting record can carry `origin: personal`).
+
+    **`audience_tags` (list, conservative):**
+
+    Default `[]` (owner-only) unless content shows **clear, explicit**
+    sharing intent. Set tags only when:
+
+    | Tag | Trigger |
+    |---|---|
+    | `[work]` | Owner explicitly says they will share with the work team (status update for standup, decision draft to communicate, doc draft for the team), OR content_potential note where content_type aligns with internal work audience. |
+    | `[professional-network]` | Content has clear LinkedIn-grade voice (career / leadership / management insight ready for public-professional audience). content_potential=high notes with content_type ∈ {expert, insight} typically land here. |
+    | `[friends]` | Content explicitly framed for friend circle (stoic reflection meant to share, friend-circle decision). |
+    | `[family]` | Content explicitly framed for family (family decision, vacation plan). |
+    | `[world]` | Content explicitly meant for public broadcast (Twitter / public blog draft). |
+
+    **content_potential mapping (Q14 → Q16):**
+
+    - `content_potential: high` + `content_type: expert | insight`
+      → `[professional-network]` is a reasonable default
+    - `content_potential: high` + `content_type: reflection | story`
+      → `[professional-network]` if owner has shared similar before
+        (visible in `_system/POSTS.md` history); else `[]` — let
+        `/ztn:check-content` decide at draft time
+    - `content_potential: medium` or `observation` → `[]` — still
+      seed-stage; widening is owner's call later
+    - No content_potential → `[]`
+
+    **Multiple tags allowed** (`[work, friends]`) when the audience
+    genuinely overlaps. Flat union, no hierarchy.
+
+    **Unknown / extension tags.** If you'd want to set a tag NOT in
+    the canonical 5 AND NOT in `_system/registries/AUDIENCES.md`
+    Extensions table → emit `audience_tags: []` for the entity AND
+    raise CLARIFICATION `audience-tag-unknown` with: proposed tag,
+    raw content phrase that triggered the suggestion, source path,
+    suggested resolutions (add-to-registry / map-to-existing / drop).
+    Do NOT silently coin a new tag.
+
+    **`is_sensitive` (bool):**
+
+    Set `true` if content matches ANY:
+
+    - NDA / confidential mention («под NDA», «не для разглашения»,
+      «конфиденциально», "off the record")
+    - Salary / compensation / equity / specific financial detail
+      (specific amounts, comp packages, equity grants, debt detail)
+    - Health / medical detail (diagnoses, conditions, medications,
+      mental-health specifics — beyond "feeling tired")
+    - Family conflict, intimate relationship detail (specific
+      grievances, emotional disclosures involving named family /
+      partners)
+    - Reputational risk content (specific allegations about named
+      people, legal-risk topics)
+
+    `false` otherwise. **`is_sensitive: true` does NOT narrow
+    `audience_tags`** — they're orthogonal. A work memo can be
+    `audience_tags=[work], is_sensitive=true` (team can see it; share
+    outside requires friction). Health note for spouse:
+    `audience_tags=[family], is_sensitive=true`.
+
+    **Per-entity application table:**
+
+    | Entity | origin | audience_tags | is_sensitive |
+    |---|---|---|---|
+    | Record (meeting / observation) | from SOURCE TYPE | `[]` unless explicit sharing intent | per content scan |
+    | Knowledge note | independent of parent record (a personal-reflection note from a work-meeting record can be `personal`) | per content_potential mapping above; default `[]` | per content scan |
+    | Hub touched | inherit dominant member-note `origin` | `[]` (owner curates by hand) | `false` unless any member note is sensitive |
+    | Person profile (new / updated) | `personal` | `[]` always | `false` unless owner-curated content is sensitive |
+    | Project profile (new) | from project's domain (work-domain → `work`) | `[]` | `false` |
+    | Task | inherit from parent note | inherit from parent note | inherit from parent note |
+    | Event | inherit from parent note | inherit from parent note | inherit from parent note |
+    | Idea note | per content scan | `[]` (ideas are seed-stage) | per content scan |
+
 ### 3.5 Create Outputs
 
-Based on the 14-question classification, create outputs. Fully automatic, no confirmation needed.
+Based on the 16-question classification, create outputs. Fully automatic, no confirmation needed.
 
 #### A) Records → RECORD in `_records/{kind}/`
 
@@ -669,6 +859,21 @@ Template: `{{MINDER_ZTN_BASE}}/5_meta/templates/record-template.md`
 
 Frontmatter: `layer: record`, `kind: meeting` (omit `kind` for backward compat —
 absence implies meeting; new records SHOULD include it explicitly).
+
+**Concept + privacy fields (mandatory on every new record).** Add to
+frontmatter from Q15 / Q16 outputs:
+
+- `concepts:` — list of canonical concept-name strings mentioned in
+  this transcript per Q15. Empty list `[]` allowed when no concept
+  cleared the selectivity bar (Rule 8). All entries snake_case ASCII
+  per `_system/registries/CONCEPT_NAMING.md`. People and projects do
+  NOT go here.
+- `origin:` — `work` (default for meeting records, consistent with
+  SOURCE TYPE = work-meeting). Override only when Q16 inferred
+  otherwise.
+- `audience_tags:` — `[]` by default (owner-only). Set canonical tag
+  ONLY on explicit sharing intent per Q16.
+- `is_sensitive:` — boolean per Q16 sensitivity scan.
 
 Record contains:
 - Summary (2-3 sentences)
@@ -708,6 +913,11 @@ people:
   - {anyone mentioned by name}
 projects:
   - {projects touched if any}
+concepts:
+  - {snake_case concept name from Q15 — translated, normalised, selective}
+origin: {personal | work | external — from Q16; default personal for solo capture}
+audience_tags: []
+is_sensitive: {true | false — from Q16 sensitivity scan; therapy / health / family content typically true}
 tags:
   - record/observation
   - person/{speaker}
@@ -751,6 +961,40 @@ Template: `{{MINDER_ZTN_BASE}}/5_meta/templates/note-template.md`
 Frontmatter MUST include `layer: knowledge`.
 If extracted from a record: add `extracted_from: {record-id}` to frontmatter.
 `contains:` block is OPTIONAL — include only if note has tasks or ideas.
+
+**Concept + privacy fields (mandatory on every new knowledge note).**
+
+- `concepts:` — list of canonical concept-name strings this knowledge
+  note covers. Subset of the parent record's `concepts:` list, narrowed
+  to what *this specific knowledge stream* is about (per Q15 →
+  per-knowledge-note allocation). Each entry snake_case ASCII, English
+  only, normalised per CONCEPT_NAMING. Empty list `[]` allowed when no
+  concept clears Rule 8 selectivity. People / projects do NOT go here.
+- `origin:` — set independently of the parent record. A
+  personal-reflection knowledge note extracted from a work-meeting
+  record can be `origin: personal` if the content is genuinely
+  personal-context. Default: inherit parent record's `origin`.
+- `audience_tags:` — `[]` by default. Set per Q16 mapping including
+  the content_potential → audience-tag rule (high+expert/insight →
+  `[professional-network]`; high+reflection/story → conditional;
+  medium / observation → `[]`).
+- `is_sensitive:` — boolean per Q16 sensitivity scan applied to this
+  note's specific content (a knowledge note can be more or less
+  sensitive than its parent record).
+
+**`description:` field — mandatory for new knowledge notes.** One-line
+summary (≤100 chars) of what the note is about. Used by `/ztn:maintain`
+Step 7.6 to render the INDEX.md catalog. Distinct from `title:`:
+- `title:` names the note («Стратегический разбор встречи с Василием»)
+- `description:` describes its content («Решение перейти к ежемесячным
+  планам, а не квартальным; reasoning по 1-1 cadence»)
+
+If the LLM cannot draft a meaningful description in one short line, it
+SHOULD still write a fallback derived from `## Ключевая мысль` truncated
+to 100 chars rather than omitting the field. INDEX.md fallback chain
+(description → title → first prose line → `_(no description)_`) tolerates
+omission, but legacy notes already have no `description:` and the goal of
+this field is to phase that out for new content.
 
 If Q14 determined content_potential for this knowledge stream:
   - Add `content_potential: high` or `content_potential: medium` to frontmatter (after `priority:`)
@@ -864,6 +1108,23 @@ For each matching hub (from Q11):
 6. Update `modified` date in frontmatter
 7. Update `people`, `projects` lists if new entries
 
+**Hub privacy + member_concepts on update.** Hub frontmatter does NOT
+gain a `concepts:` field — `member_concepts[]` lives only in the
+manifest, derived at emission time (Step 4.7). Privacy trio on hub
+frontmatter (`origin` / `audience_tags` / `is_sensitive`):
+
+- Re-evaluate after this update. If a freshly added member knowledge
+  note pushes the dominant `origin` of members across a threshold
+  (e.g. hub was `personal`, now 3 of 5 members are `work`-origin) →
+  surface CLARIFICATION `hub-origin-drift` rather than auto-flipping;
+  hub identity matters, owner curates.
+- `audience_tags` and `is_sensitive` on hubs default to `[]` / `false`
+  and are owner-curated only — `/ztn:process` never auto-widens. If
+  any member note added in this run is `is_sensitive: true` and the
+  hub itself is currently `is_sensitive: false` → raise CLARIFICATION
+  `hub-sensitivity-drift` with the note id and ask whether the hub
+  should be flagged.
+
 #### D) New hub creation → CREATE in `5_meta/mocs/`
 
 When a topic reaches 3+ KNOWLEDGE notes (Q12):
@@ -875,6 +1136,16 @@ When a topic reaches 3+ KNOWLEDGE notes (Q12):
 6. Add to `_system/views/HUB_INDEX.md`
 
 Hub ID format: `hub-{topic-slug}` (e.g., `hub-api2-p2p`, `hub-delegation-pattern`)
+
+**New hub privacy trio on creation.**
+
+- `origin` — inherit dominant member-note `origin`. Tie → `personal`
+  (conservative default).
+- `audience_tags` — `[]` always at creation. Owner widens later.
+- `is_sensitive` — `true` if ANY member note is `is_sensitive: true`,
+  else `false`. Hubs aggregate, so any sensitive member taints the
+  hub for sync-friction purposes (per privacy-trio orthogonality:
+  audience may stay `[]` while sensitivity is `true`).
 
 #### E) Cross-domain insights
 
@@ -901,6 +1172,10 @@ After creating EACH note (record or knowledge), verify:
 - [ ] `extracted_from:` (if present) references an existing or just-created record ID
 - [ ] `supersedes:` (if present) references an existing note ID
 - [ ] ID matches filename (without `.md` extension)
+- [ ] `concepts:` field present (list, possibly empty `[]`); every entry conforms to `_system/registries/CONCEPT_NAMING.md` — snake_case ASCII, English-only, no forbidden type prefix, length ≤ 64. Apply the normalisation algorithm at this check; raw differs from normalised → halt and raise CLARIFICATION (`concept-format-mismatch` / `concept-type-prefix-in-name` / `concept-name-too-long`)
+- [ ] `origin:` field present — value ∈ {`personal`, `work`, `external`}
+- [ ] `audience_tags:` field present (list, possibly empty `[]`); every non-empty entry is either one of the canonical 5 (`family`, `friends`, `work`, `professional-network`, `world`) OR appears in `_system/registries/AUDIENCES.md` Extensions table. Unknown value → halt and raise CLARIFICATION `audience-tag-unknown` (set field to `[]` in the meantime)
+- [ ] `is_sensitive:` field present — boolean
 
 If any check fails, fix immediately before proceeding.
 
@@ -1301,6 +1576,8 @@ Run these checks over the ENTIRE processing run's output:
 - [ ] No duplicate notes: no two notes cover the same topic from the same source
 - [ ] PROCESSED.md complete: every processed source file has an entry
 - [ ] People registry consistent: every person ID in any note's frontmatter exists in PEOPLE.md
+- [ ] Concept aggregation: every distinct concept name appearing in any frontmatter `concepts:` field across the run has exactly one entry in `concepts.upserts[]` (deduplication by case-folded snake_case). No name appears in two upserts with different `type` (conflict surfaces as CLARIFICATION `concept-type-conflict`, not silent merge).
+- [ ] Hub `member_concepts[]` consistency: for every hub touched, manifest `member_concepts[]` equals the union of `concepts:` from member knowledge notes that exist on disk after this run. No phantom concept names (in member_concepts but in no member note's frontmatter).
 
 ### 4.6 Content Proportionality Check + Coverage Fix Rate
 
@@ -1342,9 +1619,49 @@ Accumulate:
 - **`batch_id`** = UTC timestamp of run start, format `YYYYMMDD-HHmmss`. Fixed at the moment the concurrency lock was acquired and stable for the rest of the run. On collision (theoretical, due to concurrency lock this should not happen) — append suffix `-1`, `-2`.
 - **`timestamp`** = ISO 8601 UTC with trailing `Z` (run start).
 - **`processor`** = `ztn:process`.
-- **`batch_format_version`** = per `_system/docs/batch-format.md` current spec version.
-- **Counts:** `sources`, `records`, `notes`, `tasks`, `events`, `threads_opened = 0`, `threads_resolved = 0`, `clarifications_raised`, `people_candidates_appended` (see counter mechanics below).
-- **Lists for each section of the batch report:** Sources Processed (with source type ID), Records Created (id + title + people + projects), Knowledge Notes Created (id + title + types + domains + Evidence Trail status), Tasks Extracted (task-id + description + deadline + priority + from-note), Events Extracted (datetime + description + participants + from-note), People Updates (id + change type + mentions delta + tier note), Hubs Updated (id list), CLARIFICATIONS Raised (type + summary per item).
+- **`batch_format_version`** = per `_system/docs/batch-format.md` current spec version (currently `2.0`).
+- **Counts:** `sources`, `records`, `notes`, `tasks`, `events`, `threads_opened = 0`, `threads_resolved = 0`, `clarifications_raised`, `people_candidates_appended`, `concepts_upserted` (v2.0), `sensitive_entities` (v2.0) (see counter mechanics below).
+- **Lists for each section of the batch report:** Sources Processed (with source type ID), Records Created (id + title + people + projects), Knowledge Notes Created (id + title + types + domains + Evidence Trail status), Tasks Extracted (task-id + description + deadline + priority + from-note), Events Extracted (datetime + description + participants + from-note), People Updates (id + change type + mentions delta + tier note), Hubs Updated (id list), CLARIFICATIONS Raised (type + summary per item), Concepts Upserted (name + type + subtype + related_concepts), Sensitive Entities (path + kind + audience_tags).
+
+**Concept registry aggregation (v2.0).** Build `concepts.upserts[]` for
+the batch:
+
+1. Walk every record + knowledge note + hub touched in this run; collect
+   their `concepts:` frontmatter values (plus, for hubs, the union of
+   member-note `concepts:` → `member_concepts[]`).
+2. Deduplicate by `name` (case-folded snake_case). For each distinct
+   name, consolidate metadata captured during Q15 extraction:
+   - `type` — single value; if same name was tagged with two types in
+     different transcripts (e.g. `qdrant` as `tool` in one and `theme`
+     in another), pick the most specific (`tool` > `theme`) and raise
+     CLARIFICATION `concept-type-conflict` with both candidates.
+   - `subtype` — same conflict rule.
+   - `related_concepts[]` — set-union of all related lists across
+     mentions; each entry MUST itself conform to CONCEPT_NAMING.
+   - `previous_slugs[]` — present only if a Q15 rename was detected;
+     otherwise omitted.
+3. Validate every name + subtype + related_concepts entry against
+   CONCEPT_NAMING normalisation. Any non-conforming entry → halt batch
+   and raise CLARIFICATION (`concept-format-mismatch` /
+   `concept-type-prefix-in-name` / `concept-name-too-long`); do NOT
+   silently rewrite. The conformance check at this aggregation step
+   is the producer-side guard before manifest emission; `/ztn:lint`
+   Scan A.7 is the post-write double-check.
+4. Final list = `concepts.upserts[]`. `concepts_upserted` counter =
+   `len(concepts.upserts)`.
+
+**Sensitive-entity aggregation (v2.0).** Walk every entity emitted in
+this run (records, knowledge notes, hubs touched, person profiles
+created/updated, project profiles, tasks, events, ideas). For each
+where `is_sensitive: true`, append `{path, kind, audience_tags}` to
+`sensitive_entities[]`. `sensitive_entities` counter = `len(...)`.
+
+**Per-entity privacy field aggregation.** Every entity entry in the
+in-memory accumulator carries the trio (`origin`, `audience_tags`,
+`is_sensitive`) read directly from the entity's frontmatter. The
+manifest emission step (5.5) writes these into the JSON manifest's
+per-entity sections so downstream Minder can populate `audience_tags
+text[] NOT NULL DEFAULT '{}'` columns without re-parsing markdown.
 
 **`clarifications_raised` counter mechanics:**
 
@@ -1397,6 +1714,11 @@ If any item is incomplete, go back and complete it. No deferring as "follow-up."
 - [ ] In-memory batch data accumulated (Step 4.7): `batch_id` fixed; count fields reconcile with actually created artifacts; `clarifications_raised` matches the in-memory counter value
 - [ ] `threads_opened = 0` AND `threads_resolved = 0` (process does not touch threads)
 - [ ] `people_candidates_appended` matches both (a) the in-memory counter and (b) actual line-count delta in `_system/state/people-candidates.jsonl` since run start. If mismatch — do NOT write batch; investigate the gap (typically missed append invocation or double-count on escape-hatch path)
+- [ ] **Concept extraction (Q15) ran for every transcript.** Every produced record + knowledge note carries a `concepts:` frontmatter field (list, possibly `[]`). Every non-empty entry conforms to CONCEPT_NAMING normalisation. Non-English source terms were translated, not transliterated.
+- [ ] **Privacy trio (Q16) set on every emitted entity.** Every record, knowledge note, hub touched, person profile created/updated, project profile, task, event, idea has all three fields (`origin`, `audience_tags`, `is_sensitive`) present in frontmatter. `audience_tags` defaults `[]` unless explicit sharing intent surfaced — no speculative tagging.
+- [ ] **`concepts.upserts[]` aggregation passed (§4.7).** Every name, subtype, and `related_concepts[]` entry validated against CONCEPT_NAMING. `concepts_upserted` counter matches `len(concepts.upserts)`.
+- [ ] **`sensitive_entities[]` aggregation passed (§4.7).** Every entity with `is_sensitive: true` listed once in `sensitive_entities[]` with `{path, kind, audience_tags}`. `sensitive_entities` counter matches `len(...)`.
+- [ ] **No silent audience-tag coining.** Every novel audience tag triggered CLARIFICATION `audience-tag-unknown` (counted in `clarifications_raised`); none was silently inserted into entity frontmatter.
 
 **Note on batch artifacts:** the files `_system/state/batches/{batch-id}.md` and the new row in
 `_system/state/BATCH_LOG.md` are NOT yet on disk at this point, and therefore are NOT checked in
@@ -1437,6 +1759,8 @@ threads_opened: 0
 threads_resolved: 0
 clarifications_raised: N
 people_candidates_appended: N
+concepts_upserted: N
+sensitive_entities: N
 ---
 ```
 
@@ -1452,6 +1776,8 @@ people_candidates_appended: N
 8. `## Hubs Updated` — `- [[{hub-id}]]` per hub touched
 9. `## CLARIFICATIONS Raised` — per item: `- {type} | {one-line summary}` — count MUST equal `clarifications_raised` in frontmatter
 10. `## People Candidates Appended` — per entry: `- {candidate_id} | {name_as_transcribed} | {note-id} | {role_hint or —}` — count MUST equal `people_candidates_appended` in frontmatter. Use `(none)` if empty.
+11. `## Concepts Upserted` — per concept upsert from §4.7 aggregation: `- {name} | {type} | {subtype or —} | {related_concepts comma-list or —}` — count MUST equal `concepts_upserted` in frontmatter. Use `(none)` if empty. Mirrors the JSON manifest's `concepts.upserts[]`.
+12. `## Sensitive Entities` — per entity emitted in this run with `is_sensitive: true`: `- {path-or-id} | {kind: record|note|hub|task|...} | audience_tags: [{tags or "[]"}]` — count MUST equal `sensitive_entities` in frontmatter. Use `(none)` if empty.
 
 ### 5.5.2 Append row to `_system/state/BATCH_LOG.md`
 
