@@ -320,6 +320,45 @@ class Principle:
 _FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---\r?\n?(.*)$", re.DOTALL)
 
 
+def read_frontmatter(path: Path) -> tuple[dict, str] | None:
+    """Generic frontmatter reader used by lint helpers.
+
+    Returns (frontmatter_dict, body_text) or None when the file has no
+    frontmatter block, the YAML cannot be parsed, or the YAML root is
+    not a mapping. Tolerant of read errors (returns None) — the caller
+    decides whether to skip silently or propagate. Distinct from
+    `parse_file()` which is principle-schema-aware.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    m = _FRONTMATTER_RE.match(text)
+    if not m:
+        return None
+    try:
+        fm = yaml.safe_load(m.group(1))
+    except yaml.YAMLError:
+        return None
+    if not isinstance(fm, dict):
+        return None
+    return fm, m.group(2)
+
+
+def write_frontmatter(path: Path, fm: dict, body: str) -> None:
+    """Round-trip frontmatter back to disk preserving body verbatim.
+
+    YAML serialised with sort_keys=False, default_flow_style=False,
+    allow_unicode=True. Width 10000 prevents PyYAML wrapping long
+    lists. Insertion order on `fm` is preserved.
+    """
+    yaml_text = yaml.safe_dump(
+        fm, sort_keys=False, default_flow_style=False,
+        allow_unicode=True, width=10000,
+    ).rstrip("\n")
+    path.write_text(f"---\n{yaml_text}\n---\n{body}", encoding="utf-8")
+
+
 def parse_file(path: Path) -> Principle:
     """Read markdown file, split frontmatter / body, validate schema.
 

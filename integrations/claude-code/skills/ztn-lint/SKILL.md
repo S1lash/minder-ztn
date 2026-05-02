@@ -262,28 +262,33 @@ Gate: check `migration_completed.privacy_trio_backfill` flag in Step
 0 (same mechanism as 1.A / 1.B). Run only on first lint after the
 v2.0 batch-format rollout; subsequent lints skip silently.
 
-Pipeline:
+Pipeline: invoke the SAME helper as Scan A.7 — Step 1.D and Scan A.7
+share one code path; the helper is idempotent and operates uniformly
+on the corpus regardless of whether it is a "first run" or a
+"steady-state" run. The flag distinction is purely log-bookkeeping.
 
-1. Glob every `.md` in scope of Scan A.7 (records, knowledge notes,
-   hubs, person profiles, project profiles — same exclusions: skip
-   registries, generated views, raw transcripts, append-only log
-   files, owner-curated SOUL/TASKS/CALENDAR/POSTS).
-2. For each file with frontmatter, check `origin` / `audience_tags` /
-   `is_sensitive`. Missing fields → insert with conservative defaults
-   (`origin: personal`, `audience_tags: []`, `is_sensitive: false`).
-3. Same `_common.py::normalize_concept_name()` chain over `concepts:`
-   field if present (covers any pre-existing entries that are
-   non-conformant).
-4. **One commit per migration class.** Aggregate all backfills into
-   a single migration log entry under §1.C, marked
-   `migration: privacy-trio-backfill`. The diff is owner-visible
-   through git but no CLARIFICATION queue entry — the backfill is
-   deterministic and conservative-safe.
-5. Set `migration_completed.privacy_trio_backfill = {YYYY-MM-DD}` in
-   `_system/state/log_lint.md` first-run frontmatter.
+```bash
+python3 _system/scripts/lint_concept_audit.py \
+    --mode fix --root {{MINDER_ZTN_BASE}}
+```
 
-Idempotent: re-running finds no missing fields → no writes (Scan A.7
-takes over for ongoing autofix).
+The helper covers all v2.0 backfill needs:
+- privacy-trio defaults inserted on every record / knowledge note /
+  hub / person profile / project profile that lacks the fields
+- `concepts:` autofix on any pre-existing non-conformant entries (rare
+  in current corpus but possible after manual edits)
+- `audience_tags:` whitelist enforcement on any pre-existing entries
+
+**Migration log handling.** Step 1.C aggregates all events into a
+single migration log entry under
+`### Migration (one-time, completed {YYYY-MM-DD})`, marked
+`migration: privacy-trio-backfill`. Set
+`migration_completed.privacy_trio_backfill = {YYYY-MM-DD}` in the
+first-run log_lint.md frontmatter so subsequent runs gate-skip the
+"migration" framing while Scan A.7 continues to run on every cycle.
+
+Idempotent: a second `--mode fix` invocation finds no work — verified
+in tests (`test_fix_then_rerun_no_events`).
 
 ### 1.C — Write Migration log entry
 
@@ -440,12 +445,38 @@ Frontmatter and manifest double-check for the privacy + concept fields
 emitted by `/ztn:process` Steps 3.4 Q15/Q16 and §4.7. Lint is the
 post-write **autofix** gate. **The concept layer is fully autonomous —
 A.7 raises ZERO CLARIFICATIONs. Every violation is resolved
-deterministically by `_system/scripts/_common.py` helpers
-(`normalize_concept_name`, `normalize_concept_list`,
-`normalize_audience_tag`).** All fix-ids are `strong` floor (silent
+deterministically by `_system/scripts/lint_concept_audit.py`** (which
+delegates to `_system/scripts/_common.py` helpers
+`normalize_concept_name` / `normalize_concept_list` /
+`normalize_audience_tag`). All fix-ids are `strong` floor (silent
 autofix, log entry only).
 
-Pipeline:
+**Implementation: invoke the python helper.**
+
+```bash
+python3 _system/scripts/lint_concept_audit.py \
+    --mode {{scan|fix}} \
+    --root {{MINDER_ZTN_BASE}}
+```
+
+- `--mode scan` (default) — emit JSONL events on stdout without
+  writing; used for dry-run preview and scan-only diagnostics.
+- `--mode fix` — apply changes in place; same JSONL stream on stdout
+  for log_lint.md fix-id ingestion.
+
+Each stdout line is one event: `{"fix_id": "<code>", "path": "<file>",
+"field": "<concepts|audience_tags>", "raw": "...", "result": "..."}`
+(or `"fields_added": [...]` / `"reason": "..."` depending on the
+fix). The skill ingests the stream, deduplicates by `(path, fix_id,
+raw)`, and records each as a `fix-{run-id}-{seq}` entry under §1
+log_lint.md Auto-Fixes — same shape as every other Scan A fix-id.
+
+**Idempotence is the contract.** A second `--mode fix` invocation on
+unchanged state produces zero events; the test suite covers this
+explicitly (`test_clean_state_zero_events`,
+`test_fix_then_rerun_no_events`).
+
+**Conceptual algorithm (the helper enforces this exact pipeline):**
 
 1. **Concept-name autofix — frontmatter.** Iterate every `.md` file
    with frontmatter. For each value in `concepts:`, call
@@ -461,17 +492,19 @@ Pipeline:
      with `{path}` + `{raw}` + reason. The `concepts:` list shrinks;
      other entries preserved.
 
-2. **Concept-name autofix — manifest.** Read the most recent batch
-   manifest at `_system/state/batches/{ts}-process.json` (if present)
-   and apply `normalize_concept_list` to `concept_hints[]` per
-   record/note, `member_concepts[]` per hub, `applies_in_concepts[]`
-   per principle, and the `name` / `subtype` / `related_concepts[]` /
-   `previous_slugs[]` of every `concepts.upserts[]` entry. Manifest
-   files are ZTN-internal artifacts — autofix the values in place,
-   log fix-id `concept-manifest-autofix`, no CLARIFICATION. Manifest
-   violations after `/ztn:process` are functionally impossible
-   (producer-side normalisation in §4.7) but the post-write check
-   stays as defence-in-depth.
+2. **Concept-name conformance — manifest (by construction, no
+   helper needed).** `/ztn:process` Step 4.7 and `/ztn:maintain` Step
+   4 hub linkage both run every concept-name string through
+   `normalize_concept_name()` BEFORE writing the manifest JSON.
+   Result: manifest concept fields (`concept_hints[]`,
+   `member_concepts[]`, `applies_in_concepts[]`,
+   `concepts.upserts[].{name,subtype,related_concepts,previous_slugs}`)
+   are conformant by construction — the producer-side guarantee
+   makes a separate lint-side manifest scan redundant. If a manifest
+   non-conformance is ever observed in the wild, that's a bug in the
+   producer skill, not a lint-side autofix opportunity. The
+   markdown-side autofix (above) is the actual safety net for
+   round-trip drift through manual edits.
 
 3. **Audience-tag autofix — frontmatter.** Iterate every `.md` file
    with frontmatter `audience_tags:`. Load AUDIENCES.md and parse the
@@ -490,9 +523,11 @@ Pipeline:
      extension; AUDIENCES.md Extensions remains owner-curated outside
      the pipeline.
 
-4. **Manifest audience-tag autofix.** Same rules over manifest
-   per-entity `audience_tags[]` arrays. Fix-id
-   `audience-tag-manifest-autofix`.
+4. **Manifest audience-tag conformance — by construction.** Same
+   producer-side guarantee as concepts. `/ztn:process` Step 3.4 Q16
+   only emits canonical 5 ∪ AUDIENCES.md active extensions; everything
+   else silently drops. The manifest carries pre-validated values; no
+   lint-side autofix needed.
 
 5. **Privacy-trio presence autofix.** For every record / knowledge
    note / hub / person profile / project profile, check
@@ -1542,21 +1577,18 @@ deterministic heuristics in `_common.py`. Owner sees no queue,
 takes no action.
 
 - `concept-format-autofix` — concept-name rewritten in place by
-  `normalize_concept_name()` (case / kebab→snake / diacritic-fold)
+  `normalize_concept_name()` (case / kebab→snake / diacritic-fold /
+  type-prefix strip / length truncate)
 - `concept-drop-autofix` — concept-name entry dropped silently
-  (non-ASCII residue, empty after type-prefix strip, or
-  unnormalisable). The `concepts:` list shrinks; other entries kept.
-- `concept-manifest-autofix` — same fixes applied to manifest concept
-  fields (`concept_hints[]`, `member_concepts[]`,
-  `applies_in_concepts[]`, `concepts.upserts[].name|subtype|related_concepts|previous_slugs`)
+  (non-ASCII residue, empty after type-prefix strip, bare type-enum
+  word, or otherwise unnormalisable). The `concepts:` list shrinks;
+  other entries kept.
 - `audience-tag-normalise-autofix` — audience-tag rewritten to
   normalised form when normalised version is in canonical 5 or
   AUDIENCES.md Extensions
 - `audience-tag-drop-autofix` — audience-tag entry dropped (not in
   whitelist, can't be normalised to whitelisted form). Fail-closed:
   engine never coins an extension.
-- `audience-tag-manifest-autofix` — same against manifest entity
-  `audience_tags[]` arrays
 - `privacy-trio-backfill-autofix` — missing `origin` / `audience_tags`
   / `is_sensitive` field inserted with conservative defaults
   (`personal` / `[]` / `false`)
@@ -1564,6 +1596,10 @@ takes no action.
   coerced to bool (`"true"`/`"True"` → `true`, anything else → `false`)
 - `origin-coerce-autofix` — out-of-enum `origin` value coerced to
   `personal`
+
+(Manifest concept and audience fields are conformant by upstream
+construction in `/ztn:process` §4.7 and `/ztn:maintain` Step 4 hub
+linkage — no separate manifest fix-ids needed.)
 
 **Migration (first run only):**
 - `migration-item-needs-review` — legacy Resolved Archive item migrated with low LLM confidence
