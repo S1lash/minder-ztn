@@ -45,6 +45,11 @@ gate, never `person`/`project`), `_system/registries/DOMAINS.md`
   `knowledge` = PARA `1_projects/`, `2_areas/`, `3_resources/`.
 - `--batch-size N` — notes per Sonnet subagent invocation (default 15).
   Reduce to 8–10 if Sonnet output truncation observed.
+- `--min-pack N` — pack small primary-key clusters (size < N) together
+  by year-month so subagent invocation count tracks corpus volume
+  rather than transcript count (default 8). Set to 1 to disable packing
+  and preserve strict primary-key cohesion (one subagent per transcript)
+  — appropriate when corpus has many notes per source.
 - `--limit N` — process only the first N batches (smoke-test mode).
 - `--resume` — detect existing feature branch and skip already-
   processed batches (default behaviour when feature branch exists;
@@ -175,6 +180,14 @@ source/hub anchor.
 
 **Fallback — alphabetical chunks of `--batch-size`.** Last resort
 when no signal applies.
+
+**Packing pass.** After primary clustering, clusters smaller than
+`--min-pack` (default 8) are merged into mixed-context batches grouped
+by year-month derived from each cluster's files' `created` dates. This
+keeps subagent invocation count tracking corpus volume rather than
+transcript count when the corpus has 1–2 notes per source. Clusters
+at or above `--min-pack` pass through unchanged so same-source
+canonicalisation cohesion is preserved when meaningful.
 
 After grouping, split any cluster larger than `--batch-size` into
 smaller batches preserving primary-key cohesion (e.g. one transcript

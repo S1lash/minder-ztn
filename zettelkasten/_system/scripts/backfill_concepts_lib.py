@@ -119,16 +119,93 @@ def _split_oversize(
     return out
 
 
+def _pack_small_batches(
+    batches: list[Batch],
+    fm_by_path: dict[Path, dict],
+    batch_size: int,
+    min_pack: int,
+) -> list[Batch]:
+    """Merge small clusters into mixed-context batches sharing year-month
+    when individual primary keys are too sparse to justify a dedicated
+    subagent invocation.
+
+    Clusters at or above `min_pack` pass through unchanged — same-source
+    cohesion is preserved when meaningful. Sub-`min_pack` clusters are
+    bucketed by year-month derived from the cluster's files' `created`
+    dates (most-common YM wins on ties); within a YM bucket files are
+    appended in primary-key order, then chunked at `batch_size`.
+
+    `min_pack` ≤ 1 disables packing (returns input unchanged).
+    """
+    if min_pack <= 1:
+        return batches
+
+    keep: list[Batch] = []
+    small: list[Batch] = []
+    for b in batches:
+        if len(b.files) >= min_pack:
+            keep.append(b)
+        else:
+            small.append(b)
+
+    if not small:
+        return keep
+
+    # Bucket small clusters by year-month
+    ym_buckets: dict[str, list[tuple[Batch, list[Path]]]] = {}
+    for b in small:
+        ym = _dominant_year_month(b.files, fm_by_path)
+        ym_buckets.setdefault(ym, []).append((b, b.files))
+
+    for ym, items in sorted(ym_buckets.items()):
+        # Flatten preserving cluster boundaries (files from same cluster stay
+        # adjacent so subagent context is locally cohesive).
+        flat: list[Path] = []
+        primary_kinds: list[str] = []
+        for b, files in items:
+            flat.extend(files)
+            primary_kinds.append(b.primary_kind)
+        for chunk in _split_oversize(flat, batch_size):
+            keep.append(Batch(
+                primary_key=f"packed@{ym}",
+                primary_kind="packed",
+                files=chunk,
+            ))
+    return keep
+
+
+def _dominant_year_month(
+    files: list[Path], fm_by_path: dict[Path, dict],
+) -> str:
+    """Return year-month most common among the files' `created` dates.
+
+    Falls back to `unknown` when no file has a parseable date.
+    """
+    counts: dict[str, int] = {}
+    for p in files:
+        fm = fm_by_path.get(p) or {}
+        ym = _year_month(fm.get("created") or fm.get("date"))
+        if ym:
+            counts[ym] = counts.get(ym, 0) + 1
+    if not counts:
+        return "unknown"
+    return max(counts.items(), key=lambda kv: (kv[1], kv[0]))[0]
+
+
 def compute_batches(
     fm_by_path: dict[Path, dict],
     batch_size: int = 15,
     hub_membership: dict[Path, str] | None = None,
+    min_pack: int = 8,
 ) -> list[Batch]:
-    """Apply primary → secondary → tertiary → fallback bucketing.
+    """Apply primary → secondary → tertiary → fallback bucketing, then
+    pack small clusters together by year-month so subagent invocation
+    count tracks corpus volume rather than transcript count.
 
-    `hub_membership` maps file path to its dominant hub id when available.
-    Caller (SKILL orchestrator) computes this from MoC bodies — function
-    is agnostic to derivation strategy.
+    `min_pack` is the threshold below which a cluster gets merged with
+    other small clusters. Set ≤ 1 to disable packing (preserves the
+    pre-pack primary-key cohesion at the cost of one subagent per
+    transcript — appropriate when the corpus has many notes per source).
     """
     hub_membership = hub_membership or {}
     batches: list[Batch] = []
@@ -143,48 +220,42 @@ def compute_batches(
                 files=chunk,
             ))
 
-    if not residual:
-        return batches
-
     residual_fm = {p: fm_by_path[p] for p in residual}
 
     # Secondary: hub
-    hub_buckets, residual = _bucket_hub(residual_fm, residual, hub_membership)
-    for key, files in sorted(hub_buckets.items()):
-        for chunk in _split_oversize(files, batch_size):
-            batches.append(Batch(
-                primary_key=f"hub={key}",
-                primary_kind="hub",
-                files=chunk,
-            ))
-
-    if not residual:
-        return batches
-    residual_fm = {p: fm_by_path[p] for p in residual}
+    if residual:
+        hub_buckets, residual = _bucket_hub(residual_fm, residual, hub_membership)
+        for key, files in sorted(hub_buckets.items()):
+            for chunk in _split_oversize(files, batch_size):
+                batches.append(Batch(
+                    primary_key=f"hub={key}",
+                    primary_kind="hub",
+                    files=chunk,
+                ))
+        residual_fm = {p: fm_by_path[p] for p in residual}
 
     # Tertiary: domain-temporal cluster
-    dom_buckets, residual = _bucket_domain_cluster(residual_fm, residual)
-    for key, files in sorted(dom_buckets.items()):
-        for chunk in _split_oversize(files, batch_size):
+    if residual:
+        dom_buckets, residual = _bucket_domain_cluster(residual_fm, residual)
+        for key, files in sorted(dom_buckets.items()):
+            for chunk in _split_oversize(files, batch_size):
+                batches.append(Batch(
+                    primary_key=f"domain-cluster={key}",
+                    primary_kind="domain-cluster",
+                    files=chunk,
+                ))
+
+    # Fallback: alphabetical
+    if residual:
+        alpha = sorted(residual, key=lambda p: p.as_posix())
+        for chunk in _split_oversize(alpha, batch_size):
             batches.append(Batch(
-                primary_key=f"domain-cluster={key}",
-                primary_kind="domain-cluster",
+                primary_key="alphabetical",
+                primary_kind="alphabetical",
                 files=chunk,
             ))
 
-    if not residual:
-        return batches
-
-    # Fallback: alphabetical
-    alpha = sorted(residual, key=lambda p: p.as_posix())
-    for chunk in _split_oversize(alpha, batch_size):
-        batches.append(Batch(
-            primary_key="alphabetical",
-            primary_kind="alphabetical",
-            files=chunk,
-        ))
-
-    return batches
+    return _pack_small_batches(batches, fm_by_path, batch_size, min_pack)
 
 
 # -----------------------------------------------------------------------------

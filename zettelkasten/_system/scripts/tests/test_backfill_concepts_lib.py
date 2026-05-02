@@ -16,7 +16,7 @@ class BatchingTests(unittest.TestCase):
             Path("c.md"): {"origin_source": "src2"},
             Path("d.md"): {},
         }
-        batches = bcl.compute_batches(fm, batch_size=15)
+        batches = bcl.compute_batches(fm, batch_size=15, min_pack=1)
         kinds = [b.primary_kind for b in batches]
         self.assertIn("origin_source", kinds)
         # src1 → 2 files, src2 → 1, residual d.md falls through
@@ -28,7 +28,7 @@ class BatchingTests(unittest.TestCase):
         fm = {
             Path(f"f{i}.md"): {"origin_source": "src1"} for i in range(35)
         }
-        batches = bcl.compute_batches(fm, batch_size=15)
+        batches = bcl.compute_batches(fm, batch_size=15, min_pack=1)
         sizes = [len(b.files) for b in batches]
         self.assertEqual(sizes, [15, 15, 5])
         # All same primary key
@@ -40,7 +40,9 @@ class BatchingTests(unittest.TestCase):
             Path("b.md"): {},
         }
         hub_membership = {Path("a.md"): "hub-x", Path("b.md"): "hub-x"}
-        batches = bcl.compute_batches(fm, batch_size=15, hub_membership=hub_membership)
+        batches = bcl.compute_batches(
+            fm, batch_size=15, min_pack=1, hub_membership=hub_membership,
+        )
         self.assertEqual(len(batches), 1)
         self.assertEqual(batches[0].primary_kind, "hub")
         self.assertEqual(batches[0].primary_key, "hub=hub-x")
@@ -51,14 +53,14 @@ class BatchingTests(unittest.TestCase):
             Path("b.md"): {"domains": ["work"], "created": "2026-04-15"},
             Path("c.md"): {"domains": ["work"], "created": "2026-05-01"},
         }
-        batches = bcl.compute_batches(fm, batch_size=15)
+        batches = bcl.compute_batches(fm, batch_size=15, min_pack=1)
         # April cluster vs May cluster
         keys = sorted(b.primary_key for b in batches)
         self.assertEqual(keys, ["domain-cluster=work@2026-04", "domain-cluster=work@2026-05"])
 
     def test_alphabetical_fallback(self):
         fm = {Path("z.md"): {}, Path("a.md"): {}, Path("m.md"): {}}
-        batches = bcl.compute_batches(fm, batch_size=15)
+        batches = bcl.compute_batches(fm, batch_size=15, min_pack=1)
         self.assertEqual(len(batches), 1)
         self.assertEqual(batches[0].primary_kind, "alphabetical")
         names = [p.name for p in batches[0].files]
@@ -72,10 +74,56 @@ class BatchingTests(unittest.TestCase):
             Path("d.md"): {},
         }
         hub_membership = {Path("b.md"): "hub-x"}
-        batches = bcl.compute_batches(fm, batch_size=15, hub_membership=hub_membership)
+        batches = bcl.compute_batches(
+            fm, batch_size=15, min_pack=1, hub_membership=hub_membership,
+        )
         all_files = [p for b in batches for p in b.files]
         self.assertEqual(set(all_files), set(fm.keys()))
         self.assertEqual(len(all_files), 4)
+
+
+class PackingTests(unittest.TestCase):
+    def test_default_packs_small_clusters(self):
+        # 30 files, each from its own origin_source — without packing
+        # would yield 30 batches of size 1; with default min_pack=8
+        # they pack into ≤ ceil(30/15) = 2 batches.
+        fm = {
+            Path(f"f{i}.md"): {"origin_source": f"src{i}", "created": "2026-04-01"}
+            for i in range(30)
+        }
+        batches = bcl.compute_batches(fm, batch_size=15)
+        self.assertLessEqual(len(batches), 2)
+        # All packed
+        self.assertTrue(all(b.primary_kind == "packed" for b in batches))
+        # All files retained
+        all_files = [p for b in batches for p in b.files]
+        self.assertEqual(set(all_files), set(fm.keys()))
+
+    def test_large_clusters_pass_through(self):
+        # 20 files from one source — split into 15+5 by batch_size cap.
+        # The 15-chunk passes through (≥ min_pack); the 5-chunk would
+        # pack on its own but there's nothing to pack with → packed@YM.
+        fm = {
+            Path(f"f{i}.md"): {"origin_source": "src1", "created": "2026-04-01"}
+            for i in range(20)
+        }
+        batches = bcl.compute_batches(fm, batch_size=15, min_pack=8)
+        kinds = sorted(b.primary_kind for b in batches)
+        # First chunk preserved as origin_source; tail-of-15 (size 5)
+        # falls below min_pack and gets packed.
+        self.assertEqual(kinds, ["origin_source", "packed"])
+
+    def test_packed_grouped_by_year_month(self):
+        # Mix of two months, each with small clusters. Packing should
+        # keep the months in separate batches when both fit cleanly.
+        fm = {}
+        for i in range(5):
+            fm[Path(f"april-{i}.md")] = {"origin_source": f"src{i}", "created": "2026-04-01"}
+            fm[Path(f"may-{i}.md")] = {"origin_source": f"src-may-{i}", "created": "2026-05-01"}
+        batches = bcl.compute_batches(fm, batch_size=15, min_pack=8)
+        keys = sorted({b.primary_key for b in batches})
+        self.assertIn("packed@2026-04", keys)
+        self.assertIn("packed@2026-05", keys)
 
 
 class VerdictParseTests(unittest.TestCase):
