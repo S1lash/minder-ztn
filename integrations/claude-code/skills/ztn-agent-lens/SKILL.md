@@ -545,6 +545,37 @@ After updating runs.jsonl, look at the last 3 entries for this
 
 ---
 
+## Step 5.9 — Privacy trio + concept fields on lens-observation entities
+
+Lens outputs are written as markdown observation files; per
+ENGINE_DOCTRINE §3.8 they are Tier 2 entities and **must carry
+the privacy trio** (`origin`, `audience_tags`, `is_sensitive`) on
+every emission. Apply these defaults at write time:
+
+- `origin: personal` — lens observations are owner-internal
+  hypothesis-grade analysis; never `work` (would leak to work-team
+  in a future sync) or `external` (lens is internal).
+- `audience_tags: []` — lens output is owner-only by construction.
+  Never widened automatically; owner curates if they want to share
+  a specific lens result.
+- `is_sensitive: false` by default; `true` if the lens prompt
+  explicitly asks the model to surface sensitive patterns
+  (e.g. relationship/conflict observations) — consult the lens's
+  `output_sensitivity` registry field if present, default `false`
+  otherwise.
+
+If a lens output references concepts by name, every concept-name
+string MUST be normalised through
+`_system/scripts/_common.py::normalize_concept_name()` at write
+time (same autonomous-resolution contract as `/ztn:process`
+Q15) — drop unnormalisables, never transliterate, never raise
+CLARIFICATION. Lens outputs that wind up in the manifest pipeline
+inherit conformance via this gate, so downstream Minder consumers
+see the same clean concept/audience surface as for records and
+notes.
+
+---
+
 ## Step 6 — Log Summary
 
 Append to `_system/state/log_agent_lens.md` a single block:

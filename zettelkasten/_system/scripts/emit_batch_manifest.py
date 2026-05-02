@@ -1,0 +1,351 @@
+#!/usr/bin/env python3
+"""Emit a /ztn:process or /ztn:maintain batch manifest as JSON.
+
+Reads structured batch data from a file (or stdin), runs every
+concept-name and audience-tag through the autonomous-resolution
+helpers in `_common.py`, validates required top-level keys, and writes
+the result to `_system/state/batches/{batch_id}.json`.
+
+The format contract is owned by `minder-project/strategy/ARCHITECTURE.md`
+§4.5. ZTN-side guarantee: every concept name reaches Minder already
+conformant per CONCEPT_NAMING.md; every audience tag is in canonical
+5 ∪ active AUDIENCES.md extensions; every privacy trio field is
+type-correct with conservative defaults.
+
+This helper is the producer-side enforcement gate — the SAME normalisers
+called by `lint_concept_audit.py` (post-write defence-in-depth) run
+HERE at emission time. Clean batch in → conformant manifest out.
+
+Usage:
+    python3 emit_batch_manifest.py \\
+        --input <path-to-batch-data.json> \\
+        --output <path-to-batches/{batch_id}.json> \\
+        [--audiences <AUDIENCES.md path>]
+
+Or pipe via stdin:
+    cat batch_data.json | python3 emit_batch_manifest.py \\
+        --output _system/state/batches/{batch_id}.json
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+from _common import (
+    AUDIENCE_CANONICAL,
+    normalize_audience_tag,
+    normalize_concept_list,
+    normalize_concept_name,
+    repo_root,
+)
+
+
+CONCEPT_LIST_FIELDS: frozenset[str] = frozenset({
+    "concept_hints", "member_concepts", "applies_in_concepts",
+    "concept_ids", "related_concepts", "previous_slugs",
+})
+
+ALLOWED_ORIGINS: frozenset[str] = frozenset({"personal", "work", "external"})
+
+REQUIRED_TOP_LEVEL: tuple[str, ...] = (
+    "batch_id", "timestamp", "format_version", "processor",
+)
+
+
+def parse_audience_extensions(path: Path) -> set[str]:
+    """Mirror of `lint_concept_audit.parse_audience_extensions`. Returns
+    the set of active extension tags from AUDIENCES.md, or empty if the
+    file is missing / malformed.
+    """
+    if not path.exists():
+        return set()
+    import re
+    text = path.read_text(encoding="utf-8")
+    m = re.search(
+        r"<!-- BEGIN extensions -->(.*?)<!-- END extensions -->",
+        text, re.DOTALL,
+    )
+    if not m:
+        return set()
+    extensions: set[str] = set()
+    for line in m.group(1).splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        if "---" in line:
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 3:
+            continue
+        tag, _added, status = cells[0], cells[1], cells[2]
+        if not tag or tag.lower() == "tag":
+            continue
+        if tag.startswith("_(") or tag in {"—", "-"}:
+            continue
+        if status.lower().startswith("deprecated"):
+            continue
+        extensions.add(tag)
+    return extensions
+
+
+def normalise_audience_list(
+    raw: list, accept_set: set[str], events: list[dict], path: str,
+) -> list[str]:
+    out: list[str] = []
+    for tag in raw or []:
+        if isinstance(tag, str) and tag in accept_set:
+            if tag not in out:
+                out.append(tag)
+            continue
+        norm = normalize_audience_tag(tag) if isinstance(tag, str) else None
+        if norm is not None and norm in accept_set:
+            if norm not in out:
+                out.append(norm)
+            if norm != tag:
+                events.append({
+                    "fix_id": "audience-tag-normalise-autofix",
+                    "field_path": path, "before": tag, "after": norm,
+                })
+        else:
+            events.append({
+                "fix_id": "audience-tag-drop-autofix",
+                "field_path": path, "before": tag, "after": None,
+                "reason": "not-in-whitelist" if norm is not None
+                          else "format-unfixable",
+            })
+    return out
+
+
+def coerce_origin(value, events: list[dict], path: str) -> str:
+    if value in ALLOWED_ORIGINS:
+        return value
+    events.append({
+        "fix_id": "origin-coerce-autofix",
+        "field_path": path, "before": value, "after": "personal",
+    })
+    return "personal"
+
+
+def coerce_is_sensitive(value, events: list[dict], path: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        coerced = value.strip().lower() == "true"
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        coerced = bool(value)
+    else:
+        coerced = False
+    events.append({
+        "fix_id": "is-sensitive-coerce-autofix",
+        "field_path": path, "before": value, "after": coerced,
+    })
+    return coerced
+
+
+def process_concepts_upserts(
+    upserts: list, events: list[dict], path_prefix: str,
+) -> list:
+    """Walk concepts.upserts[]: normalise name (drop unnormalisables),
+    normalise subtype + related + previous lists.
+    """
+    kept: list[dict] = []
+    for i, entry in enumerate(upserts or []):
+        if not isinstance(entry, dict):
+            events.append({
+                "fix_id": "concept-drop-autofix",
+                "field_path": f"{path_prefix}[{i}]",
+                "before": entry, "after": None,
+                "reason": "non-dict",
+            })
+            continue
+        name = entry.get("name")
+        if not isinstance(name, str):
+            events.append({
+                "fix_id": "concept-drop-autofix",
+                "field_path": f"{path_prefix}[{i}].name",
+                "before": name, "after": None,
+                "reason": "non-string",
+            })
+            continue
+        norm_name = normalize_concept_name(name)
+        if norm_name is None:
+            events.append({
+                "fix_id": "concept-drop-autofix",
+                "field_path": f"{path_prefix}[{i}].name",
+                "before": name, "after": None,
+                "reason": "unnormalisable",
+            })
+            continue
+        if norm_name != name:
+            events.append({
+                "fix_id": "concept-format-autofix",
+                "field_path": f"{path_prefix}[{i}].name",
+                "before": name, "after": norm_name,
+            })
+            entry["name"] = norm_name
+
+        sub = entry.get("subtype")
+        if sub is not None and sub != "":
+            sub_norm = normalize_concept_name(sub) if isinstance(sub, str) else None
+            if sub_norm is None:
+                events.append({
+                    "fix_id": "concept-drop-autofix",
+                    "field_path": f"{path_prefix}[{i}].subtype",
+                    "before": sub, "after": None,
+                })
+                entry["subtype"] = None
+            elif sub_norm != sub:
+                events.append({
+                    "fix_id": "concept-format-autofix",
+                    "field_path": f"{path_prefix}[{i}].subtype",
+                    "before": sub, "after": sub_norm,
+                })
+                entry["subtype"] = sub_norm
+
+        for fld in ("related_concepts", "previous_slugs"):
+            if isinstance(entry.get(fld), list):
+                normalised = normalize_concept_list(entry[fld])
+                if normalised != entry[fld]:
+                    events.append({
+                        "fix_id": "concept-format-autofix",
+                        "field_path": f"{path_prefix}[{i}].{fld}",
+                        "before": entry[fld], "after": normalised,
+                    })
+                    entry[fld] = normalised
+
+        kept.append(entry)
+    return kept
+
+
+def walk_and_normalise(
+    node, accept_set: set[str], events: list[dict], path: str = "$",
+):
+    """Recursively traverse the manifest structure, applying autonomous
+    normalisation to known fields. Mutates in place.
+    """
+    if isinstance(node, dict):
+        for key in list(node.keys()):
+            child_path = f"{path}.{key}"
+            value = node[key]
+
+            if key in CONCEPT_LIST_FIELDS and isinstance(value, list):
+                normalised = normalize_concept_list(value)
+                if normalised != value:
+                    events.append({
+                        "fix_id": "concept-format-autofix",
+                        "field_path": child_path,
+                        "before": value, "after": normalised,
+                    })
+                node[key] = normalised
+                continue
+
+            if key == "audience_tags" and isinstance(value, list):
+                node[key] = normalise_audience_list(
+                    value, accept_set, events, child_path,
+                )
+                continue
+
+            if key == "origin":
+                node[key] = coerce_origin(value, events, child_path)
+                continue
+
+            if key == "is_sensitive":
+                node[key] = coerce_is_sensitive(value, events, child_path)
+                continue
+
+            if key == "concepts" and isinstance(value, dict):
+                if isinstance(value.get("upserts"), list):
+                    value["upserts"] = process_concepts_upserts(
+                        value["upserts"], events,
+                        f"{child_path}.upserts",
+                    )
+                continue
+
+            walk_and_normalise(value, accept_set, events, child_path)
+
+    elif isinstance(node, list):
+        for i, item in enumerate(node):
+            walk_and_normalise(item, accept_set, events, f"{path}[{i}]")
+
+
+def validate_top_level(data: dict) -> list[str]:
+    """Return list of warning messages for missing required keys.
+    Does not raise — autonomous-pipeline policy.
+    """
+    warnings: list[str] = []
+    for key in REQUIRED_TOP_LEVEL:
+        if key not in data:
+            warnings.append(f"missing required top-level key: {key}")
+    return warnings
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--input", type=Path, default=None,
+        help="Input JSON file. If omitted, read from stdin.",
+    )
+    parser.add_argument(
+        "--output", type=Path, required=True,
+        help="Output JSON path (typically "
+             "_system/state/batches/{batch_id}.json).",
+    )
+    parser.add_argument(
+        "--audiences", type=Path, default=None,
+        help="AUDIENCES.md path (default: "
+             "{repo_root}/_system/registries/AUDIENCES.md).",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Print normalised JSON to stdout without writing.",
+    )
+    args = parser.parse_args(argv)
+
+    if args.input:
+        raw_text = args.input.read_text(encoding="utf-8")
+    else:
+        raw_text = sys.stdin.read()
+    try:
+        data = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        sys.stderr.write(f"emit_batch_manifest: invalid JSON input: {exc}\n")
+        return 2
+    if not isinstance(data, dict):
+        sys.stderr.write("emit_batch_manifest: input root must be an object\n")
+        return 2
+
+    audiences_path = args.audiences or (
+        repo_root() / "_system" / "registries" / "AUDIENCES.md"
+    )
+    extensions = parse_audience_extensions(audiences_path)
+    accept_set = set(AUDIENCE_CANONICAL) | extensions
+
+    events: list[dict] = []
+    walk_and_normalise(data, accept_set, events)
+
+    warnings = validate_top_level(data)
+    for w in warnings:
+        sys.stderr.write(f"emit_batch_manifest: warning: {w}\n")
+
+    if args.dry_run:
+        sys.stdout.write(json.dumps(data, ensure_ascii=False, indent=2))
+        sys.stdout.write("\n")
+    else:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    # Emit fix events on stderr so the caller can ingest them into
+    # the batch's audit log without contaminating the JSON output.
+    for ev in events:
+        sys.stderr.write(json.dumps(ev, ensure_ascii=False) + "\n")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

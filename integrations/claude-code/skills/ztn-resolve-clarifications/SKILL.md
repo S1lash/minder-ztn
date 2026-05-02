@@ -83,12 +83,23 @@ Conditional / on-demand (load only when round contains relevant Types):
 | File | Trigger |
 |---|---|
 | `_system/state/OPEN_THREADS.md` | `thread-closure-suggested` items |
-| `_system/views/HUB_INDEX.md` | `thread-closure-suggested`, `cross-domain-link` |
+| `_system/views/HUB_INDEX.md` | `thread-closure-suggested`, `cross-domain-link`, `hub-stale-vs-material` |
+| `_system/views/INDEX.md` | `index-missing`, `index-stale`, `index-frontmatter-malformed` (heartbeat — usually resolves by running `/ztn:maintain`) |
 | `_system/views/CURRENT_CONTEXT.md` | values-bearing rounds (org-tension, decisions) |
 | `5_meta/PROCESSING_PRINCIPLES.md` | `principle-candidate-batch` rounds |
-| `_system/registries/CONCEPT_NAMING.md` | `concept-format-mismatch`, `concept-type-prefix-in-name`, `concept-name-too-long` items — the spec defines proposed-canonical computation and resolutions |
-| `_system/registries/AUDIENCES.md` | `audience-tag-unknown`, `audience-tag-reserved-conflict`, `audience-tag-format-mismatch` items — the spec defines reserved-keyword test, format rules, and the **add-extension** flow (append a row under `<!-- BEGIN extensions -->` marker on owner approval, never silently rewrite) |
 | `_system/scripts/query_constitution.py --domains <d>` | escalate when constitution-core lacks the principle needed to form a confident hypothesis (typically values-bearing items) |
+
+**Concept and audience CLARIFICATIONs are never raised by the engine.**
+The autonomous-resolution layer (`/ztn:lint` Scan A.7 +
+`_system/scripts/lint_concept_audit.py` + `_common.py` normalisers)
+auto-fixes or silent-drops every concept/audience format issue. This
+skill therefore does NOT receive `concept-format-mismatch`,
+`concept-type-prefix-in-name`, `concept-name-too-long`,
+`audience-tag-unknown`, `audience-tag-reserved-conflict`, or
+`audience-tag-format-mismatch` items — they don't exist as
+CLARIFICATIONs. The Extensions table in `_system/registries/AUDIENCES.md`
+remains owner-curated outside the pipeline; if owner wants to widen the
+audience whitelist they edit AUDIENCES.md directly, no resolve flow.
 
 **Context-only invariant.** Files in this section are read but never
 written by this skill. The only writes go through the «Output Files
@@ -384,8 +395,10 @@ If owner declines or queue is empty → release lock, exit clean.
 - `5_meta/mocs/{hub}.md` — open questions / current understanding edits when thread-closure
 - `_system/state/OPEN_THREADS.md` — thread state moves
 - `0_constitution/{type}/{domain}/{slug}.md` — principle accepts (creates only)
-- `_system/registries/AUDIENCES.md` — append row to Extensions table on `audience-tag-unknown` → add-to-registry resolution; status updates to `deprecated:{date}` on retire flow; spec sections never edited by this skill
-- `_records/**/*.md`, `_sources/processed/**/*.md`, knowledge-note frontmatter — `concepts:` and `audience_tags:` value rewrites on map-to-existing / drop / format-fix resolutions of concept and audience CLARIFICATION codes
+(Concept/audience format issues do NOT pass through this skill —
+autonomous resolution by `/ztn:lint` Scan A.7 handles them
+upstream. AUDIENCES.md Extensions table is owner-curated outside
+the pipeline.)
 
 ## What This Skill Does NOT Do
 

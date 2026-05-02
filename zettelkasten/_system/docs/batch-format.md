@@ -90,8 +90,8 @@ threads_opened: N
 threads_resolved: N
 clarifications_raised: N
 people_candidates_appended: N
-concepts_upserted: N        # v2.0 — count of distinct concepts in concepts.upserts[]
-sensitive_entities: N       # v2.0 — count of entities with is_sensitive=true
+concepts_upserted: N        # count of distinct concepts in concepts.upserts[]
+sensitive_entities: N       # count of entities with is_sensitive=true
 ---
 ```
 
@@ -107,8 +107,8 @@ sensitive_entities: N       # v2.0 — count of entities with is_sensitive=true
 8. `## Hubs Updated`
 9. `## CLARIFICATIONS Raised`
 10. `## People Candidates Appended` (added 2026-04-24) — per entry: `{candidate_id} | {name_as_transcribed} | {note-id} | {role_hint or —}`. Count MUST equal `people_candidates_appended` in frontmatter. Use `(none)` if empty. Rationale: bare-name mentions routed to `_system/state/people-candidates.jsonl` instead of CLARIFICATIONS — see `/ztn:process` Step 3.8 + `/ztn:lint` Scan C.5.
-11. `## Concepts Upserted` (added v2.0) — per entry: `{name} | {type} | {subtype or —} | {related_concepts comma-list or —}`. Count MUST equal `concepts_upserted` in frontmatter. Use `(none)` if empty. Mirrors the JSON manifest's `concepts.upserts[]`. Names MUST conform to `_system/registries/CONCEPT_NAMING.md` (snake_case ASCII, English-only, no type prefix in name).
-12. `## Sensitive Entities` (added v2.0) — per entry: `{path or id} | {kind: record|note|hub|task|...} | audience_tags: {[...] or "[]"}`. Count MUST equal `sensitive_entities` in frontmatter. Use `(none)` if empty. Lists every entity emitted in this batch with `is_sensitive: true` so downstream sync can apply extra-friction handling without re-scanning frontmatter.
+11. `## Concepts Upserted` — per entry: `{name} | {type} | {subtype or —} | {related_concepts comma-list or —}`. Count MUST equal `concepts_upserted` in frontmatter. Use `(none)` if empty. Mirrors the JSON manifest's `concepts.upserts[]`. Names conform to `_system/registries/CONCEPT_NAMING.md` (snake_case ASCII, English-only, no type prefix in name).
+12. `## Sensitive Entities` — per entry: `{path or id} | {kind: record|note|hub|task|...} | audience_tags: {[...] or "[]"}`. Count MUST equal `sensitive_entities` in frontmatter. Use `(none)` if empty. Lists every entity emitted in this batch with `is_sensitive: true` so downstream sync can apply extra-friction handling without re-scanning frontmatter.
 
 Пустые секции сохраняются с пометкой `(none)` — удобнее для diff и downstream consumer.
 
@@ -185,7 +185,7 @@ sensitive_entities: 0
 
 ---
 
-## v2.0 Per-Entity Fields — Concepts and Privacy Trio
+## Per-Entity Fields — Concepts and Privacy Trio
 
 Every entity emitted by `/ztn:process` (record, knowledge note, hub,
 task, event, idea, person profile, project profile, principle, content
@@ -279,7 +279,7 @@ audience_tags / is_sensitive). Lint Scan A.7 explicitly skips them:
   artefacts)
 - `_system/state/log_*.md` (append-only audit trails)
 
-### v2.0 Manifest Section Sketch (JSON, illustrative)
+### Manifest Section Sketch (JSON, illustrative)
 
 The JSON manifest schema is authoritative in
 `minder-project/strategy/ARCHITECTURE.md` §4.5. ZTN emits to that schema.

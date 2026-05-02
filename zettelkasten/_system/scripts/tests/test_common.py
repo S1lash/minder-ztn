@@ -260,6 +260,24 @@ class NormalizeConceptNameTests(unittest.TestCase):
     def test_handles_none_input(self):
         self.assertIsNone(c.normalize_concept_name(None))
 
+    def test_drops_transliteration_tsiya(self):
+        # Q15 model slip: model transliterates "реструктуризация" instead
+        # of translating to "restructuring". Mechanical safety net drops.
+        self.assertIsNone(c.normalize_concept_name("restrukturizatsiya"))
+
+    def test_drops_transliteration_ovanie(self):
+        self.assertIsNone(c.normalize_concept_name("delegirovanie"))
+
+    def test_drops_transliteration_with_shch(self):
+        self.assertIsNone(c.normalize_concept_name("borshch_recipe"))
+
+    def test_drops_atelnost(self):
+        self.assertIsNone(c.normalize_concept_name("dejatelnost"))
+
+    def test_keeps_short_words_not_transliterations(self):
+        # `tsia` substring at end too short → not flagged
+        self.assertEqual(c.normalize_concept_name("ratio"), "ratio")
+
 
 class NormalizeConceptListTests(unittest.TestCase):
     def test_dedupes_after_normalisation(self):
@@ -307,6 +325,107 @@ class NormalizeAudienceTagTests(unittest.TestCase):
         # caller decides accept/drop based on AUDIENCES.md Extensions
         self.assertEqual(c.normalize_audience_tag("team-platform"),
                          "team-platform")
+
+
+class RecomputeHubTrioTests(unittest.TestCase):
+    """Hub privacy derivation: dominant origin / audience intersection /
+    sensitivity contagion. Owner-set fields ALWAYS preserved."""
+
+    def test_empty_members_uses_conservative_defaults(self):
+        fm, events = c.recompute_hub_trio({}, [])
+        self.assertEqual(fm["origin"], "personal")
+        self.assertEqual(fm["audience_tags"], [])
+        self.assertFalse(fm["is_sensitive"])
+        self.assertEqual(len(events), 3)
+
+    def test_dominant_origin_wins(self):
+        members = [
+            {"origin": "work"},
+            {"origin": "work"},
+            {"origin": "personal"},
+        ]
+        fm, _ = c.recompute_hub_trio({}, members)
+        self.assertEqual(fm["origin"], "work")
+
+    def test_origin_tie_breaks_to_personal(self):
+        members = [
+            {"origin": "work"},
+            {"origin": "personal"},
+        ]
+        fm, _ = c.recompute_hub_trio({}, members)
+        self.assertEqual(fm["origin"], "personal")
+
+    def test_audience_intersection_fail_closed(self):
+        members = [
+            {"audience_tags": ["work", "friends"]},
+            {"audience_tags": ["work"]},
+            {"audience_tags": []},  # one member at owner-only collapses set
+        ]
+        fm, _ = c.recompute_hub_trio({}, members)
+        self.assertEqual(fm["audience_tags"], [])
+
+    def test_audience_intersection_when_all_agree(self):
+        members = [
+            {"audience_tags": ["work", "friends"]},
+            {"audience_tags": ["work", "friends"]},
+        ]
+        fm, _ = c.recompute_hub_trio({}, members)
+        self.assertEqual(fm["audience_tags"], ["friends", "work"])
+
+    def test_sensitivity_contagion(self):
+        members = [
+            {"is_sensitive": False},
+            {"is_sensitive": True},
+            {"is_sensitive": False},
+        ]
+        fm, _ = c.recompute_hub_trio({}, members)
+        self.assertTrue(fm["is_sensitive"])
+
+    def test_owner_set_origin_preserved(self):
+        """If hub.origin already set, derivation does not overwrite."""
+        members = [{"origin": "work"}, {"origin": "work"}]
+        fm, events = c.recompute_hub_trio({"origin": "personal"}, members)
+        self.assertEqual(fm["origin"], "personal")
+        self.assertNotIn("hub-origin-derive-autofix",
+                         {e["fix_id"] for e in events})
+
+    def test_owner_set_audience_preserved(self):
+        members = [{"audience_tags": []}]
+        fm, events = c.recompute_hub_trio(
+            {"audience_tags": ["work"]}, members
+        )
+        self.assertEqual(fm["audience_tags"], ["work"])
+        self.assertNotIn("hub-audience-derive-autofix",
+                         {e["fix_id"] for e in events})
+
+    def test_owner_set_is_sensitive_preserved(self):
+        members = [{"is_sensitive": True}]
+        fm, events = c.recompute_hub_trio(
+            {"is_sensitive": False}, members
+        )
+        self.assertFalse(fm["is_sensitive"])
+        self.assertNotIn("hub-sensitivity-derive-autofix",
+                         {e["fix_id"] for e in events})
+
+    def test_partial_owner_set_only_missing_filled(self):
+        """Owner set origin only; audience and is_sensitive derived."""
+        members = [
+            {"origin": "work", "audience_tags": ["work"], "is_sensitive": True},
+        ]
+        fm, events = c.recompute_hub_trio({"origin": "personal"}, members)
+        self.assertEqual(fm["origin"], "personal")  # preserved
+        self.assertEqual(fm["audience_tags"], ["work"])  # derived
+        self.assertTrue(fm["is_sensitive"])  # derived
+        ids = {e["fix_id"] for e in events}
+        self.assertIn("hub-audience-derive-autofix", ids)
+        self.assertIn("hub-sensitivity-derive-autofix", ids)
+        self.assertNotIn("hub-origin-derive-autofix", ids)
+
+    def test_idempotent_after_full_set(self):
+        """Running twice on a fully-set hub produces zero events."""
+        fm, _ = c.recompute_hub_trio({}, [{"origin": "work"}])
+        _, events_again = c.recompute_hub_trio(fm, [{"origin": "work"}])
+        self.assertEqual(events_again, [])
 
 
 if __name__ == "__main__":

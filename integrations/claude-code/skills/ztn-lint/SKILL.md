@@ -259,8 +259,8 @@ Idempotent — re-running finds no missing sections → no writes.
 ### 1.D — Privacy-trio backfill (one-time, autonomous)
 
 Gate: check `migration_completed.privacy_trio_backfill` flag in Step
-0 (same mechanism as 1.A / 1.B). Run only on first lint after the
-v2.0 batch-format rollout; subsequent lints skip silently.
+0 (same mechanism as 1.A / 1.B). Runs once on the first lint cycle
+that observes the flag absent; subsequent lints skip silently.
 
 Pipeline: invoke the SAME helper as Scan A.7 — Step 1.D and Scan A.7
 share one code path; the helper is idempotent and operates uniformly
@@ -272,7 +272,7 @@ python3 _system/scripts/lint_concept_audit.py \
     --mode fix --root {{MINDER_ZTN_BASE}}
 ```
 
-The helper covers all v2.0 backfill needs:
+The helper covers all backfill needs:
 - privacy-trio defaults inserted on every record / knowledge note /
   hub / person profile / project profile that lacks the fields
 - `concepts:` autofix on any pre-existing non-conformant entries (rare

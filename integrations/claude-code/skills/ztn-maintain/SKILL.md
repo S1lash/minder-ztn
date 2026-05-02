@@ -404,23 +404,23 @@ After topic filter applied:
 No hub Changelog entry added by maintain — that's semantic evolution, not
 structural link. `/ztn:lint` handles semantic drift if it becomes visible.
 
-**Hub privacy and member_concepts (autonomous, no CLARIFICATIONs).**
+**Hub privacy and member_concepts (autonomous, owner-edits preserved).**
 Hubs do not carry a `concepts:` field — `member_concepts[]` is
-manifest-only. Privacy trio on hub frontmatter is **auto-recomputed**
-on every hub touch by maintain, using the same rules as `/ztn:process`
-hub C/D sections (single source of truth for the autonomous
-recomputation):
+manifest-only. Privacy trio derivation invokes
+`_system/scripts/_common.py::recompute_hub_trio()` — the SAME helper
+called by `/ztn:process` hub C/D, single source of truth.
 
-- `origin` ← dominant `origin` across member knowledge notes; tie →
-  `personal`.
-- `audience_tags` ← intersection of member-note `audience_tags[]`
-  (only audiences ALL members agree on widen the hub; default `[]`).
-- `is_sensitive` ← `true` if ANY member note has `is_sensitive: true`,
-  else `false`.
+The helper fills MISSING trio fields from member-note trios:
+- `origin` (when missing) ← dominant member origin; tie → `personal`.
+- `audience_tags` (when missing) ← intersection of member-note
+  audiences; fail-closed default `[]`.
+- `is_sensitive` (when missing) ← any-member contagion.
 
-The recomputation runs deterministically on every hub linkage write;
-maintain writes the post-recompute values into hub frontmatter
-alongside `modified:`. No CLARIFICATIONS, no owner action.
+**Owner-edit preservation contract.** Trio fields already present
+on the hub frontmatter are NEVER overwritten. Maintain writes the
+helper's output (which only fills gaps) into frontmatter alongside
+`modified:`. Owner manual edits survive across every maintain
+touch. No CLARIFICATIONS, no clobbering.
 
 **Hub manifest emission for this batch.** When this maintain run
 emits its batch manifest (`_system/state/batches/{ts}-maintain.json`),
@@ -633,6 +633,35 @@ After this write, a crash before the next batch iteration leaves the system
 in a recoverable state: retry picks up from the next unprocessed batch.
 
 Proceed to next batch or, if this was the last, exit the loop.
+
+### 6.6 Emit per-batch JSON manifest
+
+Alongside `log_maintenance.md`, emit a machine-parseable JSON
+manifest of this maintain batch's state changes. Schema:
+`minder-project/strategy/ARCHITECTURE.md` §4.5 with
+`processor: "ztn:maintain"`. Top-level: `batch_id` (matches the
+upstream /ztn:process batch_id this maintain run integrated),
+`timestamp` (this maintain iteration's UTC start),
+`format_version: "2.0"`, `processor: "ztn:maintain"`, plus the
+per-skill sections relevant to maintain output:
+`hubs.updated[]` (with `member_concepts[]` derived via
+`_common.py::normalize_concept_list`, plus the post-recompute
+privacy trio from `recompute_hub_trio`), `tier1_objects.people`
+on tier promotions, `threads_opened[]` / `threads_resolved[]`
+(unique to maintain — empty in /ztn:process manifests), `stats{}`.
+
+Assemble in memory, then invoke:
+
+```bash
+python3 _system/scripts/emit_batch_manifest.py \
+    --input <path-to-temp-json> \
+    --output _system/state/batches/{batch_id}-maintain.json
+```
+
+The helper applies the same autonomous concept/audience normalisation
+and trio coercion as on /ztn:process emission. Conformant output by
+construction. Emission events to stderr — log to log_maintenance.md
+Auto-Fixes section under fix-id `manifest-emit-autofix` if any.
 
 ---
 

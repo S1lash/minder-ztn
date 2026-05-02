@@ -677,6 +677,16 @@ Be specific and cite evidence from the transcript.
     - «реструктуризация» → `restrukturizatsiya` ✗
     - «делегирование» → `delegirovanie` ✗
 
+    **Mechanical safety net.** `_common.py::normalize_concept_name()`
+    runs a transliteration-detector heuristic
+    (`looks_transliterated()`) on every emitted name and silently
+    drops likely-transliterations (Russian morphological endings
+    `_tsiya` / `_ovanie` / `_eniye` / `_atelnost`, the `shch`
+    digraph). If the model slips and transliterates anyway, the
+    drop happens at write-time — no phantom node enters the graph.
+    The transliteration check is the only mechanical defence; the
+    primary contract is "translate, don't transliterate."
+
     **Translation-impossible fallback (autonomous, no owner action).**
     If a term is genuinely untranslatable (cultural/legal/domain jargon
     with no clean English equivalent — `dacha`-class) → **drop the
@@ -1119,27 +1129,30 @@ For each matching hub (from Q11):
 6. Update `modified` date in frontmatter
 7. Update `people`, `projects` lists if new entries
 
-**Hub privacy + member_concepts on update (autonomous, no
-CLARIFICATIONs).** Hub frontmatter does NOT gain a `concepts:` field
+**Hub privacy + member_concepts on update (autonomous, owner-edits
+preserved).** Hub frontmatter does NOT gain a `concepts:` field
 — `member_concepts[]` lives only in the manifest, derived at emission
 time (Step 4.7). Privacy trio on hub frontmatter (`origin` /
-`audience_tags` / `is_sensitive`) is **auto-recomputed** from current
-members on every hub touch:
+`audience_tags` / `is_sensitive`) is derived by the deterministic
+helper `_system/scripts/_common.py::recompute_hub_trio()` which
+**fills only missing fields**:
 
-- `origin` ← dominant `origin` across member knowledge notes (count
-  votes; tie → `personal`, the conservative default).
-- `audience_tags` ← intersection of member-note `audience_tags[]`
-  (only audiences ALL members agree on widen the hub; default `[]`).
-  Intersection (not union) keeps the hub at the most-restrictive
-  shared audience — fail-closed across members.
-- `is_sensitive` ← `true` if ANY member note has `is_sensitive:
-  true`, else `false`. Sensitivity is contagious upward (one
-  sensitive member taints the aggregate for sync-friction purposes);
-  on member sensitivity removal, the hub re-derives down freely.
+- `origin` (when missing) ← dominant `origin` across member knowledge
+  notes; tie → `personal` (conservative default).
+- `audience_tags` (when missing) ← intersection of member-note
+  `audience_tags[]` (only audiences ALL members agree on widen the
+  hub; default `[]`). Intersection, not union — fail-closed across
+  members.
+- `is_sensitive` (when missing) ← `true` if ANY member is sensitive,
+  else `false`. Sensitivity is contagious upward.
 
-The recomputation is deterministic and runs on every hub
-emission — no CLARIFICATIONS, no owner action. The manifest
-emission step (4.7) reads the post-recompute frontmatter values.
+**Owner-edit preservation contract.** A field already present in
+hub frontmatter is NEVER overwritten by derivation. Owner who
+manually sets `audience_tags: [work]` keeps that across every
+subsequent process touch. To force re-derivation, owner removes the
+field. This makes the engine "set once, owner takes over." No
+CLARIFICATIONs, no clobbering. The manifest emission step (4.7)
+reads the post-recompute frontmatter values verbatim.
 
 #### D) New hub creation → CREATE in `5_meta/mocs/`
 
@@ -1153,21 +1166,12 @@ When a topic reaches 3+ KNOWLEDGE notes (Q12):
 
 Hub ID format: `hub-{topic-slug}` (e.g., `hub-api2-p2p`, `hub-delegation-pattern`)
 
-**New hub privacy trio on creation (autonomous, same rules as
-update).**
-
-- `origin` — dominant member-note `origin`. Tie → `personal`.
-- `audience_tags` — **intersection** of member-note
-  `audience_tags[]`. Hub adopts only audiences every member agrees
-  on. With at least one member at `[]`, the intersection is `[]` —
-  the conservative outcome.
-- `is_sensitive` — `true` if ANY member note has `is_sensitive:
-  true`, else `false`. Hubs aggregate, so any sensitive member
-  taints the hub for sync-friction purposes (per privacy-trio
-  orthogonality: audience may stay `[]` while sensitivity is `true`).
-
-Same rule on UPDATE and CREATE keeps the contract symmetric. No
-owner action ever required for hub privacy.
+**New hub privacy trio on creation.** Same helper
+(`_common.py::recompute_hub_trio`), same rules: dominant origin,
+audience intersection, sensitivity contagion. On a fresh hub all
+three fields are missing → derivation fills all three. Subsequent
+touches preserve any owner edits per the same owner-edit
+preservation contract.
 
 #### E) Cross-domain insights
 
@@ -1642,10 +1646,10 @@ Accumulate:
 - **`timestamp`** = ISO 8601 UTC with trailing `Z` (run start).
 - **`processor`** = `ztn:process`.
 - **`batch_format_version`** = per `_system/docs/batch-format.md` current spec version (currently `2.0`).
-- **Counts:** `sources`, `records`, `notes`, `tasks`, `events`, `threads_opened = 0`, `threads_resolved = 0`, `clarifications_raised`, `people_candidates_appended`, `concepts_upserted` (v2.0), `sensitive_entities` (v2.0) (see counter mechanics below).
+- **Counts:** `sources`, `records`, `notes`, `tasks`, `events`, `threads_opened = 0`, `threads_resolved = 0`, `clarifications_raised`, `people_candidates_appended`, `concepts_upserted`, `sensitive_entities` (see counter mechanics below).
 - **Lists for each section of the batch report:** Sources Processed (with source type ID), Records Created (id + title + people + projects), Knowledge Notes Created (id + title + types + domains + Evidence Trail status), Tasks Extracted (task-id + description + deadline + priority + from-note), Events Extracted (datetime + description + participants + from-note), People Updates (id + change type + mentions delta + tier note), Hubs Updated (id list), CLARIFICATIONS Raised (type + summary per item), Concepts Upserted (name + type + subtype + related_concepts), Sensitive Entities (path + kind + audience_tags).
 
-**Concept registry aggregation (v2.0).** Build `concepts.upserts[]` for
+**Concept registry aggregation.** Build `concepts.upserts[]` for
 the batch:
 
 1. Walk every record + knowledge note + hub touched in this run; collect
@@ -1673,7 +1677,7 @@ the batch:
 4. Final list = `concepts.upserts[]`. `concepts_upserted` counter =
    `len(concepts.upserts)`.
 
-**Sensitive-entity aggregation (v2.0).** Walk every entity emitted in
+**Sensitive-entity aggregation.** Walk every entity emitted in
 this run (records, knowledge notes, hubs touched, person profiles
 created/updated, project profiles, tasks, events, ideas). For each
 where `is_sensitive: true`, append `{path, kind, audience_tags}` to
@@ -1801,6 +1805,45 @@ sensitive_entities: N
 10. `## People Candidates Appended` — per entry: `- {candidate_id} | {name_as_transcribed} | {note-id} | {role_hint or —}` — count MUST equal `people_candidates_appended` in frontmatter. Use `(none)` if empty.
 11. `## Concepts Upserted` — per concept upsert from §4.7 aggregation: `- {name} | {type} | {subtype or —} | {related_concepts comma-list or —}` — count MUST equal `concepts_upserted` in frontmatter. Use `(none)` if empty. Mirrors the JSON manifest's `concepts.upserts[]`.
 12. `## Sensitive Entities` — per entity emitted in this run with `is_sensitive: true`: `- {path-or-id} | {kind: record|note|hub|task|...} | audience_tags: [{tags or "[]"}]` — count MUST equal `sensitive_entities` in frontmatter. Use `(none)` if empty.
+
+### 5.5.1.5 Write `_system/state/batches/{batch-id}.json`
+
+Emit the machine-parseable JSON manifest alongside the markdown
+report. Schema: `minder-project/strategy/ARCHITECTURE.md` §4.5
+(downstream consumer = Minder dispatch worker).
+
+Assemble the JSON dict in memory from the in-memory accumulator
+(§4.7) — top-level keys per ARCHITECTURE.md §4.5 (`batch_id`,
+`timestamp`, `format_version: "2.0"`, `processor: "ztn:process"`,
+`sources_processed[]`, `records.{created,updated}[]`,
+`knowledge_notes.{created,updated}[]`, `hubs.{created,updated}[]`,
+`constitution{}`, `tier1_objects{}`, `tier2_objects{}`,
+`concepts.upserts[]`, `stats{}`). Each per-entity entry carries
+`origin`, `audience_tags`, `is_sensitive` from frontmatter; concept
+fields per the same accumulator output.
+
+Then invoke the autonomous emitter:
+
+```bash
+python3 _system/scripts/emit_batch_manifest.py \
+    --input <path-to-temp-json> \
+    --output _system/state/batches/{batch_id}.json
+```
+
+The helper:
+- runs every concept name through `normalize_concept_name()` (post-
+  emission safety net; clean accumulator → zero events)
+- enforces audience-tag whitelist via canonical 5 + AUDIENCES.md
+  active extensions
+- coerces `origin` / `is_sensitive` to safe defaults if invalid
+- drops `concepts.upserts[]` entries whose `name` is unnormalisable
+- writes the conformant JSON; emits any normalisation events on
+  stderr for ingestion into the batch's audit log
+
+Failure semantics: helper exits non-zero only on structural input
+failure (invalid JSON, root not a dict). Field-level normalisations
+never fail — they autofix or drop per the autonomous-pipeline
+contract.
 
 ### 5.5.2 Append row to `_system/state/BATCH_LOG.md`
 

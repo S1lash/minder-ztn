@@ -166,6 +166,23 @@ continue. Never block; never silently choose. The owner reviews and
 resolves. CLARIFICATION types are canonicalised in
 `SYSTEM_CONFIG.md` and per-skill SKILL.md.
 
+**Layer-specific exception: the concept and audience surfaces.**
+Concept-name format normalisation, audience-tag whitelist checks,
+and privacy-trio backfill are **deterministic mechanical work, not
+judgment**. The shared helpers in `_system/scripts/_common.py`
+(`normalize_concept_name`, `normalize_concept_list`,
+`normalize_audience_tag`, `recompute_hub_trio`) resolve every case
+with a fixed algorithm, autofix or silent-drop on impossibility, and
+NEVER raise a CLARIFICATION. The cost-benefit favours autonomous
+resolution: per-decision low risk, high volume, and the algorithm is
+fully specified — surfacing would drown the owner queue without
+adding value the algorithm can't already provide. Every other layer
+(threading, dedup, drift detection, principle promotion, people
+identity, etc.) retains the surface-don't-decide rule unchanged.
+The exception is scoped — see `_system/registries/CONCEPT_NAMING.md`,
+`_system/registries/AUDIENCES.md`, `_system/docs/batch-format.md`
+"Autonomous resolution" clause for the full rule set.
+
 ### 3.2 Inclusion bias on capture, curation on promotion
 
 Capture (records, raw scan, candidates buffer) is high-recall: better
@@ -307,6 +324,7 @@ with full schemas; here is the index.
 | `_system/state/people-candidates.jsonl` | `/ztn:process`, `/ztn:bootstrap` | Append-only people buffer |
 | `_system/views/CURRENT_CONTEXT.md` | `/ztn:bootstrap`, `/ztn:maintain` | Auto-generated focus snapshot |
 | `_system/views/HUB_INDEX.md` | `/ztn:maintain` | Hub registry (auto-generated) |
+| `_system/views/INDEX.md` | `/ztn:maintain` | Content catalog of knowledge + hubs (auto-generated, faceted by PARA / domains / cross-domain) |
 | `_system/views/constitution-core.md` | `/ztn:regen-constitution` | Harness-loaded core principles |
 | `3_resources/people/PEOPLE.md` | `/ztn:bootstrap`, `/ztn:process`, `/ztn:lint` | People registry with tiers |
 | `1_projects/PROJECTS.md` | owner + `/ztn:bootstrap` (candidates) | Project registry |

@@ -173,20 +173,38 @@ grounds for a rename; "actively misleading" is.
 
 ---
 
-## On violation
+## On violation — autonomous resolution (no CLARIFICATIONs)
 
-Raise CLARIFICATION; never silently rewrite. Owner is the arbiter
-when judgment is involved.
+The concept layer is fully autonomous — the engine resolves every
+format issue with deterministic heuristics and never raises a
+CLARIFICATION for owner action. The single source of truth is
+`_system/scripts/_common.py::normalize_concept_name()`, which:
 
-| Condition | Code |
+| Condition | Engine action |
 |---|---|
-| Raw value differs from its normalised form | `concept-format-mismatch` |
-| Starts with a forbidden type prefix | `concept-type-prefix-in-name` |
-| Length > 64 after normalisation | `concept-name-too-long` |
-| Contains non-ASCII (e.g. Cyrillic) | `concept-format-mismatch` |
+| Raw value differs from its normalised form (case / hyphens / dashes / whitespace / punctuation / diacritics) | **Silent autofix** — rewrite to the canonical form. Fix-id `concept-format-autofix` logged in `log_lint.md`. |
+| Starts with a forbidden type prefix (`theme_`, `decision_`, …) | **Silent autofix** — strip the prefix; if empty after strip, drop the entry. Fix-id `concept-format-autofix` or `concept-drop-autofix`. |
+| Length > 64 after normalisation | **Silent autofix** — truncate at the last `_` boundary `≤ 64`; hard-cut otherwise. Fix-id `concept-format-autofix`. |
+| Contains non-ASCII residue after diacritic-fold (e.g. Cyrillic) | **Silent drop** — entry not emitted. Fix-id `concept-drop-autofix` with reason `unnormalisable`. |
+| Equals a bare type-enum word (`theme`, `decision`, …) — Rule 5 + 8 collapse | **Silent drop** (broad classifier belongs in `domains:`/tags). |
+| Translation-impossible non-English term (Q15 fallback) | **Silent drop** at extraction time. Never transliterate. |
 
-CLARIFICATION body: source path, raw value, proposed canonical (run
-the normalisation algorithm on the raw value).
+The normaliser is invoked at every emission point: capture-candidate
+helper (write-time), `/ztn:process` Step 3.4 Q15 + Step 3.6
+structural verification + Step 4.7 producer-side guard, `/ztn:lint`
+Scan A.7 `lint_concept_audit.py` (post-write defence-in-depth),
+`/ztn:lint` F.5 promotion (`applies_in_concepts[]` propagation).
+Across all paths, format violations resolve mechanically; owner
+sees no queue, takes no action.
+
+**Why no CLARIFICATIONs here.** Concept-name normalisation is
+deterministic mechanical work, not judgment. Surfacing per-decision
+would drown the queue (every transcript can produce dozens of
+concept names) without giving owner anything to actually decide —
+the algorithm is fully specified. ENGINE_DOCTRINE §3.1 ("surface,
+don't decide silently") applies to judgment-uncertain decisions;
+mechanical normalisation is a layer-specific exception scoped to
+the concept and audience surfaces.
 
 A well-formed name that doesn't match any existing concept is **not**
 a violation — vocabulary is open. New concepts emerge naturally; the

@@ -83,6 +83,47 @@ EMITTED_CONCEPT_TYPES: frozenset[str] = frozenset({
     "constraint", "algorithm", "fact", "other",
 })
 
+# Transliteration heuristic. Q15 in /ztn:process tells the model to
+# translate non-English source terms semantically and never
+# transliterate; this is a mechanical post-check that catches the
+# common Russian-noun transliteration patterns if the model slips.
+# Rationale: transliteration splits graph identity across mentions
+# (`restrukturizatsiya` vs the next run's `restrukturisatsia`); drop
+# is safer than silently emitting a phantom node.
+#
+# Conservative pattern list — chosen for distinctively Russian
+# morphology that virtually never appears in compound English concept
+# names. False-positive risk: very low (e.g. `genie` would match the
+# `enie` ending, but `genie` is rarely a concept name in this corpus).
+_TRANSLIT_SUFFIXES: tuple[str, ...] = (
+    "tsiya", "tsia", "ciya",
+    "ovaniye", "ovanie",
+    "eniye", "enie",
+    "aniye", "anie",
+    "atelnost", "atelstvo",
+)
+_TRANSLIT_INDICATORS: tuple[str, ...] = ("shch",)
+
+
+def looks_transliterated(s: str) -> bool:
+    """Heuristic detector for Russian transliterations leaking past Q15.
+
+    Returns True if any underscore-delimited segment ends with a
+    distinctively Russian morphology, or if a Russian-only digraph
+    appears anywhere. Conservative — short segments (≤ suffix+2 chars)
+    excluded to avoid catching English roots that share a tail.
+    """
+    for ind in _TRANSLIT_INDICATORS:
+        if ind in s:
+            return True
+    for seg in s.split("_"):
+        if not seg:
+            continue
+        for suffix in _TRANSLIT_SUFFIXES:
+            if seg.endswith(suffix) and len(seg) > len(suffix) + 2:
+                return True
+    return False
+
 
 def normalize_concept_name(raw: str | None) -> str | None:
     """Return a valid snake_case ASCII concept name or None to drop.
@@ -124,6 +165,11 @@ def normalize_concept_name(raw: str | None) -> str | None:
     # `decision` directly.
     if s in EMITTED_CONCEPT_TYPES or s in {"person", "project"}:
         return None
+    # Transliteration safety net — Q15 instructs the model to
+    # translate non-English terms; this catches the case where the
+    # model transliterates instead. See `looks_transliterated()`.
+    if looks_transliterated(s):
+        return None
     if len(s) > CONCEPT_NAME_MAX_LEN:
         truncated = s[:CONCEPT_NAME_MAX_LEN]
         last_us = truncated.rfind("_")
@@ -158,6 +204,91 @@ AUDIENCE_CANONICAL: frozenset[str] = frozenset({
 AUDIENCE_TAG_RE = re.compile(r"^[a-z0-9-]+$")
 AUDIENCE_TAG_MIN_LEN = 2
 AUDIENCE_TAG_MAX_LEN = 32
+
+
+def recompute_hub_trio(
+    hub_fm: dict, member_trios: list[dict]
+) -> tuple[dict, list[dict]]:
+    """Derive hub privacy trio from member-note trios.
+
+    Single source of truth for `/ztn:process` hub C/D, `/ztn:maintain`
+    Step 4 hub linkage, and `lint_concept_audit.py` hub-pass logic.
+
+    Derivation rules:
+    - `origin` ← dominant origin across members (tie → `personal`)
+    - `audience_tags` ← intersection of member audience_tags (only
+      audiences ALL members agree on widen the hub)
+    - `is_sensitive` ← any-member contagion (`true` if any member is
+      sensitive, else `false`)
+
+    **Owner-edit preservation contract.** A field already present in
+    `hub_fm` is NEVER overwritten — engine only fills missing fields.
+    Owner who manually sets `audience_tags: [work]` on a hub keeps
+    that value across every subsequent process/maintain touch. To
+    force re-derivation, owner removes the field from frontmatter.
+
+    Returns (modified_fm, events). Events list is empty when no
+    derivation fired (all fields already set by owner).
+    """
+    events: list[dict] = []
+    new_fm = dict(hub_fm)
+
+    if member_trios:
+        from collections import Counter
+        origins = [m.get("origin", "personal") for m in member_trios
+                   if isinstance(m, dict)]
+        if origins:
+            counter = Counter(origins)
+            ranked = counter.most_common()
+            if len(ranked) == 1 or ranked[0][1] > ranked[1][1]:
+                derived_origin = ranked[0][0]
+            else:
+                derived_origin = "personal"
+        else:
+            derived_origin = "personal"
+
+        audience_sets: list[set[str]] = []
+        for m in member_trios:
+            if not isinstance(m, dict):
+                continue
+            tags = m.get("audience_tags") or []
+            if isinstance(tags, list):
+                audience_sets.append(set(t for t in tags if isinstance(t, str)))
+        if audience_sets:
+            derived_audience = sorted(set.intersection(*audience_sets))
+        else:
+            derived_audience = []
+
+        derived_sens = any(
+            bool(m.get("is_sensitive"))
+            for m in member_trios
+            if isinstance(m, dict)
+        )
+    else:
+        derived_origin = "personal"
+        derived_audience = []
+        derived_sens = False
+
+    if "origin" not in new_fm:
+        new_fm["origin"] = derived_origin
+        events.append({
+            "fix_id": "hub-origin-derive-autofix",
+            "result": derived_origin,
+        })
+    if "audience_tags" not in new_fm:
+        new_fm["audience_tags"] = derived_audience
+        events.append({
+            "fix_id": "hub-audience-derive-autofix",
+            "result": derived_audience,
+        })
+    if "is_sensitive" not in new_fm:
+        new_fm["is_sensitive"] = derived_sens
+        events.append({
+            "fix_id": "hub-sensitivity-derive-autofix",
+            "result": derived_sens,
+        })
+
+    return new_fm, events
 
 
 def normalize_audience_tag(raw: str | None) -> str | None:

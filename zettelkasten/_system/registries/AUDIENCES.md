@@ -136,24 +136,33 @@ Different role, different convention; both are deliberate.
 
 ---
 
-## On violation
+## On violation — autonomous resolution (no CLARIFICATIONs)
 
-Raise CLARIFICATION; never silently rewrite. The owner is the
-authority on how their social topology is labelled — guessing is
-worse than asking.
+The audience layer is fully autonomous — the engine resolves every
+violation with deterministic heuristics and never raises a
+CLARIFICATION. The single source of truth is
+`_system/scripts/_common.py::normalize_audience_tag()` plus the
+whitelist check (canonical 5 ∪ active Extensions) performed by
+`/ztn:lint` Scan A.7 (`lint_concept_audit.py`).
 
-| Condition | Code |
+| Condition | Engine action |
 |---|---|
-| Tag not in canonical or extension list | `audience-tag-unknown` |
-| Reuses a canonical word in wrong case or with extra chars | `audience-tag-reserved-conflict` |
-| Fails format rules (case, charset, length) | `audience-tag-format-mismatch` |
+| Tag in canonical 5 verbatim | Pass-through. |
+| Tag normalises to a canonical or active extension entry | **Silent autofix** — rewrite to normalised form. Fix-id `audience-tag-normalise-autofix`. (Catches `Family` → `family`, `professional_network` → `professional-network`.) |
+| Tag well-formed but NOT in canonical or extension list | **Silent drop** — entity falls back to `[]` (owner-only). Fix-id `audience-tag-drop-autofix` with reason `not-in-whitelist`. |
+| Tag fails kebab-case ASCII / length 2-32 / contains non-ASCII | **Silent drop**. Fix-id `audience-tag-drop-autofix` with reason `format-unfixable`. |
 
-CLARIFICATION offers three resolutions:
-- **Add to registry** — owner provides a short purpose; the tag
-  becomes a valid extension going forward
-- **Map to existing** — typo or near-synonym; frontmatter rewritten
-- **Drop** — leave entity as `[]` (owner only); when in doubt, this
-  is the safe fallback
+**Why fail-closed via drop.** False-positive audience inference leaks
+content; false-negative just keeps content owner-only (the safest
+default). The engine never coins new extensions on its own — the
+Extensions table below remains owner-curated outside the pipeline.
+When owner wants a new audience available to the engine, owner adds
+a row; subsequent emissions can use it.
+
+`/ztn:process` Q16 applies a heuristic canonical-mapping at extraction
+time when the model's intended audience semantically fits a canonical
+(e.g. "team" → `work`, "linkedin" → `professional-network`, "tweet" →
+`world`). Only after that mapping fails is the tag silently dropped.
 
 ---
 
