@@ -41,12 +41,31 @@ report + JSON manifest emission per `emit_batch_manifest.py`).
 | Скилл | Типичный trigger для CLARIFICATIONS |
 |---|---|
 | `/ztn:bootstrap` | Неоднозначный tier человека, неясный thread closure, двусмысленный current focus, person identity collision |
-| `/ztn:process` | Роль упомянутого неясна, splitting решение неоднозначно, cross-domain mapping сомнителен |
+| `/ztn:process` | Роль упомянутого неясна, splitting решение неоднозначно, cross-domain mapping сомнителен, domain value не resolved cascade'ом (`domain-resolution`) |
 | `/ztn:maintain` | Thread вероятно закрылся, но confidence < 90% |
 | `/ztn:lint` | Вероятный дубль с similarity < 95%, Evidence Trail backfill — какая трактовка |
 
 Цель: система автономна + аудитируема. Owner раз в неделю отвечает на вопросы,
 скиллы применяют ответы при следующем прогоне. Никаких молчаливых compromise.
+
+### Canonical CLARIFICATION types (append-only)
+
+Reason codes used by skills when raising entries to
+`_system/state/CLARIFICATIONS.md`. Append-only — new types are added
+as the engine evolves; renames are breaking changes that require
+migrating existing open items.
+
+| Type | Raised by | Trigger | Conservative default |
+|---|---|---|---|
+| `thread-hub-ambiguous` | `/ztn:maintain` | 2+ hubs pass topic filter with score ≥ 2 for the same thread | Skip linkage; thread stays without `hub:` |
+| `tier-promote-suggested` | `/ztn:maintain` | Person mentions cross a tier-up threshold | No tier change applied |
+| `principle-drift` | `/ztn:process` | `/ztn:check-decision` verdict violated at confidence ≥ 0.85 | Capture in trail; behaviour unchanged this batch |
+| `domain-resolution` | `/ztn:process` (Step 3.4.5) | Domain value cannot be resolved by the cascade `normalize_domain` → whitelist → LLM remap → trivial-vs-material | Drop the unmatched value; remaining `domains:` entries kept (possibly `[]`) |
+| `process-compatibility` | every skill writing manifests | Schema deviation that would break the manifest contract with downstream consumers | Suspend that section's manifest emission until owner resolves |
+
+Per-skill SKILL.md may add narrower types for skill-internal flows;
+this table covers the cross-skill canonical set referenced in
+ENGINE_DOCTRINE §3.1.
 
 ---
 

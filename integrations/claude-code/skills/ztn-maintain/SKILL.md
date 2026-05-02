@@ -438,6 +438,57 @@ each hub touched in this run gets a `hubs.updated[]` entry with:
 
 ---
 
+## Step 4.5: Concept Registry Regeneration
+
+After hub linkage settles new structural edges, regenerate the
+canonical concept registry from the union of corpus frontmatter
+(`concepts:` arrays) and prior batch manifests
+(`concepts.upserts[]` for type / subtype). The registry is the
+loaded-vocabulary input to `/ztn:process` Step 3.5 (concept-matcher
+subagent) and `/ztn:backfill-concepts` (historical backfill SKILL).
+
+**Invocation.** Run from the maintain orchestrator with:
+
+```bash
+python3 _system/scripts/build_concept_registry.py
+# or, when owner has retuned the threshold for their corpus shape:
+python3 _system/scripts/build_concept_registry.py --top-threshold 200
+```
+
+The script is deterministic, idempotent, and pure — no LLM. It walks
+`_records/{meetings,observations}/`, PARA folders, `5_meta/mocs/`,
+and `_system/state/batches/*.json`, then writes
+`_system/registries/CONCEPTS.md` from scratch each invocation.
+
+**Owner-edit preservation contract.** The owner's only mutable column
+is `aliases` (comma-separated list of older / equivalent names that
+get rewritten to the canonical name on the next `/ztn:lint` Scan A.7
+pass). On rebuild, the script reads the prior `CONCEPTS.md`, parses
+the `aliases` column verbatim, and re-attaches it to the
+freshly-aggregated row. Every other column is auto-derived; owner
+edits to those columns are silently overwritten on regen. Aliases for
+concepts that no longer appear in any corpus / batch source are
+preserved as zero-mention rows so the lint rewrite is never lost.
+
+**Logging.** Capture stdout (`{"ok": true, "files_scanned": N,
+"mentions_seen": M, "batches_read": K, "total_concepts": T,
+"total_mentions": U}`) and stderr structured events
+(`concepts-registry-rebuilt`). Include the row delta (prior
+`total_concepts` → new `total_concepts`) in the per-batch
+log_maintenance.md entry written in Step 6.5 and in the maintain
+manifest's `stats` section.
+
+**Failure mode.** If the script exits non-zero, surface the failure
+to log_maintenance.md as `concepts-registry-failed` with stderr
+captured, and continue with the rest of the maintain pipeline — the
+prior CONCEPTS.md remains in place. Do NOT raise a CLARIFICATION;
+the registry is rebuildable on the next maintain pass and downstream
+SKILLs degrade gracefully when CONCEPTS.md is stale (the matcher
+subagent still works against the older vocabulary, just without the
+freshest entries).
+
+---
+
 ## Step 5: Thread Closure Suggestion (suggest-only)
 
 **Applies to ALL active threads** — existing + freshly created in Step 2.

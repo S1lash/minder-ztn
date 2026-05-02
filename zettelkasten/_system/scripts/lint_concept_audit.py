@@ -142,6 +142,106 @@ def walk_md_files(root: Path) -> Iterable[Path]:
             yield p
 
 
+_CONCEPTS_TABLE_ROW_RE = re.compile(
+    r"^\|\s*([a-z0-9_]+)\s*\|"   # canonical name
+    r"[^|]*\|"                    # type
+    r"[^|]*\|"                    # subtype
+    r"[^|]*\|"                    # first_seen
+    r"[^|]*\|"                    # last_seen
+    r"\s*\d+\s*\|"                # mentions (digits — skips header row)
+    r"\s*([^|]*?)\s*\|\s*$"       # aliases
+)
+
+
+def load_concept_aliases(registry_path: Path) -> dict[str, str]:
+    """Read CONCEPTS.md aliases column → {old_name: canonical_name} map.
+
+    Returns empty dict if the file is missing or malformed. Tolerant of
+    YAML frontmatter, Top/Tail headers, placeholder rows. Skips rows
+    where alias cell is empty / `—`.
+
+    Each canonical name is itself passed through `normalize_concept_name`
+    as a defensive measure; same for each alias entry. Self-aliases
+    (canonical mentioned among its own aliases) are silently dropped.
+    Conflicting maps (alias points to two different canonicals) keep
+    the first canonical seen and silently drop subsequent ones — same
+    autonomous-resolution policy as the rest of the concept layer.
+    """
+    if not registry_path.exists():
+        return {}
+    try:
+        text = registry_path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        m = _CONCEPTS_TABLE_ROW_RE.match(line)
+        if not m:
+            continue
+        canonical_raw = m.group(1)
+        aliases_cell = m.group(2).strip()
+        if not aliases_cell or aliases_cell == "—":
+            continue
+        canonical = normalize_concept_name(canonical_raw)
+        if canonical is None:
+            continue
+        for alias_raw in aliases_cell.split(","):
+            alias = normalize_concept_name(alias_raw.strip())
+            if alias is None or alias == canonical:
+                continue
+            if alias in out:
+                continue  # first-canonical-wins
+            out[alias] = canonical
+    return out
+
+
+def apply_concept_aliases(
+    fm: dict, alias_map: dict[str, str]
+) -> tuple[dict, list[dict]]:
+    """Rewrite `concepts:` entries via alias_map (old → canonical).
+
+    Pure function. Idempotent on the canonical form: if an entry is
+    already canonical, no change. Dedup preserved on collisions
+    (two aliases pointing to the same canonical → single entry).
+
+    Emits `concept-alias-rewrite-autofix` events per rewrite.
+    """
+    events: list[dict] = []
+    if not alias_map:
+        return fm, events
+    raw = fm.get("concepts")
+    if not isinstance(raw, list):
+        return fm, events
+    rewritten: list[str] = []
+    seen: set[str] = set()
+    changed = False
+    for entry in raw:
+        if not isinstance(entry, str):
+            rewritten.append(entry)
+            continue
+        target = alias_map.get(entry)
+        if target is None:
+            if entry not in seen:
+                seen.add(entry)
+                rewritten.append(entry)
+            continue
+        changed = True
+        events.append({
+            "fix_id": "concept-alias-rewrite-autofix",
+            "field": "concepts",
+            "raw": entry,
+            "result": target,
+        })
+        if target not in seen:
+            seen.add(target)
+            rewritten.append(target)
+    if not changed:
+        return fm, events
+    new_fm = dict(fm)
+    new_fm["concepts"] = rewritten
+    return new_fm, events
+
+
 def fix_concepts(fm: dict) -> tuple[dict, list[dict]]:
     """Apply normalize_concept_list to `concepts:` field.
 
@@ -459,6 +559,7 @@ def process_file(
     path: Path,
     audience_accept: set[str],
     domain_accept: set[str],
+    alias_map: dict[str, str],
     mode: str,
 ) -> list[dict]:
     parsed = read_frontmatter(path)
@@ -474,6 +575,11 @@ def process_file(
     has_layer = "layer" in fm
 
     all_events: list[dict] = []
+
+    # Alias rewrite first — old names → canonical — so subsequent
+    # normalisation operates on the canonical surface.
+    fm, events = apply_concept_aliases(fm, alias_map)
+    all_events.extend(events)
 
     fm, events = fix_concepts(fm)
     all_events.extend(events)
@@ -543,8 +649,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     domain_accept = set(ALLOWED_DOMAINS) | domain_extensions
 
+    alias_map = load_concept_aliases(
+        root / "_system" / "registries" / "CONCEPTS.md",
+    )
+
     for md in walk_md_files(root):
-        events = process_file(md, audience_accept, domain_accept, args.mode)
+        events = process_file(
+            md, audience_accept, domain_accept, alias_map, args.mode,
+        )
         for ev in events:
             sys.stdout.write(json.dumps(ev, ensure_ascii=False) + "\n")
 

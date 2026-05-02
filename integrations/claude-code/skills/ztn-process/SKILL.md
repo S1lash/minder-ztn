@@ -865,6 +865,172 @@ Be specific and cite evidence from the transcript.
     | Event | inherit from parent note | inherit from parent note | inherit from parent note |
     | Idea note | per content scan | `[]` (ideas are seed-stage) | per content scan |
 
+### 3.4.5 Concept Matcher Subagent (post-Q15 canonicalisation)
+
+After the LLM classifier emits Q15 raw concept candidates and Q9
+domain candidates, the orchestrator (NOT the per-file subagent — see
+§A below) consolidates them across all files in the batch and runs
+ONE Sonnet matcher subagent per source/transcript-cluster against
+the loaded concept registry. This step exists to (a) reuse existing
+canonical names verbatim instead of coining near-duplicates, (b)
+type-tag genuinely-new concepts via the Minder ConceptType emit set,
+and (c) close out unmatched domain values via the Phase-1 LLM
+cascade documented in `DOMAINS.md` §"On violation".
+
+**Why a subagent rather than expanding the classification prompt.**
+The classifier subagent already runs against a per-file context
+budget. Loading the full `CONCEPTS.md` registry (which can grow into
+thousands of rows) into the per-file prompt scales badly. A separate
+Sonnet matcher takes the cheap-context model, sees the full
+vocabulary, and emits canonical decisions in one shot — Opus
+orchestrator stays small, classification subagents stay focused.
+
+#### A) Inputs collected by the orchestrator
+
+For each transcript / source unit processed in this batch, collect:
+
+- The Q15 raw concept candidates (list of strings, possibly dirty —
+  not yet normalised).
+- The Q9 domain candidates that did NOT clear `normalize_domain` ∪
+  ALLOWED_DOMAINS ∪ active extensions (the residual that the
+  deterministic substrate cannot resolve).
+- A short source excerpt (the transcript title + 1–2 representative
+  paragraphs) for disambiguation.
+
+Group these per source/transcript so each subagent invocation
+operates on one logical unit at a time. Multiple transcripts in the
+same batch fan out as parallel subagent calls.
+
+#### B) Subagent invocation
+
+Spawn via the harness `Agent` tool:
+
+```
+Agent(
+  description: "Concept matcher for transcript {source-id}",
+  subagent_type: "general-purpose",
+  model: "sonnet",
+  prompt: <see below>
+)
+```
+
+Prompt template (skeleton — orchestrator fills in placeholders):
+
+```
+You are the ZTN concept matcher. Read the full registry below; then
+canonicalise the candidates from the transcript at the bottom.
+
+REGISTRY (authoritative — prefer existing names verbatim):
+<contents of _system/registries/CONCEPTS.md>
+
+CONCEPT TYPES (assignable values — 16):
+<contents of CONCEPT_TYPES.md «Mirror vs emit gate» note + the 16
+emit codes with descriptions; explicitly forbid `person` and
+`project`>
+
+DOMAINS (canonical 13 + active extensions):
+<contents of _system/registries/DOMAINS.md canonical block + Extensions table>
+
+TRANSCRIPT EXCERPT:
+<source title + representative paragraphs>
+
+Q15 CANDIDATES (raw, possibly dirty):
+<list>
+
+UNMATCHED DOMAIN VALUES (residual after deterministic substrate):
+<list, may be empty>
+
+OUTPUT — strict JSON, no prose:
+{
+  "concepts": ["canonical_name_a", "canonical_name_b", ...],
+  "new_concepts": [
+    {"name": "...", "type": "<one of the 16>",
+     "subtype": "<optional, free-form>",
+     "justification": "<one short sentence>"}
+  ],
+  "domain_resolutions": [
+    {"raw": "...", "action": "keep" | "remap" | "drop" | "clarify",
+     "target": "<canonical or extension>"}
+  ],
+  "needs_decision_check": [
+    {"summary": "<one line>", "rationale": "<one sentence>"}
+  ]
+}
+
+RULES:
+- Prefer existing canonical names — coin a new concept ONLY when no
+  registry entry fits the meaning.
+- For new concepts, assign type from the 16 emit values. NEVER use
+  `person` or `project` (those are first-class entities).
+- For unmatched domains, choose `remap` if a canonical clearly fits,
+  `drop` if the value is genuinely trivial, `keep` only if owner
+  has plausibly extended the registry but the extension hasn't
+  landed yet (then orchestrator surfaces a `domain-resolution`
+  CLARIFICATION). Use `clarify` to escalate borderline cases.
+- Use `needs_decision_check` ONLY for genuinely values-laden cases
+  (extension would conflict with a canonical principle, or the
+  concept reframes a previously-decided trade-off). Default empty.
+```
+
+#### C) Apply verdicts
+
+Parse the JSON response, then:
+
+1. Pass each `concepts[]` and `new_concepts[].name` through
+   `_system/scripts/_common.py::normalize_concept_name` — drop on
+   `None` (the gate is defence-in-depth; subagent is supposed to
+   emit normalised names already).
+2. Pass each `new_concepts[].type` through `validate_concept_type` —
+   drop the entry on miss (autonomous resolution: subagent can re-
+   coin under a fallback type on next batch).
+3. Pass each `domain_resolutions[]`:
+   - `action: keep` → orchestrator surfaces a `domain-resolution`
+     CLARIFICATION with conservative default (drop the value);
+     never silently expands the canonical/extension set.
+   - `action: remap` + `target` in canonical/extension → record the
+     replacement; orchestrator rewrites the affected note's
+     `domains:` array on frontmatter write (Step 3.5).
+   - `action: drop` → silently drop the value at frontmatter write.
+   - `action: clarify` → `domain-resolution` CLARIFICATION,
+     conservative default same as `keep`.
+4. Apply concept verdicts to per-note frontmatter via
+   `write_frontmatter` at Step 3.5 §A — the canonicalised
+   `concepts:` array is what lands on the record / knowledge-note.
+
+#### D) Decision-check escape hatch
+
+If the subagent populated `needs_decision_check[]`, the orchestrator
+makes ONE batched call to `/ztn:check-decision` with the entire
+list — never one per item. The verdict comes back per-item;
+orchestrator applies each silently to the per-note frontmatter
+(NOT a CLARIFICATION). This is the rare-path resolution channel for
+values-laden concept choices and is expected to be empty in
+typical batches.
+
+#### E) Residual domain CLARIFICATIONs
+
+Domain values that exhausted the cascade
+(`normalize_domain` → whitelist → LLM remap → LLM trivial-vs-
+material) without resolving land as `domain-resolution`
+CLARIFICATIONs in `_system/state/CLARIFICATIONS.md` per the
+canonical type registered in `SYSTEM_CONFIG.md`. Conservative
+default: drop the value, leave the note's `domains:` as the
+remaining valid entries (possibly `[]`). Owner resolves the
+CLARIFICATION by editing `DOMAINS.md` Extensions table or by
+confirming the drop.
+
+#### F) Failure mode
+
+If the subagent fails to return parseable JSON, retry once. Second
+failure: fall through to the deterministic substrate as if Step
+3.4.5 did not run — Q15 raw output passes through `normalize_concept_list`
+unchanged at frontmatter write, unmatched domains drop silently per
+the Phase-1 substrate, and a `concept-matcher-failed` log entry is
+emitted to `log_process.md` for the batch. No CLARIFICATION; the
+SKILL contract is non-blocking.
+
+---
+
 ### 3.5 Create Outputs
 
 Based on the 16-question classification, create outputs. Fully automatic, no confirmation needed.

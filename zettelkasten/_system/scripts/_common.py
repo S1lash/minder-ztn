@@ -90,22 +90,87 @@ FORBIDDEN_TYPE_PREFIXES: tuple[str, ...] = (
     "other_",
 )
 
+# Frozen mirror of Minder's `ConceptType` enum (18 values).
+# Source of truth: minder/.../domain/graph/ConceptType.java.
+# Mirrored in `_system/registries/CONCEPT_TYPES.md`. Drift detected by
+# `test_common.py::TestConceptTypeMirror` (reads Java enum at test time).
+# This is the documentation/audit set; emission gate is EMITTED_CONCEPT_TYPES.
+CONCEPT_TYPES_ALL: frozenset[str] = frozenset({
+    "person", "organization", "project", "idea", "tool", "skill", "location",
+    "event", "emotion", "theme",
+    "goal", "value", "preference", "constraint", "algorithm", "decision",
+    "fact", "other",
+})
+
+# Per-type human-readable description, mirrored from Java enum constructor
+# strings. Fed into the concept-matcher subagent prompt for disambiguation.
+CONCEPT_TYPE_DESCRIPTIONS: dict[str, str] = {
+    "person": "People and contacts",
+    "organization": "Companies, teams, communities",
+    "project": "Projects and initiatives",
+    "idea": "Ideas and concepts",
+    "tool": "Technologies and instruments",
+    "skill": "Skills and competencies",
+    "location": "Places and locations",
+    "event": "Events and meetings",
+    "emotion": "Emotional states",
+    "theme": "Topics and themes",
+    "goal": "User goals and objectives",
+    "value": "Personal values and principles",
+    "preference": "User preferences",
+    "constraint": "User constraints and rules",
+    "algorithm": "Generalized decision patterns and reasoning sequences",
+    "decision": "Explicit choices with reasoning and alternatives",
+    "fact": "Individual facts and notes",
+    "other": "Other concepts",
+}
+
 # `type` enum emitted by ZTN (lowercase, excludes person/project per
 # §"Concept scope" in `_system/docs/batch-format.md`).
-EMITTED_CONCEPT_TYPES: frozenset[str] = frozenset({
-    "theme", "tool", "decision", "idea", "event", "organization",
-    "skill", "location", "emotion", "goal", "value", "preference",
-    "constraint", "algorithm", "fact", "other",
+# Subset of CONCEPT_TYPES_ALL — gate at emit boundary.
+EMITTED_CONCEPT_TYPES: frozenset[str] = CONCEPT_TYPES_ALL - frozenset({
+    "person", "project",
 })
 
 # Bare type-enum words that collapse to drop per Rule 8 (broad
-# classifiers belong in domains/tags, not as concepts). Includes
-# `person` and `project` which are reserved enum values but not
-# emitted by ZTN's concept channel (people/projects are first-class
-# entities with their own frontmatter slots).
-RESERVED_TYPE_WORDS: frozenset[str] = EMITTED_CONCEPT_TYPES | frozenset({
-    "person", "project",
-})
+# classifiers belong in domains/tags, not as concepts). All 18 mirror
+# values plus emit-set are reserved as concept-name surface — names
+# matching any of these collapse via `normalize_concept_name`.
+RESERVED_TYPE_WORDS: frozenset[str] = CONCEPT_TYPES_ALL
+
+
+def validate_concept_type(value: str | None) -> bool:
+    """Return True if value is a member of EMITTED_CONCEPT_TYPES.
+
+    The validation gate at emit boundary: rejects unknown codes,
+    rejects `person`/`project` (first-class entities, not concepts),
+    rejects empty/null. Caller drops invalid entries silently.
+    """
+    if value is None or not isinstance(value, str):
+        return False
+    return value in EMITTED_CONCEPT_TYPES
+
+
+def normalize_concept_type(raw: str | None) -> str | None:
+    """Lowercase + strip + emit-set membership check; None on miss.
+
+    Pure function. Strips surrounding whitespace, lowercases, then
+    asserts membership in EMITTED_CONCEPT_TYPES. Returns the
+    normalised code or None — caller drops on None.
+
+    `person` and `project` map to None even though they're in the
+    18-mirror — the emit boundary excludes them.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        return None
+    s = raw.strip().lower()
+    if not s:
+        return None
+    if s not in EMITTED_CONCEPT_TYPES:
+        return None
+    return s
 
 
 def normalize_concept_name(raw: str | None) -> str | None:

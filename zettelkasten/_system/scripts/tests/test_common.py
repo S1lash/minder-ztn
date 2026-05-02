@@ -785,5 +785,97 @@ class AllowedDomainsExtensionTests(unittest.TestCase):
         )
 
 
+class TestConceptTypeMirror(unittest.TestCase):
+    """Parity test: CONCEPT_TYPES_ALL must mirror Java enum verbatim.
+
+    Reads the Minder ConceptType.java file at test time and parses enum
+    constants. Skipped (with note) if the Java source is not reachable
+    from this checkout — friend instances of the engine do not have the
+    Minder repo siblinged. Runs as hard assertion in owner's environment.
+    """
+
+    # Search pattern for the upstream Minder ConceptType.java enum
+    # source. Owner-package-agnostic so the engine repo carries no
+    # personal data in tests; resolution happens via filesystem glob
+    # at test time. Override via env var ZTN_CONCEPT_TYPE_JAVA when
+    # the file lives elsewhere.
+    JAVA_FILENAME = "ConceptType.java"
+    JAVA_GLOB_SUFFIX = "minder/domain/graph/ConceptType.java"
+
+    @classmethod
+    def _find_java_source(cls) -> Path | None:
+        import os
+        env_override = os.environ.get("ZTN_CONCEPT_TYPE_JAVA")
+        if env_override:
+            p = Path(env_override)
+            return p if p.exists() else None
+        here = Path(__file__).resolve()
+        # Walk up looking for any descendant matching the path suffix.
+        for parent in here.parents:
+            for match in parent.rglob(cls.JAVA_FILENAME):
+                if match.as_posix().endswith(cls.JAVA_GLOB_SUFFIX):
+                    return match
+            # Don't recurse past 6 ancestors — bounded scan.
+            if len(parent.parts) <= 3:
+                break
+        return None
+
+    def test_concept_types_all_size_is_18(self):
+        self.assertEqual(len(c.CONCEPT_TYPES_ALL), 18)
+
+    def test_emitted_concept_types_size_is_16(self):
+        self.assertEqual(len(c.EMITTED_CONCEPT_TYPES), 16)
+
+    def test_emitted_excludes_person_and_project(self):
+        self.assertNotIn("person", c.EMITTED_CONCEPT_TYPES)
+        self.assertNotIn("project", c.EMITTED_CONCEPT_TYPES)
+        self.assertEqual(c.CONCEPT_TYPES_ALL - c.EMITTED_CONCEPT_TYPES, {"person", "project"})
+
+    def test_descriptions_cover_all_types(self):
+        self.assertEqual(set(c.CONCEPT_TYPE_DESCRIPTIONS.keys()), set(c.CONCEPT_TYPES_ALL))
+        for code, desc in c.CONCEPT_TYPE_DESCRIPTIONS.items():
+            self.assertTrue(desc, f"Empty description for {code}")
+            self.assertIsInstance(desc, str)
+
+    def test_validate_concept_type(self):
+        self.assertTrue(c.validate_concept_type("idea"))
+        self.assertTrue(c.validate_concept_type("organization"))
+        self.assertFalse(c.validate_concept_type("person"))
+        self.assertFalse(c.validate_concept_type("project"))
+        self.assertFalse(c.validate_concept_type("IDEA"))
+        self.assertFalse(c.validate_concept_type(""))
+        self.assertFalse(c.validate_concept_type(None))
+        self.assertFalse(c.validate_concept_type("bogus"))
+
+    def test_normalize_concept_type(self):
+        self.assertEqual(c.normalize_concept_type("IDEA"), "idea")
+        self.assertEqual(c.normalize_concept_type("  Tool  "), "tool")
+        self.assertIsNone(c.normalize_concept_type("person"))
+        self.assertIsNone(c.normalize_concept_type("Project"))
+        self.assertIsNone(c.normalize_concept_type(""))
+        self.assertIsNone(c.normalize_concept_type(None))
+        self.assertIsNone(c.normalize_concept_type("unknown"))
+
+    def test_java_enum_parity(self):
+        """Snapshot test: CONCEPT_TYPES_ALL == codes parsed from Java source."""
+        src = self._find_java_source()
+        if src is None:
+            self.skipTest(
+                "Java enum source not reachable from this checkout — "
+                "parity test only runs in environments with minder repo siblinged"
+            )
+        text = src.read_text(encoding="utf-8")
+        # Match `IDENT("code", "description")` lines inside the enum body.
+        # Tolerates leading whitespace, trailing commas/semicolons.
+        import re
+        pattern = re.compile(r'^\s*[A-Z_]+\s*\(\s*"([a-z_]+)"\s*,', re.MULTILINE)
+        codes = set(pattern.findall(text))
+        self.assertEqual(
+            codes, set(c.CONCEPT_TYPES_ALL),
+            f"Java enum drift: java={codes - set(c.CONCEPT_TYPES_ALL)} "
+            f"python={set(c.CONCEPT_TYPES_ALL) - codes}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

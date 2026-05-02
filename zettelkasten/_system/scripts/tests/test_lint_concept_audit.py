@@ -509,5 +509,152 @@ class DomainAutofixTests(unittest.TestCase):
             self.assertEqual(content.count("- work\n"), 1)
 
 
+def _write_concepts_registry(root: Path, rows: list[tuple[str, str]]) -> None:
+    """Write CONCEPTS.md with rows = [(canonical, alias_csv), ...]."""
+    table_rows = "\n".join(
+        f"| {name} | — | — | 2026-01-01 | 2026-01-01 | 1 | {aliases} |"
+        for name, aliases in rows
+    )
+    (root / "_system" / "registries" / "CONCEPTS.md").write_text(
+        "---\nschema_version: 1.0\n---\n\n"
+        "## Top by mentions\n\n"
+        "| name | type | subtype | first_seen | last_seen | mentions | aliases |\n"
+        "|---|---|---|---|---|---|---|\n"
+        + table_rows + "\n",
+        encoding="utf-8",
+    )
+
+
+class LoadConceptAliasesTests(unittest.TestCase):
+    def test_returns_empty_when_registry_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(la.load_concept_aliases(Path(tmp) / "missing.md"), {})
+
+    def test_parses_aliases_column(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_concepts_registry(root, [
+                ("api_v2_design", "api_v2, api2"),
+                ("rate_limit", "—"),
+                ("latency_budget", "lat_budget"),
+            ])
+            amap = la.load_concept_aliases(root / "_system/registries/CONCEPTS.md")
+            self.assertEqual(amap, {
+                "api_v2": "api_v2_design",
+                "api2": "api_v2_design",
+                "lat_budget": "latency_budget",
+            })
+
+    def test_self_alias_dropped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_concepts_registry(root, [
+                ("foo_bar", "foo_bar, baz"),
+            ])
+            amap = la.load_concept_aliases(root / "_system/registries/CONCEPTS.md")
+            self.assertEqual(amap, {"baz": "foo_bar"})
+
+    def test_first_canonical_wins_on_conflict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_concepts_registry(root, [
+                ("alpha", "shared"),
+                ("beta", "shared"),
+            ])
+            amap = la.load_concept_aliases(root / "_system/registries/CONCEPTS.md")
+            self.assertEqual(amap, {"shared": "alpha"})
+
+
+class ApplyConceptAliasesTests(unittest.TestCase):
+    def test_rewrites_old_to_canonical(self):
+        fm = {"concepts": ["api_v2", "rate_limit"]}
+        new_fm, events = la.apply_concept_aliases(
+            fm, {"api_v2": "api_v2_design"}
+        )
+        self.assertEqual(new_fm["concepts"], ["api_v2_design", "rate_limit"])
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["fix_id"], "concept-alias-rewrite-autofix")
+        self.assertEqual(events[0]["raw"], "api_v2")
+        self.assertEqual(events[0]["result"], "api_v2_design")
+
+    def test_dedupes_when_alias_collapses_with_existing(self):
+        fm = {"concepts": ["api_v2_design", "api_v2"]}
+        new_fm, events = la.apply_concept_aliases(
+            fm, {"api_v2": "api_v2_design"}
+        )
+        self.assertEqual(new_fm["concepts"], ["api_v2_design"])
+        self.assertEqual(len(events), 1)
+
+    def test_idempotent_on_canonical_only(self):
+        fm = {"concepts": ["api_v2_design"]}
+        new_fm, events = la.apply_concept_aliases(
+            fm, {"api_v2": "api_v2_design"}
+        )
+        self.assertEqual(new_fm, fm)
+        self.assertEqual(events, [])
+
+    def test_empty_alias_map_no_op(self):
+        fm = {"concepts": ["foo", "bar"]}
+        new_fm, events = la.apply_concept_aliases(fm, {})
+        self.assertEqual(new_fm, fm)
+        self.assertEqual(events, [])
+
+    def test_missing_concepts_field_no_op(self):
+        new_fm, events = la.apply_concept_aliases({"id": "x"}, {"a": "b"})
+        self.assertEqual(new_fm, {"id": "x"})
+        self.assertEqual(events, [])
+
+
+class ApplyAliasesIntegrationTests(unittest.TestCase):
+    def test_pipeline_rewrites_then_normalises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_audiences(root)
+            _write_concepts_registry(root, [
+                ("api_v2_design", "api_v2, api2"),
+            ])
+            _write_md(
+                root / "1_projects" / "n.md",
+                "layer: knowledge\n"
+                "concepts: [api_v2, api2, latency_budget]\n"
+                "origin: personal\naudience_tags: []\nis_sensitive: false\n",
+            )
+            events = _run(root, mode="fix")
+            rewrite = [e for e in events if e["fix_id"] == "concept-alias-rewrite-autofix"]
+            self.assertEqual(len(rewrite), 2)
+            content = (root / "1_projects" / "n.md").read_text()
+            # api_v2 and api2 collapsed into single api_v2_design
+            self.assertEqual(content.count("- api_v2_design\n"), 1)
+            self.assertNotIn("api_v2\n", content.replace("api_v2_design", "X"))
+        clear_ztn_env()
+
+    def test_idempotent_after_rewrite(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_audiences(root)
+            _write_concepts_registry(root, [
+                ("api_v2_design", "api_v2"),
+            ])
+            _write_md(
+                root / "1_projects" / "n.md",
+                "layer: knowledge\nconcepts: [api_v2]\n"
+                "origin: personal\naudience_tags: []\nis_sensitive: false\n",
+            )
+            first = _run(root, mode="fix")
+            self.assertGreater(
+                len([e for e in first if e["fix_id"] == "concept-alias-rewrite-autofix"]), 0
+            )
+            second = _run(root, mode="fix")
+            self.assertEqual(
+                [e for e in second if e["fix_id"] == "concept-alias-rewrite-autofix"], []
+            )
+        clear_ztn_env()
+
+
 if __name__ == "__main__":
     unittest.main()
