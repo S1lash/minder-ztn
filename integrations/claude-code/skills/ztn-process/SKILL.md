@@ -3,7 +3,7 @@ name: ztn:process
 description: >
   Process new voice transcripts from _sources/inbox/ into ZTN three-layer architecture
   (Records + Knowledge + Hubs). Full pipeline: pre-scan with People Resolution Map,
-  LLM noise gate, 14-question classification (incl. content potential with type/angle),
+  LLM noise gate, 16-question classification (incl. content potential, concepts, privacy trio),
   atomization, cross-domain scan, hub detection, per-batch subagent dispatch with self-review, people profile
   enrichment, idea living documents. Emits batch report per run and Evidence Trail
   initial entry in every new knowledge note.
@@ -478,7 +478,7 @@ Before classification, load relevant context for THIS specific transcript:
 
 ### 3.4 LLM Classification
 
-Answer these 14 questions for each transcript, using the loaded context.
+Answer these 16 questions for each transcript, using the loaded context.
 Be specific and cite evidence from the transcript.
 
 **== SOURCE CLASSIFICATION ==**
@@ -859,7 +859,7 @@ Be specific and cite evidence from the transcript.
     | Knowledge note | independent of parent record (a personal-reflection note from a work-meeting record can be `personal`) | per content_potential mapping above; default `[]` | per content scan |
     | Hub touched | inherit dominant member-note `origin` | `[]` (owner curates by hand) | `false` unless any member note is sensitive |
     | Person profile (new / updated) | inherit from creating record (work-meeting → `work`; personal-reflection → `personal`) | `[]` always | `false` unless owner-curated content is sensitive |
-    | Project profile (new) | from project's domain (work-domain → `work`) | `[]` | `false` |
+    | Project profile (new) | from project's actual context — work-employment project → `work`, personal side-project → `personal`, external/clipped → `external` (NOT hardcoded `work`) | `[]` | `false` |
     | Task | inherit from parent note | inherit from parent note | inherit from parent note |
     | Event | inherit from parent note | inherit from parent note | inherit from parent note |
     | Idea note | per content scan | `[]` (ideas are seed-stage) | per content scan |
@@ -1462,6 +1462,19 @@ For each person mentioned in the transcript (using the People Resolution Map):
 2. **If NEW (from People Resolution Map or discovered during audit):**
    - Create profile in `3_resources/people/{id}.md` using
      `{{MINDER_ZTN_BASE}}/5_meta/templates/person-template.md`
+   - **Privacy trio (mandatory).** Set in profile frontmatter:
+     - `origin` — inherit from the **creating record's `origin`** (the
+       record that first surfaced this person in the current batch).
+       Work-meeting record → `work`; personal-reflection record →
+       `personal`; external-source record → `external`. If multiple
+       records mention the new person in the same batch, use the
+       chronologically-first record's `origin`. NEVER hardcode
+       `personal` — it biases work-roster profiles wrongly.
+     - `audience_tags` — ALWAYS `[]`. Profile aggregates owner-side
+       context (mentions, opinions) which must not be re-shared
+       without explicit owner widening — even for public colleagues.
+     - `is_sensitive` — `true` if any captured content about this
+       person is health / legal / personal-risk; `false` otherwise.
    - Add row to `3_resources/people/PEOPLE.md`. Все 8 колонок обязательны:
      - `ID`, `Name`, `Role`, `Org` — из extracted context
      - `Profile` — `[[{id}]]` (wikilink)
@@ -1510,6 +1523,10 @@ For each processed source path (collected from all subagent manifests):
    **People created:** {N} — {list}
    **People updated:** {N} — {list}
    **Self-review fixes:** {N total} — {distribution by type: MISSED / DISTORTED / HALLUCINATED / THIN DECISION / UNLINKED REVISION}
+   **Concepts upserted:** {N} — total distinct concept identities touched this run
+   **Concept type-conflicts:** {N} — same concept name carried different `type` across mentions; first-chronological wins (autofix, no CLARIFICATION)
+   **Concept translations dropped:** {N} — non-English source terms with no clean translation; dropped to keep graph identity stable
+   **Sensitive entities:** {N} — entities emitted with `is_sensitive: true`
    **Batches:** {batch_count} — {token totals, transcript counts per batch}
    ```
 
@@ -1680,8 +1697,16 @@ Accumulate:
   Same rationale: per-event invisible to owner; aggregate over time
   surfaces a translation-quality regression worth investigating.
 
-Both counters land in `_system/state/log_process.md` per-run row and in
-`BATCH_LOG.md`. They are observability slots, never gating signals.
+Both counters land in two places:
+- per-batch frontmatter at `_system/state/batches/{batch_id}.md` (one
+  row per batch — high-fidelity)
+- per-run summary at `_system/state/log_process.md` (one entry per
+  /ztn:process invocation — easy-to-eyeball aggregate)
+
+They are NOT added to BATCH_LOG.md (which is a 9-column terse routing
+index for lint scanning, not an observability surface — adding columns
+bloats it without corresponding usage). They are observability slots,
+never gating signals.
 
 **Concept registry aggregation.** Build `concepts.upserts[]` for
 the batch:
@@ -1909,10 +1934,23 @@ in `_system/docs/batch-format.md` (9 columns):
 
 ### 5.5.3 Failure semantics
 
-If Step 5.5 itself fails mid-way (e.g., filesystem error while writing `batches/{id}.md`):
-- If the batch file was partially written → best-effort delete it to avoid a claim of successful completion that isn't backed by a full file.
-- Do NOT append to BATCH_LOG.md unless `batches/{id}.md` wrote completely.
-- Log the error, surface it in the Step 6 report under a `### Errors` subsection, and exit non-zero.
+The three artifacts of Step 5.5 (markdown, JSON manifest, BATCH_LOG row)
+are atomic-ish: BATCH_LOG row appends only after BOTH `batches/{id}.md`
+AND `batches/{id}.json` wrote successfully.
+
+- If markdown write fails (filesystem error) → best-effort delete the
+  partial file; do NOT proceed to JSON write or BATCH_LOG append.
+- If JSON write fails (filesystem error, OR `emit_batch_manifest.py`
+  exit 3 = structural contract violation) → best-effort delete the
+  partial JSON; KEEP the markdown file (it remains a valid
+  human-readable record of the run); do NOT append BATCH_LOG row.
+  Markdown without JSON is observable as «row missing in BATCH_LOG»
+  on next lint scan — surfaces the gap explicitly.
+- On any 5.5 failure: log the error, surface it in the Step 6 report
+  under `### Errors`, exit non-zero. Crash recovery via PROCESSED.md
+  handles the next-run picture; this run's notes are already on disk
+  (Step 3.5 wrote them inside subagents) and will not be re-processed
+  unless `--reprocess` is passed.
 
 ---
 
@@ -1936,6 +1974,12 @@ Output to user:
 - Hubs created: N
 - People created: N ({list})
 - People updated: N ({list})
+- Concepts upserted: N
+- Sensitive entities flagged: N
+
+### Observability counters
+- Concept type-conflicts: N (autofix via first-chronological-mention; sustained non-zero → review pipeline)
+- Concept translations dropped: N (untranslatable non-English source terms; sustained non-zero → review translation quality)
 
 ### Self-Review Stats
 - Notes self-reviewed: N
@@ -1973,13 +2017,16 @@ Output to user:
 - [x] Batch verification passed
 - [x] Evidence Trail present in every new knowledge note
 - [x] PEOPLE.md 8-column schema preserved
-- [x] Batch artifacts written (batches/{id}.md + BATCH_LOG row)
+- [x] Batch artifacts written (batches/{id}.md + batches/{id}.json + BATCH_LOG row)
 
 ### Batch Artifact
 - **batch_id:** {YYYYMMDD-HHmmss}
-- **Report:** `_system/state/batches/{batch-id}.md`
+- **Markdown report:** `_system/state/batches/{batch-id}.md`
+- **JSON manifest:** `_system/state/batches/{batch-id}.json` (downstream Minder contract per ARCHITECTURE.md §4.5)
 - **BATCH_LOG:** +1 row (threads_open/close = 0)
 - **clarifications_raised:** {N}
+- **concepts_upserted:** {N}
+- **sensitive_entities:** {N}
 
 ### Health Indicators
 - Open tasks: {N} (oldest: {date}, {age} ago)
