@@ -374,7 +374,9 @@ class DomainAutofixTests(unittest.TestCase):
             self.assertEqual(len(drops), 1)
             self.assertEqual(drops[0]["reason"], "not-in-whitelist")
 
-    def test_slash_syntax_normalised_to_prefix(self):
+    def test_slash_syntax_split_and_filtered(self):
+        # `personal/psychology` → `personal` kept (canonical), `psychology`
+        # dropped (not in whitelist). `work/process` analogous.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _scaffold(root)
@@ -389,8 +391,35 @@ class DomainAutofixTests(unittest.TestCase):
                 e for e in events
                 if e.get("fix_id") == "domain-normalise-autofix"
             ]
-            results = sorted(e["result"] for e in normalises)
+            results = sorted(
+                e["result"] if isinstance(e["result"], str)
+                else e["result"][0]
+                for e in normalises
+            )
             self.assertEqual(results, ["personal", "work"])
+            drops = [
+                e for e in events
+                if e.get("fix_id") == "domain-drop-autofix"
+            ]
+            dropped_parts = sorted(e.get("part") for e in drops)
+            self.assertEqual(dropped_parts, ["process", "psychology"])
+
+    def test_slash_both_canonical_kept(self):
+        # `work/learning` — both parts canonical → both kept.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            _write_audiences(root)
+            _write_md(
+                root / "1_projects" / "n.md",
+                "layer: knowledge\ndomains: [work/learning]\n"
+                "origin: personal\naudience_tags: []\nis_sensitive: false\n",
+            )
+            _run(root, mode="fix")
+            content = (root / "1_projects" / "n.md").read_text()
+            self.assertIn("- work\n", content)
+            self.assertIn("- learning\n", content)
+        clear_ztn_env()
 
     def test_case_normalised(self):
         with tempfile.TemporaryDirectory() as tmp:

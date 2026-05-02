@@ -498,10 +498,13 @@ class NormalizeDomainTests(unittest.TestCase):
     def test_snake_to_kebab(self):
         self.assertEqual(c.normalize_domain("ai_interaction"), "ai-interaction")
 
-    def test_slash_keeps_prefix(self):
-        self.assertEqual(c.normalize_domain("work/process"), "work")
-        self.assertEqual(c.normalize_domain("personal/psychology"), "personal")
-        self.assertEqual(c.normalize_domain("work/team/sub"), "work")
+    def test_slash_returns_none_on_strict_normalise(self):
+        # `normalize_domain` is strict single-value; slash is not a valid
+        # character in the kebab-case alphabet. Callers needing slash
+        # expansion use `expand_domain_entry` instead.
+        self.assertIsNone(c.normalize_domain("work/process"))
+        self.assertIsNone(c.normalize_domain("personal/psychology"))
+        self.assertIsNone(c.normalize_domain("work/team/sub"))
 
     def test_whitespace_strip(self):
         self.assertEqual(c.normalize_domain("  health  "), "health")
@@ -526,6 +529,44 @@ class NormalizeDomainTests(unittest.TestCase):
 
     def test_non_ascii_drops(self):
         self.assertIsNone(c.normalize_domain("тема"))
+
+
+class ExpandDomainEntryTests(unittest.TestCase):
+    """Slash-aware expansion: single raw entry → list of normalised parts."""
+
+    def test_no_slash_single_entry(self):
+        self.assertEqual(c.expand_domain_entry("work"), ["work"])
+
+    def test_slash_splits_two(self):
+        self.assertEqual(c.expand_domain_entry("work/learning"), ["work", "learning"])
+
+    def test_slash_splits_three(self):
+        self.assertEqual(
+            c.expand_domain_entry("work/learning/career"),
+            ["work", "learning", "career"],
+        )
+
+    def test_each_part_normalised(self):
+        self.assertEqual(
+            c.expand_domain_entry("Work/AI_Interaction"),
+            ["work", "ai-interaction"],
+        )
+
+    def test_format_unfixable_part_dropped(self):
+        # тема fails normalize → just `work` returned
+        self.assertEqual(c.expand_domain_entry("work/тема"), ["work"])
+
+    def test_dedup_preserves_order(self):
+        self.assertEqual(c.expand_domain_entry("work/work"), ["work"])
+
+    def test_empty_returns_empty_list(self):
+        self.assertEqual(c.expand_domain_entry(""), [])
+        self.assertEqual(c.expand_domain_entry(None), [])
+        self.assertEqual(c.expand_domain_entry("/"), [])
+
+    def test_non_string_returns_empty(self):
+        self.assertEqual(c.expand_domain_entry(123), [])
+        self.assertEqual(c.expand_domain_entry(["work"]), [])
 
 
 class NormalizeDomainListTests(unittest.TestCase):
@@ -554,6 +595,22 @@ class NormalizeDomainListTests(unittest.TestCase):
     def test_empty_input(self):
         self.assertEqual(c.normalize_domain_list([]), [])
         self.assertEqual(c.normalize_domain_list(None), [])
+
+    def test_slash_expansion_both_canonical_kept(self):
+        result = c.normalize_domain_list(["work/learning"])
+        self.assertEqual(result, ["work", "learning"])
+
+    def test_slash_expansion_suffix_filtered(self):
+        # `process` not in canonical → only `work` survives
+        result = c.normalize_domain_list(["work/process"])
+        self.assertEqual(result, ["work"])
+
+    def test_slash_with_extension_in_accept(self):
+        result = c.normalize_domain_list(
+            ["work/gardening"],
+            accept_set=set(c.ALLOWED_DOMAINS) | {"gardening"},
+        )
+        self.assertEqual(result, ["work", "gardening"])
 
 
 class ParseExtensionsTableTests(unittest.TestCase):
@@ -608,6 +665,100 @@ class ParseExtensionsTableTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertEqual(c.parse_extensions_table(p), {"gardening"})
+
+    def test_canonical_conflict_silently_dropped(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "registry.md"
+            p.write_text(
+                "<!-- BEGIN extensions -->\n"
+                "| Domain | Added | Status | Purpose | Notes |\n"
+                "|---|---|---|---|---|\n"
+                "| gardening | 2026-05-01 | active | hobby | — |\n"
+                "| Work | 2026-05-01 | active | typo | — |\n"
+                "| HEALTH | 2026-05-01 | active | shouted | — |\n"
+                "<!-- END extensions -->\n",
+                encoding="utf-8",
+            )
+            # `Work` and `HEALTH` case-fold to canonical → silent drop
+            result = c.parse_extensions_table(
+                p, canonical_blacklist=c.ALLOWED_DOMAINS,
+            )
+            self.assertEqual(result, {"gardening"})
+
+    def test_no_blacklist_param_keeps_all(self):
+        # Without blacklist, parser doesn't reject canonical-named entries
+        # (backward compat with audience callers that don't pass it yet).
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "registry.md"
+            p.write_text(
+                "<!-- BEGIN extensions -->\n"
+                "| Domain | Added | Status | Purpose | Notes |\n"
+                "|---|---|---|---|---|\n"
+                "| gardening | 2026-05-01 | active | hobby | — |\n"
+                "| Work | 2026-05-01 | active | typo | — |\n"
+                "<!-- END extensions -->\n",
+                encoding="utf-8",
+            )
+            result = c.parse_extensions_table(p)
+            self.assertEqual(result, {"gardening", "Work"})
+
+
+class ValidateFrontmatterDomainNormalisationTests(unittest.TestCase):
+    """Closes Phase-1 latent defect: principles with normalisable but
+    non-canonical domain values (snake-case, mixed case) must not raise
+    SchemaError. validate_frontmatter normalises in place before enum check.
+    """
+
+    def _principle(self, domain_value: str) -> dict:
+        return {
+            "id": f"principle-{domain_value}-001",  # raw form for prefix check
+            "title": "test",
+            "type": "principle",
+            "domain": domain_value,
+            "statement": "irrelevant",
+            "priority_tier": 1,
+            "scope": "shared",
+            "applies_to": [],
+            "status": "active",
+        }
+
+    def test_canonical_passthrough(self):
+        fm = self._principle("ai-interaction")
+        c.validate_frontmatter(Path("/tmp/fake.md"), fm)
+        self.assertEqual(fm["domain"], "ai-interaction")
+
+    def test_snake_case_rewrites_in_place(self):
+        fm = {
+            "id": "principle-ai-interaction-001",
+            "title": "test", "type": "principle",
+            "domain": "ai_interaction",  # snake input
+            "statement": "x", "priority_tier": 1, "scope": "shared",
+            "applies_to": [], "status": "active",
+        }
+        c.validate_frontmatter(Path("/tmp/fake.md"), fm)
+        self.assertEqual(fm["domain"], "ai-interaction")
+
+    def test_mixed_case_rewrites(self):
+        fm = {
+            "id": "principle-work-001",
+            "title": "test", "type": "principle",
+            "domain": "Work",
+            "statement": "x", "priority_tier": 1, "scope": "shared",
+            "applies_to": [], "status": "active",
+        }
+        c.validate_frontmatter(Path("/tmp/fake.md"), fm)
+        self.assertEqual(fm["domain"], "work")
+
+    def test_unfixable_domain_still_raises(self):
+        fm = {
+            "id": "principle-junk-001",
+            "title": "test", "type": "principle",
+            "domain": "junk",  # not in canonical, well-formed
+            "statement": "x", "priority_tier": 1, "scope": "shared",
+            "applies_to": [], "status": "active",
+        }
+        with self.assertRaises(c.SchemaError):
+            c.validate_frontmatter(Path("/tmp/fake.md"), fm)
 
 
 class AllowedDomainsExtensionTests(unittest.TestCase):

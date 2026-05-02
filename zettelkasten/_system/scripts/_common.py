@@ -353,11 +353,13 @@ def normalize_audience_tag(raw: str | None) -> str | None:
 # decides accept-vs-drop against canonical 13 ∪ active Extensions.
 #
 # Slash-syntax handling. Real corpus contains values like `work/process`,
-# `personal/psychology` — owner's notation for "domain:work, sub-aspect:process".
-# The ZTN axis is flat (no hierarchy); the deterministic substrate keeps the
-# prefix and discards the suffix. This is the autonomous-resolution choice
-# documented in DOMAINS.md «On violation»: prefix is the structural answer,
-# suffix is concept/tag drift that lint can't safely classify.
+# `personal/psychology` — owner's compact notation for "this entity belongs
+# to MULTIPLE domains: work AND process". The ZTN axis is flat (no hierarchy)
+# but it IS multi-valued, so slash entries split into independent values.
+# Each part is normalised + filtered against the accept set independently.
+# Real-corpus consequence: `work/process` keeps `work` (canonical) and drops
+# `process` (not in whitelist) — same outcome as before — but `work/learning`
+# keeps BOTH (both canonical), which the previous "prefix-only" policy lost.
 
 DOMAIN_RE = re.compile(r"^[a-z0-9-]+$")
 DOMAIN_MIN_LEN = 2
@@ -365,23 +367,23 @@ DOMAIN_MAX_LEN = 32
 
 
 def normalize_domain(raw: str | None) -> str | None:
-    """Normalise to kebab-case ASCII; return value if well-formed, else None.
+    """Strict single-value normalisation to kebab-case ASCII; return value if
+    well-formed, else None.
 
-    Slash-syntax (`work/process`, `personal/psychology`) keeps the prefix and
-    drops everything from the first slash onward. Caller checks the result
-    against the canonical+extensions accept set to decide accept-vs-drop.
+    No slash handling — slash is treated as an irrecoverable separator that
+    indicates multi-valued input. Callers that need to expand slash entries
+    use `expand_domain_entry()` instead, which splits before normalising.
+    Direct `normalize_domain("work/process")` returns None because the
+    slash makes the string non-well-formed for a single-value slot.
 
-    Autonomous-pipeline policy: never raises. On any irrecoverable shape, return
-    None so the caller drops the value silently.
+    Autonomous-pipeline policy: never raises. On any irrecoverable shape,
+    return None so the caller drops the value silently.
     """
     if raw is None:
         return None
     s = unicodedata.normalize("NFKD", str(raw))
     s = "".join(c for c in s if not unicodedata.combining(c))
     s = s.lower().strip()
-    # Slash-split: keep prefix only.
-    if "/" in s:
-        s = s.split("/", 1)[0].strip()
     s = re.sub(r"[\s_]+", "-", s)
     s = re.sub(r"-+", "-", s).strip("-")
     if not s:
@@ -393,9 +395,35 @@ def normalize_domain(raw: str | None) -> str | None:
     return s
 
 
+def expand_domain_entry(raw: str | None) -> list[str]:
+    """Expand a single raw entry into zero, one, or many normalised values.
+
+    Slash-syntax splits: `work/process` → `[work, process]` (each part runs
+    through `normalize_domain` independently). Non-slash input collapses to
+    a single-element list (`[work]`) or empty (`[]`) on irrecoverable shape.
+
+    Returns deduplicated list preserving first-seen order. Caller filters
+    against the accept set; this function only handles the format substrate.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, str):
+        return []
+    parts = [p.strip() for p in raw.split("/")] if "/" in raw else [raw]
+    out: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        n = normalize_domain(part)
+        if n is None or n in seen:
+            continue
+        seen.add(n)
+        out.append(n)
+    return out
+
+
 def normalize_domain_list(raw_iter, accept_set: Iterable[str] | None = None) -> list[str]:
-    """Apply normalize_domain to each entry; drop None and not-in-accept-set;
-    dedup preserving first-seen order.
+    """Expand each entry via `expand_domain_entry` (slash-split aware), then
+    filter against the accept set; dedup preserving first-seen order.
 
     `accept_set` defaults to ALLOWED_DOMAINS — pass `ALLOWED_DOMAINS | extensions`
     when extension-aware filtering is needed.
@@ -404,11 +432,10 @@ def normalize_domain_list(raw_iter, accept_set: Iterable[str] | None = None) -> 
     seen: set[str] = set()
     out: list[str] = []
     for raw in (raw_iter or []):
-        n = normalize_domain(raw)
-        if n is None or n not in accept or n in seen:
-            continue
-        seen.add(n)
-        out.append(n)
+        for n in expand_domain_entry(raw):
+            if n in accept and n not in seen:
+                seen.add(n)
+                out.append(n)
     return out
 
 
@@ -421,13 +448,24 @@ _EXTENSIONS_BLOCK_RE = re.compile(
 )
 
 
-def parse_extensions_table(path: Path) -> set[str]:
+def parse_extensions_table(
+    path: Path,
+    canonical_blacklist: Iterable[str] | None = None,
+) -> set[str]:
     """Parse the `<!-- BEGIN extensions --> ... <!-- END extensions -->` block
     from a registry markdown file (AUDIENCES.md, DOMAINS.md, ...).
 
     Table shape: `| Name | Added | Status | Purpose | Notes |`. Returns the
     set of NAME values whose Status does not start with `deprecated`. Tolerant
     of missing file or malformed table — returns empty set on any failure.
+
+    `canonical_blacklist` (lower-cased internally) silently rejects any
+    extension whose case-folded name equals a canonical-set member —
+    enforces the «Extensions cannot be equal to a canonical word
+    (case-folded)» rule documented in AUDIENCES.md and DOMAINS.md. The
+    canonical row wins; the conflicting extension is dropped at parse
+    time without surfacing — owner notices missing acceptance and
+    renames to a non-conflicting form.
 
     Single source of truth — older lint / emit helpers carry their own
     near-identical implementations and may migrate to this when their
@@ -442,6 +480,7 @@ def parse_extensions_table(path: Path) -> set[str]:
     m = _EXTENSIONS_BLOCK_RE.search(text)
     if not m:
         return set()
+    blacklist = {c.lower() for c in (canonical_blacklist or ())}
     out: set[str] = set()
     for line in m.group(1).splitlines():
         if not line.strip().startswith("|"):
@@ -457,6 +496,10 @@ def parse_extensions_table(path: Path) -> set[str]:
         if name.startswith("_(") or name in {"—", "-"}:
             continue
         if status.lower().startswith("deprecated"):
+            continue
+        if name.lower() in blacklist:
+            # Reserved-keyword conflict: extension matches canonical
+            # case-folded. Doc contract is silent-drop; canonical wins.
             continue
         out.add(name)
     return out
@@ -675,6 +718,16 @@ def validate_frontmatter(path: Path, fm: dict) -> None:
             )
 
     check_enum("type", fm["type"], ALLOWED_TYPES)
+    # Normalise domain before enum check so `ai_interaction` (snake) and
+    # `AI-Interaction` (mixed case) are accepted as their canonical
+    # `ai-interaction`. The normalised value is written back to the
+    # frontmatter dict so downstream consumers (Principle.domain, id-prefix
+    # check below, manifest emit) see the canonical form. None on
+    # irrecoverable shape falls through to check_enum which raises with the
+    # raw value — keeps error messages truthful about what owner wrote.
+    norm_domain = normalize_domain(fm["domain"])
+    if norm_domain is not None and norm_domain in ALLOWED_DOMAINS:
+        fm["domain"] = norm_domain
     check_enum("domain", fm["domain"], ALLOWED_DOMAINS)
     check_enum("priority_tier", fm["priority_tier"], ALLOWED_PRIORITY_TIERS)
     check_enum("scope", fm["scope"], ALLOWED_SCOPES)

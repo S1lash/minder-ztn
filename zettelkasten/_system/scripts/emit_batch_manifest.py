@@ -47,6 +47,7 @@ from pathlib import Path
 from _common import (
     ALLOWED_DOMAINS,
     AUDIENCE_CANONICAL,
+    expand_domain_entry,
     normalize_audience_tag,
     normalize_concept_list,
     normalize_concept_name,
@@ -139,30 +140,50 @@ def normalise_domain_list(
     raw: list, accept_set: set[str], events: list[dict], path: str,
 ) -> list[str]:
     """Filter `domains:` array against canonical-13 ∪ extensions; normalise
-    where possible. Mirrors `normalise_audience_list` shape; emits per-entry
+    where possible. Slash-syntax (`work/learning`) splits into multiple
+    independent values, each filtered separately. Emits per-entry
     `domain-normalise-autofix` / `domain-drop-autofix` events.
     """
     out: list[str] = []
     for value in raw or []:
-        if isinstance(value, str) and value in accept_set:
+        # Fast path: canonical / extension verbatim, no slash → keep.
+        if isinstance(value, str) and "/" not in value and value in accept_set:
             if value not in out:
                 out.append(value)
             continue
-        norm = normalize_domain(value) if isinstance(value, str) else None
-        if norm is not None and norm in accept_set:
-            if norm not in out:
-                out.append(norm)
-            if norm != value:
-                events.append({
-                    "fix_id": "domain-normalise-autofix",
-                    "field_path": path, "before": value, "after": norm,
-                })
-        else:
+        if not isinstance(value, str):
             events.append({
                 "fix_id": "domain-drop-autofix",
                 "field_path": path, "before": value, "after": None,
-                "reason": "not-in-whitelist" if norm is not None
-                          else "format-unfixable",
+                "reason": "format-unfixable",
+            })
+            continue
+        expanded = expand_domain_entry(value)
+        if not expanded:
+            events.append({
+                "fix_id": "domain-drop-autofix",
+                "field_path": path, "before": value, "after": None,
+                "reason": "format-unfixable",
+            })
+            continue
+        kept_results: list[str] = []
+        for part in expanded:
+            if part in accept_set:
+                if part not in out:
+                    out.append(part)
+                kept_results.append(part)
+            else:
+                events.append({
+                    "fix_id": "domain-drop-autofix",
+                    "field_path": path, "before": value, "after": None,
+                    "reason": "not-in-whitelist", "part": part,
+                })
+        if kept_results and (len(expanded) > 1 or kept_results != [value]):
+            events.append({
+                "fix_id": "domain-normalise-autofix",
+                "field_path": path, "before": value,
+                "after": kept_results if len(kept_results) > 1
+                         else kept_results[0],
             })
     return out
 
@@ -520,7 +541,9 @@ def main(argv: list[str] | None = None) -> int:
             f"{domains_path} — extensions table not loaded; "
             f"accept_set limited to canonical 13\n"
         )
-    domain_extensions = parse_extensions_table(domains_path)
+    domain_extensions = parse_extensions_table(
+        domains_path, canonical_blacklist=ALLOWED_DOMAINS,
+    )
     domain_accept = set(ALLOWED_DOMAINS) | domain_extensions
 
     events: list[dict] = []

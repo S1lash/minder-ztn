@@ -469,7 +469,9 @@ class DomainNormalisationTests(unittest.TestCase):
             self.assertIn("domain-drop-autofix", err)
             self.assertIn("payments", err)
 
-    def test_slash_syntax_normalised(self):
+    def test_slash_syntax_split_keeps_canonical(self):
+        # `work/process` → keep `work`, drop `process`.
+        # `personal/psychology` → keep `personal`, drop `psychology`.
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             audiences = _audiences_file(tmp)
@@ -483,6 +485,18 @@ class DomainNormalisationTests(unittest.TestCase):
                 written["records"][0]["domains"], ["work", "personal"],
             )
             self.assertIn("domain-normalise-autofix", err)
+
+    def test_slash_both_canonical_both_kept(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["records"] = [{"domains": ["work/learning"]}]
+            _, _, _ = _run(data, tmp / "out.json", audiences)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(
+                written["records"][0]["domains"], ["work", "learning"],
+            )
 
     def test_extension_accepted(self):
         with tempfile.TemporaryDirectory() as td:

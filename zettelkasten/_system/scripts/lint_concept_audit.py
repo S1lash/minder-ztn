@@ -34,10 +34,10 @@ from typing import Iterable
 from _common import (
     ALLOWED_DOMAINS,
     AUDIENCE_CANONICAL,
+    expand_domain_entry,
     normalize_audience_tag,
     normalize_concept_list,
     normalize_concept_name,
-    normalize_domain,
     parse_extensions_table,
     read_frontmatter,
     repo_root,
@@ -343,15 +343,20 @@ def fix_domains(
             })
             changed = True
             continue
-        if orig in accept_set:
+        # Fast path: canonical / extension verbatim, no slash → keep as-is.
+        if "/" not in orig and orig in accept_set:
             if orig not in seen:
                 accepted.append(orig)
                 seen.add(orig)
             else:
                 changed = True
             continue
-        norm = normalize_domain(orig)
-        if norm is None:
+        # Expansion path: slash-split + per-part normalise + per-part filter.
+        # `work/learning` → both parts kept (both canonical). `work/process`
+        # → `work` kept, `process` dropped (not-in-whitelist). `тема` →
+        # nothing kept (format-unfixable).
+        expanded = expand_domain_entry(orig)
+        if not expanded:
             events.append({
                 "fix_id": "domain-drop-autofix",
                 "field": "domains",
@@ -361,26 +366,37 @@ def fix_domains(
             })
             changed = True
             continue
-        if norm in accept_set:
-            if norm not in seen:
-                accepted.append(norm)
-                seen.add(norm)
+        any_kept = False
+        any_dropped = False
+        kept_results: list[str] = []
+        for part in expanded:
+            if part in accept_set:
+                if part not in seen:
+                    accepted.append(part)
+                    seen.add(part)
+                kept_results.append(part)
+                any_kept = True
+                if part != orig:
+                    changed = True
+            else:
+                events.append({
+                    "fix_id": "domain-drop-autofix",
+                    "field": "domains",
+                    "raw": orig,
+                    "result": None,
+                    "reason": "not-in-whitelist",
+                    "part": part,
+                })
+                any_dropped = True
+                changed = True
+        if any_kept and (len(expanded) > 1 or kept_results != [orig]):
             events.append({
                 "fix_id": "domain-normalise-autofix",
                 "field": "domains",
                 "raw": orig,
-                "result": norm,
+                "result": kept_results if len(kept_results) > 1
+                          else kept_results[0],
             })
-            changed = True
-            continue
-        events.append({
-            "fix_id": "domain-drop-autofix",
-            "field": "domains",
-            "raw": orig,
-            "result": None,
-            "reason": "not-in-whitelist",
-        })
-        changed = True
 
     if not changed and accepted == raw_list:
         return fm, events
@@ -515,9 +531,16 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     audience_extensions = parse_audience_extensions(audiences_path)
+    # Canonical-conflict guard for audiences is handled by the legacy
+    # `parse_audience_extensions` (defined in this module above) which
+    # predates the canonical-blacklist parameter — refactor on next
+    # touch of audience code paths. AUDIENCE_CANONICAL set is small and
+    # the legacy parser already filters table-header noise.
     audience_accept = set(AUDIENCE_CANONICAL) | audience_extensions
 
-    domain_extensions = parse_extensions_table(domains_path)
+    domain_extensions = parse_extensions_table(
+        domains_path, canonical_blacklist=ALLOWED_DOMAINS,
+    )
     domain_accept = set(ALLOWED_DOMAINS) | domain_extensions
 
     for md in walk_md_files(root):

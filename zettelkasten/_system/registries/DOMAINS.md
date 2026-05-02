@@ -181,7 +181,8 @@ Scan A.7 (`lint_concept_audit.py::fix_domains`).
 | Condition | Engine action |
 |---|---|
 | Value in canonical 13 verbatim | Pass-through. |
-| Value normalises to a canonical or active extension entry | **Silent autofix** — rewrite to normalised form. Fix-id `domain-normalise-autofix`. (Catches `Work` → `work`, `ai_interaction` → `ai-interaction`, slash-syntax `work/process` → `work` keeping the prefix.) |
+| Value normalises to a canonical or active extension entry | **Silent autofix** — rewrite to normalised form. Fix-id `domain-normalise-autofix`. (Catches `Work` → `work`, `ai_interaction` → `ai-interaction`.) |
+| Slash-syntax (`work/learning`, `personal/psychology`) | **Split-and-filter.** Each part normalised independently and filtered against the accept set. Both canonical → both kept (`work/learning` → `[work, learning]`). Suffix not in whitelist → silent drop of suffix only (`work/process` → `[work]`). Fix-id `domain-normalise-autofix` on the resulting set; `domain-drop-autofix` on each part that fails the filter. The rationale: slash is the owner's compact notation for multi-domain membership; the flat ZTN axis is multi-valued (`domains: [work, learning]`), so the substrate honours the intent rather than collapsing it. |
 | Value well-formed but NOT in canonical or extension list | **Silent drop** — entity loses that single value (other valid entries kept). Fix-id `domain-drop-autofix` with reason `not-in-whitelist`. |
 | Value fails kebab-case ASCII / length 2–32 / contains non-ASCII | **Silent drop**. Fix-id `domain-drop-autofix` with reason `format-unfixable`. |
 
