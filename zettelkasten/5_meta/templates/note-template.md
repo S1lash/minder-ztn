@@ -34,12 +34,14 @@ concepts:
   - concept_name_1
   - concept_name_2
 
-# Privacy trio — see _system/registries/AUDIENCES.md + ENGINE_DOCTRINE §3.8
-# origin: personal | work | external (default personal)
+# Privacy trio — set independently of parent record (a personal
+# reflection extracted from a work meeting can carry `origin: personal`).
+# Default: inherit parent record's origin.
 # audience_tags: list from canonical 5 (family / friends / work /
 #   professional-network / world) or AUDIENCES.md Extensions; [] = owner-only
 # is_sensitive: true on NDA / salary / health / financial / intimate content
-origin: personal
+# See _system/registries/AUDIENCES.md + ENGINE_DOCTRINE §3.8.
+origin: {personal|work|external}
 audience_tags: []
 is_sensitive: false
 

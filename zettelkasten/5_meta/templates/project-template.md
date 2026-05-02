@@ -15,10 +15,12 @@ domains:
 # (those live in their own first-class fields).
 concepts:
   - concept_name_1
-# Privacy trio — pick origin matching the project context (work / personal).
-# audience_tags default [] — widen explicitly when sharing intent is clear.
+# Privacy trio — pick `origin` matching the actual project context
+# (work-employment project → `work`; personal side-project → `personal`;
+# external/clipped → `external`). audience_tags default [] — widen
+# explicitly when sharing intent is clear.
 # See _system/registries/AUDIENCES.md + ENGINE_DOCTRINE §3.8.
-origin: work
+origin: {personal|work|external}
 audience_tags: []
 is_sensitive: false
 tags:

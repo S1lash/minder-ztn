@@ -25,10 +25,13 @@ projects:
 # enough surfaced.
 concepts:
   - concept_name_1
-# Privacy trio — defaults personal / [] / false on solo Plaud capture.
-# Set is_sensitive: true on therapy / health / family / financial content.
-# See _system/registries/AUDIENCES.md + ENGINE_DOCTRINE §3.8.
-origin: personal
+# Privacy trio — choose per the observation's context (NOT a fixed
+# default). Solo Plaud / journal / therapy → typically `personal`. A
+# work-context self-reflection captured solo → `work`. `audience_tags`
+# stays `[]` unless content carries explicit sharing intent.
+# `is_sensitive`: true on therapy / health / family / financial /
+# NDA content. See _system/registries/AUDIENCES.md + ENGINE_DOCTRINE §3.8.
+origin: {personal|work|external}
 audience_tags: []
 is_sensitive: false
 tags:

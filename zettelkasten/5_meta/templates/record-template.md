@@ -24,9 +24,14 @@ projects:
 concepts:
   - concept_name_1
   - concept_name_2
-# Privacy trio — defaults work / [] / false on a work-meeting record;
-# see _system/registries/AUDIENCES.md + ENGINE_DOCTRINE §3.8.
-origin: work
+# Privacy trio — choose per the actual record context (NOT a fixed
+# default). `origin`: where this was captured — `work` for work-team
+# meetings, `personal` for personal/family/health context, `external`
+# for clipped/imported sources. `audience_tags`: keep `[]` (owner only)
+# unless content carries explicit sharing intent — fail-closed.
+# `is_sensitive`: true on NDA / health / finance / interpersonal-risk
+# content. See _system/registries/AUDIENCES.md + ENGINE_DOCTRINE §3.8.
+origin: {personal|work|external}
 audience_tags: []
 is_sensitive: false
 tags:
