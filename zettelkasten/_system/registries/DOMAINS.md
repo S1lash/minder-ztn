@@ -186,27 +186,29 @@ Scan A.7 (`lint_concept_audit.py::fix_domains`).
 | Value well-formed but NOT in canonical or extension list | **Silent drop** — entity loses that single value (other valid entries kept). Fix-id `domain-drop-autofix` with reason `not-in-whitelist`. |
 | Value fails kebab-case ASCII / length 2–32 / contains non-ASCII | **Silent drop**. Fix-id `domain-drop-autofix` with reason `format-unfixable`. |
 
-**Why fail-closed via drop in Phase 1.** A misclassified domain
-silently expands the structural axis and dilutes hub detection. The
-safest failure is "not classified" (`[]` or fewer entries), never
-"guessed". The engine never coins new extensions on its own —
-Extensions table below is owner-curated outside the pipeline.
+**Why fail-closed via drop.** A misclassified domain silently expands
+the structural axis and dilutes hub detection. The safest failure is
+"not classified" (`[]` or fewer entries), never "guessed". The engine
+never coins new extensions on its own — Extensions table below is
+owner-curated outside the pipeline.
 
-**LLM cascade (cross-skill plan).** When the SKILL ecosystem invokes
-a Sonnet matching subagent (concept-matcher in `/ztn:process` —
-both inbox-scan and `--reprocess-corpus` modes share the same
-matcher), the same call also receives unmatched domain values for
-remap-or-drop judgement. The cascade is:
+**LLM cascade.** Residual values that survive deterministic
+normalisation but miss the whitelist are not silently dropped at the
+substrate level — they enter the concept-matcher subagent in
+`/ztn:process` Step 3.4.5 (same matcher for inbox-scan and
+`--reprocess-corpus` modes), which receives them alongside unmatched
+concept candidates and emits `domain_resolutions[]` per value:
 
 1. `normalize_domain` (deterministic) →
 2. whitelist check (canonical ∪ extensions) →
-3. **LLM remap** to nearest canonical with reasoning →
-4. LLM judges material-vs-trivial: trivial → drop with log;
-   material → CLARIFICATION queue type `domain-resolution`.
+3. matcher subagent: **LLM remap** to nearest canonical with reasoning →
+4. matcher subagent: judge material-vs-trivial — trivial → drop with
+   log entry; material → CLARIFICATION of type `domain-resolution`
+   with conservative default (drop the value).
 
 The lint-level deterministic substrate (this file's «On violation»
-table) is the floor; the LLM cascade is layered on top by the SKILLs
-that own LLM judgement. Lint never invokes LLM directly.
+table) is the floor; the matcher cascade is layered on top by the
+SKILL that owns LLM judgement. Lint never invokes LLM directly.
 
 ---
 

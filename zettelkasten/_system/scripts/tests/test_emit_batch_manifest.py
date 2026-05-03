@@ -433,7 +433,7 @@ class IdempotenceTests(unittest.TestCase):
 
 class DomainNormalisationTests(unittest.TestCase):
     """`walk_and_normalise` handling of `domains:` (plural) and `domain:`
-    (singular). Phase 1 substrate — silent autofix or silent drop."""
+    (singular). Deterministic substrate — silent autofix or silent drop."""
 
     def test_canonical_passthrough(self):
         with tempfile.TemporaryDirectory() as td:

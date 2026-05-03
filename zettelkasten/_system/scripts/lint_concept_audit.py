@@ -404,11 +404,11 @@ def fix_domains(
     `validate_frontmatter` against `ALLOWED_DOMAINS` and never enters lint
     scope (the constitution tree is excluded via SCOPE_EXCLUDE).
 
-    Phase 1 substrate is deterministic-only. The LLM cascade
+    Lint runs the deterministic substrate only. The LLM cascade
     (remap-or-CLARIFICATION for unmappable values) is documented in
-    DOMAINS.md and is wired in by `/ztn:process` Step 3.4.5
+    DOMAINS.md and runs in `/ztn:process` Step 3.4.5
     (concept-matcher subagent), in both inbox-scan and
-    `--reprocess-corpus` modes.
+    `--reprocess-corpus` modes. Lint never invokes LLM directly.
     """
     events: list[dict] = []
     raw = fm.get("domains")
