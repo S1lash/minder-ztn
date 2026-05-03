@@ -42,12 +42,47 @@ Do **not** invoke for:
 
 ## Inputs
 
+### Core (baseline contract — unchanged for any caller)
+
 | Input | Required | Shape |
 |---|---|---|
 | `situation` | yes | 1–3 sentences describing the pending decision or observed behaviour |
 | `domains` | no | comma-separated subset of the enum (`ethics,identity,tech,…`); narrows the candidate pool |
 | `dry_run` | no | boolean; if true, skill only returns verdict, no Evidence Trail update |
 | `record_ref` | no | `[[YYYYMMDD-meeting-...]]` or `[[YYYYMMDD-observation-...]]` (any record-id) to cite as the decision source; defaults to the calling session |
+| `is_sensitive` | no | boolean; if true, telemetry emission omits situation text + rationale, keeps hash + verdict + citations only |
+
+### Optional self-report (telemetry — best-effort, never blocks verdict)
+
+These are **opportunistic**. A capable caller (Opus-class agent) can supply them
+to enrich the audit substrate; a cheap caller (Haiku-class, weak local model)
+should ignore them. **Skill never fails for missing self-report fields.**
+
+| Input | Shape | Purpose |
+|---|---|---|
+| `intent` | 1-2 sentences | why the caller invoked the skill (counterfactual seed for autonomy analysis) |
+| `pre_confidence` | `low \| medium \| high` | caller's certainty about the right action **before** the verdict |
+| `expected_verdict` | `aligned \| violated \| tradeoff \| no-match \| unknown` | what the caller expected the skill to return |
+
+### Pipeline integration flag
+
+| Input | Shape | Purpose |
+|---|---|---|
+| `--from-pipeline <name>` | one of `/ztn:process`, `/ztn:lint`, `/ztn:maintain`, `/ztn:agent-lens`, `/ztn:bootstrap` | marks the call as `caller_class: mechanical` — pipelines pass it from their step that invokes check-decision; absence = `caller_class: judgmental` (ad-hoc agent in any repo). Mechanical calls skip the auto-commit step (parent pipeline owns batch-commit). |
+
+### Followup mode (separate invocation, optional)
+
+After acting on a verdict, the caller MAY invoke the skill in followup mode
+to record post-action signal. Missing followups are themselves data — the
+lens treats absence as observable, not as a contract violation.
+
+| Flag | Shape | Purpose |
+|---|---|---|
+| `--record-followup <run_id>` | run_id from a prior verdict's stdout | activates followup mode; no constitution reasoning happens |
+| `--post-confidence` | `low \| medium \| high` | caller's certainty after acting |
+| `--decision-taken` | 1-2 sentences | what caller actually did with the verdict |
+| `--human-needed-after` | boolean | did caller escalate to a human after the verdict? |
+| `--verdict-resolved` | boolean | did the verdict actually answer the question? |
 
 ## Execution plan
 
@@ -99,7 +134,9 @@ Do **not** invoke for:
        { "between": ["axiom-id-001", "axiom-id-002"], "chosen": "axiom-id-001", "reason": "..." }
      ],
      "rationale": "prose explanation — 2–4 sentences max",
-     "record_ref": "[[_records/...]] or session id"
+     "record_ref": "[[_records/...]] or session id",
+     "run_id": "2026-05-03T15:22:11Z-7c4a9f02",
+     "followup_hint": "optional — after acting on this verdict, you MAY call /ztn:check-decision --record-followup 2026-05-03T15:22:11Z-7c4a9f02 with --post-confidence / --decision-taken / --human-needed-after / --verdict-resolved to enrich audit substrate. Skipping is fine."
    }
    ```
 
@@ -107,6 +144,10 @@ Do **not** invoke for:
      verdict leans on.
    - `tradeoffs` is empty unless `verdict == "tradeoff"`.
    - `no-match` = no candidate applies; still emit with `citations: []`.
+   - `run_id` is the substrate join-key; deterministic for the
+     invocation, present even on failed-status runs.
+   - `followup_hint` is informational, not a contract — the caller
+     decides whether to follow up.
 
 5. **Update Evidence Trail (L1 autonomous write).** For every principle
    in `citations`, use the `Edit` tool on its `.md` file to:
@@ -140,6 +181,78 @@ Do **not** invoke for:
    **Never edit the body** of the principle outside `## Evidence Trail`
    and outside the `last_applied:` frontmatter field. This is the L1
    limit defined in `0_constitution/CONSTITUTION.md` §8.
+
+6. **Emit telemetry (always — regardless of `dry_run` or `status`).**
+   Append one JSON line to `_system/state/check-decision-runs.jsonl`
+   via the helper:
+
+   ```bash
+   python3 "$ZTN_BASE/_system/scripts/emit_telemetry.py" \
+       --kind run \
+       --run-id "$RUN_ID" \
+       --status "$STATUS" \
+       --caller-class "$CALLER_CLASS" \
+       --working-dir "$PWD" \
+       --situation "$SITUATION" \
+       --tree-size "$TREE_SIZE" \
+       ${IS_SENSITIVE:+--is-sensitive} \
+       ${DRY_RUN:+--dry-run-flag} \
+       ${DOMAINS:+--domains "$DOMAINS"} \
+       ${RECORD_REF:+--record-ref "$RECORD_REF"} \
+       ${VERDICT:+--verdict "$VERDICT"} \
+       ${CITATIONS_JSON:+--citations "$CITATIONS_JSON"} \
+       ${TRADEOFFS_JSON:+--tradeoffs "$TRADEOFFS_JSON"} \
+       ${RATIONALE:+--rationale "$RATIONALE"} \
+       ${INTENT:+--intent "$INTENT"} \
+       ${PRE_CONFIDENCE:+--pre-confidence "$PRE_CONFIDENCE"} \
+       ${EXPECTED_VERDICT:+--expected-verdict "$EXPECTED_VERDICT"} \
+       ${PIPELINE:+--from-pipeline "$PIPELINE"}
+   ```
+
+   `RUN_ID` format: `<run_at_ISO>-<uuid4[:8]>` — generated by skill at
+   step 1 (before any reasoning), so failed-run telemetry shares the
+   same shape as successful runs.
+
+   The helper handles atomic append under `flock`, sensitive-redaction
+   (omits `situation_text` + `rationale` when `--is-sensitive` is passed,
+   keeps `situation_hash` + verdict labels), and per-class auto-commit
+   (judgmental only). Failures of the commit step degrade gracefully —
+   helper writes the JSONL line, prints a warning, exits 0.
+
+   Telemetry is opportunistic substrate: the lens consumes whatever
+   fields are present, treats missing optional fields as no-signal
+   rather than as errors. Schema is append-only; never mutate prior
+   lines, never aggregate or compact JSONL prematurely.
+
+## Followup mode
+
+When invoked with `--record-followup <run_id>`, the skill skips all
+constitution reasoning and instead:
+
+1. Validates that `<run_id>` matches the documented format
+   (ISO-timestamp + 8-char uuid suffix). Reject loud on malformed input.
+2. Scans `_system/state/check-decision-runs.jsonl` for a `kind: "run"`
+   line with the matching `run_id`. If not found → fail loud (orphan
+   followups must not pollute substrate).
+3. Appends a `kind: "followup"` line to the same JSONL via the helper:
+
+   ```bash
+   python3 "$ZTN_BASE/_system/scripts/emit_telemetry.py" \
+       --kind followup \
+       --run-id "$RUN_ID" \
+       --post-confidence "$POST_CONFIDENCE" \
+       --decision-taken "$DECISION_TAKEN" \
+       --human-needed-after "$HUMAN_NEEDED_AFTER" \
+       --verdict-resolved "$VERDICT_RESOLVED"
+   ```
+
+4. Acquires the same `flock` and applies the same per-class auto-commit
+   policy as the run-line emission. The `caller_class` for the followup
+   inherits from the original run (helper looks it up).
+
+Followups on `dry_run: true` runs are allowed (the helper marks the
+followup line for the lens to filter); followups twice on the same
+run are allowed (lens uses the latest).
 
 ## Invariants (do not break)
 
@@ -177,11 +290,38 @@ appear. Missing fields should not appear — use empty arrays / `null`.
 
 | Condition | Skill behaviour |
 |---|---|
-| `regen_all.py` step fails | Return non-zero, surface the underlying stderr |
-| `query_constitution.py` returns empty, situation cannot be classified | Emit `verdict: "no-match"` with explicit rationale |
+| `regen_all.py` step fails | Telemetry line written with `status: "failed_regen"`, then return non-zero with stderr |
+| `query_constitution.py` returns empty, situation cannot be classified | Emit `verdict: "no-match"` with explicit rationale; telemetry `status: "ok"`, `tree_size: 0` (signal: no principles available — the no-match is structural, not absent-coverage) |
 | Two tier-1 principles conflict with equal `confidence` | Emit `verdict: "tradeoff"` with both in `between` |
-| `Edit` cannot find `## Evidence Trail` in a cited principle | Skill errors out; the principle file is malformed per `CONSTITUTION.md` §4 — fix it, then re-run |
-| User passes an empty `situation` | Skill asks the user to supply one sentence, then stops |
+| `Edit` cannot find `## Evidence Trail` in a cited principle | Telemetry line written with `status: "failed_edit"`, then skill errors out; the principle file is malformed per `CONSTITUTION.md` §4 — fix it, then re-run |
+| User passes an empty `situation` | Skill asks the user to supply one sentence, then stops; no telemetry line written (no run actually started) |
+| Auto-commit step fails (parallel session holds git lock, repo mid-rebase) | Helper writes the JSONL line, prints warning to stderr, returns 0 — JSONL is source of truth; commit picked up later by `/ztn:save` |
+| `--record-followup` references unknown run_id | Reject loud; do not append orphan followup line |
+| Concurrent invocation in another session | `flock` on `_system/state/.check-decision-telemetry.lock` serialises emission; advisory only — no deadlock |
+
+## Telemetry substrate — append-only contract
+
+The JSONL at `_system/state/check-decision-runs.jsonl` is **append-only
+substrate** for both current consumers (decision-review lens — Layer A
+joint enrichment + Layer B aggregate engine signals) and future
+consumers (e.g. cross-source autonomy analysis joining JSONL with
+processed records). Therefore:
+
+- Never mutate existing lines (followups are SEPARATE lines with
+  matching `run_id`, distinguished by `kind: "followup"`).
+- Never aggregate / compact / summarise the file. Substrate value
+  comes from preserved per-run granularity. Rotation by year is
+  acceptable when file size warrants (`check-decision-runs.YYYY.jsonl`)
+  — implement only when justified by volume.
+- Schema is forward-additive: new optional fields may appear; lens
+  consumers MUST treat unknown fields as no-signal rather than fail.
+- Sensitive runs (`is_sensitive: true`) omit `situation_text` and
+  `rationale`; `situation_hash` remains for join purposes. The hash
+  alone is not sensitive (one-way) and preserves dedup capability.
+- Pipeline-mode (mechanical) calls emit JSONL lines without
+  auto-commit; the parent pipeline's batch commit picks them up.
+  Judgmental calls auto-commit per-invocation (path-specific `git
+  add`, no push). Both modes use the same `flock` for atomic emission.
 
 ## Multi-environment notes
 

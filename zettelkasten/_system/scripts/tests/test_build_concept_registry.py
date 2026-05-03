@@ -146,7 +146,7 @@ class AliasPreservationTests(unittest.TestCase):
             registry.parent.mkdir(parents=True)
             registry.write_text(
                 "---\nschema_version: 1.0\n---\n\n"
-                "## Top by mentions\n\n"
+                "## Concepts (sorted by mentions)\n\n"
                 "| name | type | subtype | first_seen | last_seen | mentions | aliases |\n"
                 "|---|---|---|---|---|---|---|\n"
                 "| api_v2_design | idea | — | 2026-01-01 | 2026-04-01 | 5 | api_v2, api2 |\n"
@@ -165,7 +165,7 @@ class AliasPreservationTests(unittest.TestCase):
             registry = fx.base / "_system/registries/CONCEPTS.md"
             registry.parent.mkdir(parents=True)
             registry.write_text(
-                "## Top\n\n"
+                "## Concepts (sorted by mentions)\n\n"
                 "| name | type | subtype | first_seen | last_seen | mentions | aliases |\n"
                 "|---|---|---|---|---|---|---|\n"
                 "| renamed_concept | idea | — | 2026-01-01 | 2026-01-01 | 0 | old_name |\n"
