@@ -354,6 +354,19 @@ structurer schema (Stage 2) is contracted to emit them with sane
 defaults; validator failure here means structurer drift, not lens
 content drift — owner inspects via `_system/state/agent-lens-rejected/`.
 
+**Grandfathering — lens outputs written before the trio became
+mandatory.** The validator runs at write time only; it never
+revalidates files already on disk. Lens outputs in
+`_system/agent-lens/{lens-id}/{date}.md` written before the trio
+contract landed remain valid as historical observations and stay in
+their original form on disk — consistent with the engine's append-only
+log philosophy («logs document what happened; never edited
+retroactively», ENGINE_DOCTRINE §3.5). When the same lens runs again
+on a future date, the new file gets the trio. No backfill, no
+retroactive rewrite. If a same-date re-run overwrites a pre-trio
+file, the new emission carries the trio (write-time validation
+applies to the new content).
+
 On validator failure:
 - The output is NOT written to `_system/agent-lens/{id}/`
 - A line goes into `_system/state/log_agent_lens.md` with run_at, lens_id,
