@@ -157,8 +157,12 @@ def load_concept_aliases(registry_path: Path) -> dict[str, str]:
     """Read CONCEPTS.md aliases column → {old_name: canonical_name} map.
 
     Returns empty dict if the file is missing or malformed. Tolerant of
-    YAML frontmatter, Top/Tail headers, placeholder rows. Skips rows
-    where alias cell is empty / `—`.
+    YAML frontmatter, any section headers, and placeholder rows. Skips
+    rows where alias cell is empty / `—`. Section-agnostic — finds rows
+    by table shape, not by section header — so the upstream rendered
+    layout (currently a single `## Concepts (sorted by mentions)`
+    section, formerly `## Top by mentions` / `## Tail`) does not affect
+    discovery.
 
     Each canonical name is itself passed through `normalize_concept_name`
     as a defensive measure; same for each alias entry. Self-aliases

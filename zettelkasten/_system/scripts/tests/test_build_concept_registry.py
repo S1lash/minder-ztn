@@ -38,7 +38,7 @@ class HarvestCorpusTests(unittest.TestCase):
                 fx.base / "_records/meetings/README.md",
                 "should_be_skipped: true",
             )
-            agg, stats = bcr.build(fx.base, top_threshold=2)
+            agg, stats = bcr.build(fx.base)
             self.assertEqual(stats["mentions_seen"], 5)
             self.assertEqual(set(agg.keys()), {"api_v2_design", "rate_limit", "latency_budget"})
             api = agg["api_v2_design"]
@@ -54,7 +54,7 @@ class HarvestCorpusTests(unittest.TestCase):
                 fx.base / "_records/observations/20260405-obs-foo.md",
                 'id: obs1\ncreated: 2026-04-05\nconcepts:\n  - "API V2 Design"\n  - "rate-limit"',
             )
-            agg, _ = bcr.build(fx.base, top_threshold=10)
+            agg, _ = bcr.build(fx.base)
             self.assertIn("api_v2_design", agg)
             self.assertIn("rate_limit", agg)
         clear_ztn_env()
@@ -62,7 +62,7 @@ class HarvestCorpusTests(unittest.TestCase):
     def test_empty_corpus_is_clean(self):
         with tempfile.TemporaryDirectory() as tmp:
             fx = make_fixture(Path(tmp))
-            agg, stats = bcr.build(fx.base, top_threshold=10)
+            agg, stats = bcr.build(fx.base)
             self.assertEqual(agg, {})
             self.assertEqual(stats["mentions_seen"], 0)
             self.assertEqual(stats["batches_read"], 0)
@@ -75,7 +75,7 @@ class HarvestCorpusTests(unittest.TestCase):
                 fx.base / "5_meta/templates/note-template.md",
                 'concepts:\n  - placeholder_concept',
             )
-            agg, _ = bcr.build(fx.base, top_threshold=1)
+            agg, _ = bcr.build(fx.base)
             self.assertNotIn("placeholder_concept", agg)
         clear_ztn_env()
 
@@ -104,7 +104,7 @@ class HarvestBatchesTests(unittest.TestCase):
                 fx.base / "_records/meetings/20260101-meeting.md",
                 'created: 2026-01-01\nconcepts: [api_v2_design]',
             )
-            agg, _ = bcr.build(fx.base, top_threshold=10)
+            agg, _ = bcr.build(fx.base)
             self.assertEqual(agg["api_v2_design"].type, "idea")
             self.assertEqual(agg["api_v2_design"].subtype, "rest")
         clear_ztn_env()
@@ -122,7 +122,7 @@ class HarvestBatchesTests(unittest.TestCase):
                     {"name": "acme_payments", "type": "bogus_value"},
                 ]},
             }))
-            agg, _ = bcr.build(fx.base, top_threshold=10)
+            agg, _ = bcr.build(fx.base)
             self.assertIsNone(agg.get("ivan_petrov").type if agg.get("ivan_petrov") else None)
             self.assertIsNone(agg.get("acme_payments").type if agg.get("acme_payments") else None)
         clear_ztn_env()
@@ -133,7 +133,7 @@ class HarvestBatchesTests(unittest.TestCase):
             batches = fx.base / "_system/state/batches"
             batches.mkdir(parents=True)
             (batches / "bad.json").write_text("not json{")
-            agg, stats = bcr.build(fx.base, top_threshold=10)
+            agg, stats = bcr.build(fx.base)
             self.assertEqual(stats["batches_read"], 0)
         clear_ztn_env()
 
@@ -155,7 +155,7 @@ class AliasPreservationTests(unittest.TestCase):
                 fx.base / "_records/meetings/20260401-meeting.md",
                 'created: 2026-04-01\nconcepts: [api_v2_design]',
             )
-            agg, _ = bcr.build(fx.base, top_threshold=1)
+            agg, _ = bcr.build(fx.base)
             self.assertEqual(agg["api_v2_design"].aliases, ["api_v2", "api2"])
         clear_ztn_env()
 
@@ -170,7 +170,7 @@ class AliasPreservationTests(unittest.TestCase):
                 "|---|---|---|---|---|---|---|\n"
                 "| renamed_concept | idea | — | 2026-01-01 | 2026-01-01 | 0 | old_name |\n"
             )
-            agg, _ = bcr.build(fx.base, top_threshold=1)
+            agg, _ = bcr.build(fx.base)
             self.assertIn("renamed_concept", agg)
             self.assertEqual(agg["renamed_concept"].mentions, 0)
             self.assertEqual(agg["renamed_concept"].aliases, ["old_name"])
@@ -178,26 +178,49 @@ class AliasPreservationTests(unittest.TestCase):
 
 
 class RenderTests(unittest.TestCase):
-    def test_top_tail_split_by_threshold(self):
+    def test_single_table_sorted_by_mentions_desc(self):
         agg = {
             "popular": bcr.ConceptAgg(name="popular", mentions=150),
             "rare": bcr.ConceptAgg(name="rare", mentions=2),
+            "medium": bcr.ConceptAgg(name="medium", mentions=42),
         }
-        out = bcr.render_registry(agg, top_threshold=100, today=date(2026, 5, 1))
-        self.assertIn("total_concepts: 2", out)
-        self.assertIn("total_mentions: 152", out)
-        # popular row appears before tail header
-        top_idx = out.index("| popular |")
-        tail_header_idx = out.index("## Tail")
-        rare_idx = out.index("| rare |")
-        self.assertLess(top_idx, tail_header_idx)
-        self.assertLess(tail_header_idx, rare_idx)
+        out = bcr.render_registry(agg, today=date(2026, 5, 1))
+        # Single section, no Top/Tail split.
+        self.assertIn("## Concepts (sorted by mentions)", out)
+        self.assertNotIn("## Top by mentions", out)
+        self.assertNotIn("## Tail", out)
+        # No counter fields in frontmatter — manifest carries them.
+        self.assertNotIn("total_concepts:", out)
+        self.assertNotIn("total_mentions:", out)
+        self.assertNotIn("top_threshold:", out)
+        # Order: popular > medium > rare.
+        idx_popular = out.index("| popular |")
+        idx_medium = out.index("| medium |")
+        idx_rare = out.index("| rare |")
+        self.assertLess(idx_popular, idx_medium)
+        self.assertLess(idx_medium, idx_rare)
 
-    def test_empty_corpus_renders_placeholders(self):
-        out = bcr.render_registry({}, top_threshold=10, today=date(2026, 5, 1))
-        self.assertIn("total_concepts: 0", out)
-        self.assertIn("(none — corpus has no concept above threshold yet)", out)
-        self.assertIn("(none)", out)
+    def test_empty_corpus_renders_placeholder(self):
+        out = bcr.render_registry({}, today=date(2026, 5, 1))
+        self.assertIn("## Concepts (sorted by mentions)", out)
+        self.assertIn("registry is empty", out)
+        # Frontmatter still minimal — no counter fields.
+        self.assertNotIn("total_concepts:", out)
+
+    def test_stats_dict_still_carries_counts(self):
+        # Counters live in the stats dict (consumed by /ztn:maintain
+        # batch manifest → Minder downstream). Removing them from the
+        # rendered markdown is purely a frontmatter cleanup.
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = make_fixture(Path(tmp))
+            _write_md(
+                fx.base / "_records/meetings/20260401-meeting.md",
+                "created: 2026-04-01\nconcepts: [a, b, a]",
+            )
+            _, stats = bcr.build(fx.base)
+            self.assertIn("total_concepts", stats)
+            self.assertIn("total_mentions", stats)
+        clear_ztn_env()
 
 
 class IdempotenceTests(unittest.TestCase):

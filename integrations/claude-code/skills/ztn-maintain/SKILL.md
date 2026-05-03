@@ -451,9 +451,12 @@ subagent) — in both inbox-scan and `--reprocess-corpus` modes.
 
 ```bash
 python3 _system/scripts/build_concept_registry.py
-# or, when owner has retuned the threshold for their corpus shape:
-python3 _system/scripts/build_concept_registry.py --top-threshold 200
 ```
+
+No tunables — single flat registry sorted by mentions descending.
+The matcher subagent in `/ztn:process` Step 3.4.5 loads the entire
+file (Sonnet handles it cheaply), so historical Top/Tail splits and
+threshold knobs were dropped as substrate noise.
 
 The script is deterministic, idempotent, and pure — no LLM. It walks
 `_records/{meetings,observations}/`, PARA folders, `5_meta/mocs/`,
