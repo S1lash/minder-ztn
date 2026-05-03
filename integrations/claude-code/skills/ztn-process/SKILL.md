@@ -594,7 +594,37 @@ Before classification, load relevant context for THIS specific transcript:
      Read frontmatter only — enough to count and detect evolution.
    - Purpose: detect evolution, avoid redundancy, enable accurate hub threshold checks
 
-4. **Resolve projects** against PROJECTS.md registry
+4. **Resolve projects** against PROJECTS.md registry — **primary-topic semantic**.
+
+   `projects:` frontmatter array carries the record's **primary topic**, NOT
+   umbrella context, NOT peripheral relevance. Definition test:
+
+   > «If references to project X were removed from this record — would
+   > the record lose its core meaning?»
+   > — yes → primary, include in `projects:`
+   > — no → not primary; signal goes elsewhere (`tags: [project/X]` for
+   > umbrella context, `concepts:` for topical, `[[wikilink]]` for graph)
+
+   **Cardinality:**
+   - default 1 entry
+   - boundary case 2 entries ONLY for genuine cross-project records
+     (joint roadmap reviews, integration decisions touching two projects
+     equally as primary)
+   - 3+ entries — never. If you're tempted by 3, the record is
+     organisation/process-level; it belongs to a hub directly via
+     wikilinks, not via project membership.
+
+   **Hub kinds — what is NOT a project:**
+
+   `hub_kind: trajectory` (e.g., `career-promotion`, `learning-ai-pm`) and
+   `hub_kind: domain` (e.g., `db-reliability`, `leadership-management`)
+   are NOT eligible for `projects:` membership. Records use
+   `tags: [trajectory/{slug}]` or `domains: [...]` for these. Only
+   `hub_kind: project` IDs (the actual deliverable-bearing projects in
+   PROJECTS.md) belong in the `projects:` axis.
+
+   See `5_meta/PROCESSING_PRINCIPLES.md` §9 for full definition + migration
+   notes.
 
 5. **Leverage existing ZTN knowledge** (ADR-017):
    For each topic, consider:
@@ -1251,7 +1281,7 @@ speaker: {person-id of the owner from SOUL.md Identity; "unknown" if ambiguous}
 people:
   - {anyone mentioned by name}
 projects:
-  - {projects touched if any}
+  - {primary-topic project only — see §3.3 step 4 + PROCESSING_PRINCIPLES §9; default 1, boundary 2 with annotation, never 3+}
 concepts:
   - {snake_case concept name from Q15 — translated, normalised, selective}
 origin: {personal | work | external — from Q16; default personal for solo capture}
@@ -1528,7 +1558,7 @@ After creating EACH note (record or knowledge), verify:
 - [ ] Frontmatter is valid YAML — no syntax errors, all required fields present
 - [ ] `layer:` field is correct — `record` for records, `knowledge` for knowledge notes
 - [ ] People IDs in `people:` exist in PEOPLE.md OR will be created in Step 3.8
-- [ ] Project IDs in `projects:` exist in PROJECTS.md
+- [ ] Project IDs in `projects:` exist in PROJECTS.md AND are `hub_kind: project` (NOT trajectory/domain hubs); array length ≤ 2 with boundary annotation if 2; default length 1. See §3.3 step 4 / PROCESSING_PRINCIPLES §9.
 - [ ] Tags follow conventions from TAGS.md (format: `type/xxx`, `domain/xxx`, etc.)
 - [ ] File placed in correct PARA folder per SYSTEM_CONFIG.md routing rules
 - [ ] `source:` points to a real file path in `_sources/processed/`

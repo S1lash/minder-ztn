@@ -151,6 +151,77 @@ Hub отслеживает эволюцию:
 
 ---
 
+## 9. Project Tagging — Primary-Topic Only
+
+`projects:` frontmatter array carries **one semantic only** — primary topic
+of the record/note. The field does NOT carry umbrella context, peripheral
+relevance, or graph-style backlinks; those signals already live in
+`tags:` (`project/foo`), `concepts:`, `[[wikilinks]]` in body, and hub
+`related_notes`.
+
+### Definition of «primary»
+
+A project is `primary` for a record if removing all references to that
+project would make the record lose its core meaning. The test:
+
+> «Если убрать упоминания этого проекта из записи — она теряет смысл?»
+
+«Касается», «затрагивает», «упоминает» — НЕ primary. Only «*about*».
+
+### Cardinality
+
+- **Strict default:** exactly 1 element.
+- **Boundary exception:** 2 elements ONLY when the record is a genuine
+  cross-project decision/meeting (e.g., joint PSP↔Agentic Commerce
+  roadmap review). Must be annotated in body with explicit
+  «boundary case» language.
+- **Never:** 3+ elements. The frontmatter `projects:` array is NEVER
+  used as an «umbrella tag cloud».
+
+`/ztn:lint` Scan A.X warns on any `projects.length > 2`, and on
+`projects.length == 2` without `boundary` annotation in body.
+
+### What goes elsewhere (not in `projects:`)
+
+| Signal | Goes to |
+|---|---|
+| «record touches some-project peripherally» | `tags: [project/some-project]` |
+| «record discusses an abstract concept relevant to a project» | `concepts: [...]` |
+| «specific reference / dependency on another note about a project» | `[[wikilink]]` in body |
+| «cross-hub connection between two distinct project topics» | hub frontmatter `related_notes` or hub body «Cross-Domain связи» |
+
+### Hub kinds: project vs trajectory vs domain
+
+Hubs have different semantic types. The `hub_kind:` frontmatter field
+distinguishes them:
+
+| `hub_kind:` | What it represents | `projects:` axis member? |
+|---|---|---|
+| `project` (default) | Concrete project with deliverables (a real shipping product or work stream) | yes — records use `projects: [proj-id]` for primary topic |
+| `trajectory` | Personal arc / multi-year theme (career arc, learning trajectory) | NO — records use `tags: [trajectory/{slug}]`; `projects:` reserved for actual projects |
+| `domain` | Broad knowledge area (database reliability, leadership patterns) | NO — records use `domains: [...]` and `tags:` |
+
+### Why this matters
+
+- Hub `## Хронологическая карта` is a **derived view**: every record where
+  this hub's project is `primary` belongs in the map. With strict
+  semantics, hub-completeness becomes an invariant, not a metric.
+- Lint scan can detect drift at write-time, not via post-factum audits.
+- Cross-project search still works through `tags:` axis (umbrella) without
+  polluting primary-classifier semantics.
+
+### Migration & enforcement
+
+- `/ztn:process` projects-extraction prompt enforces primary-only at write.
+- `/ztn:lint` Scan A.X catches drift in existing records.
+- `/ztn:process --reprocess-corpus` re-derives `projects:` arrays for the
+  corpus when the prompt strict-semantic changes (rare).
+
+> **See also:** `_system/docs/ARCHITECTURE.md` §«Hub kinds» and
+> `_system/registries/PROJECTS.md` for the project-vs-trajectory list.
+
+---
+
 ## Enhanced Decision Tracking (ADR-013)
 
 Решения — один из самых ценных типов knowledge notes. При фиксации решений

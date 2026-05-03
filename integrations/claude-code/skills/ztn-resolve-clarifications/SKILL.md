@@ -204,16 +204,41 @@ Take the chosen cluster. Slice to batch size (heavy 3 / light 5 / `--max N`).
 If cluster larger than batch → first N items by recency (oldest first —
 fresh items fade later); subsequent rounds will pick up the rest.
 
-For each item in the batch, render with the **mandatory five blocks**:
+For each item in the batch, render with the **mandatory seven blocks**.
+Order matters — owner reads top-down without prior session context, so
+the *essence* must come first, then files for direct access, then
+procedural context, citations, and proposals.
 
 ```
 ── Q{n} ── {date} — {short title from the entry header}
 
+🧩 Суть:
+{1–2 plain-language sentences: what is this about, what is the problem,
+what decision is being asked. No jargon, no wikilinks, no file paths.
+A reader who has never seen this item should grasp the question from
+this block alone. MANDATORY on every item — light or heavy.
+
+For person-identity: «В записи X (про Y) неизвестно кто Z. Нужно
+подтвердить identity или dismiss.»
+For thread-closure: «Thread X открыт N дней; есть/нет signals что
+закрылся. Решаем — закрыть или нет.»
+For principle-candidate: «N кандидатов в принципы накопилось. Решаем по
+каждому — accept в constitution / reject / defer.»
+For policy/values: «N records carry inconsistent state for {field};
+решаем policy A/B/C про N.»}
+
+📂 Files:
+{Exact file paths the owner can open directly: record path, source
+transcript path, any related profile / hub / view. Use repo-relative
+paths. Include `:line` anchors when there is a specific line. Wikilinks
+are fine ALONGSIDE paths but never instead of them.}
+
 📍 Где это случилось:
-{2–3 sentence summary derived from **Context:** field. If Context is
-absent, summarise Source path + Action taken. Goal: owner reads this
-once and knows what meeting/call this is about without opening any
-file.}
+{2–3 sentence procedural context derived from **Context:** field — when,
+what meeting / call / pipeline run, what action the producer took. If
+Context is absent, summarise Source path + Action taken. This is the
+«timeline» block, not the «what is the problem» block — that's «Суть»
+above.}
 
 💬 Цитаты (verbatim):
 {copy **Quote:** field as-is — already verbatim by item-format
@@ -240,12 +265,32 @@ candidate: own assessment of whether it clears the bar. Always state
 the reasoning ground; never just "I think X".}
 
 ✅ Варианты:
-  a) {primary action — the hypothesis above as one-click confirm}
-  b) {alternative action}
-  c) skip — оставить открытым в текущей форме (показать снова в следующий раз)
-  d) defer — оставить открытым с пометкой `**Last reviewed:** {today} — deferred`,
+  {For HEAVY items (cluster weight «heavy» per Step 3 — org-structure-tension,
+  principle-candidate-batch, decision-*, semantic-drift / policy), each
+  primary option (a/b/c) MUST include three micro-sections:}
+
+  a) {one-line label}
+     - **Что меняется:** {2–3 specifics — files, behaviour, schema, prompt}
+     - **Что приносит:** {2–3 positive outcomes — clarity, correctness, perf}
+     - **Риски / потери:** {1–2 things owner has to accept / things that may break}
+  b) {one-line label}
+     - **Что меняется:** ...
+     - **Что приносит:** ...
+     - **Риски / потери:** ...
+  c) {one-line label}
+     - ...
+
+  {For LIGHT items (person-identity, people-bare-name, process-compatibility,
+  content-pipeline-reminder): one-line options are sufficient; add a 1-line
+  clarifier only when the action is non-obvious.}
+
+  d) skip — оставить открытым в текущей форме (показать снова в следующий раз)
+  e) defer — оставить открытым с пометкой `**Last reviewed:** {today} — deferred`,
      уйдёт в конец очереди при следующем выборе темы
-  e) dismiss — закрыть как not-actionable, в архив с пометкой `Resolution: dismissed`
+  f) dismiss — закрыть как not-actionable, в архив с пометкой `Resolution: dismissed`
+
+  Skip / defer / dismiss are universal escape hatches — never expanded with
+  micro-sections; they have fixed semantics.
 ```
 
 Always include c/d/e on every item — they are universal escape hatches.
@@ -356,7 +401,12 @@ If owner declines or queue is empty → release lock, exit clean.
 
 ## Constraints
 
-- **Never recall meeting context unaided.** Every Q renders the
+- **Essence first, never optional.** Every Q opens with `🧩 Суть:` —
+  1–2 plain-language sentences. Owner is reading without session context
+  on items often a week+ old; without «суть» up-front the procedural
+  blocks below require mental reconstruction of «о чём это вообще» on
+  every item. This rule is load-bearing on round friction.
+- **Never recall meeting context unaided.** Every Q also renders the
   `📍 Где это случилось:` block. If the entry has no Context field and
   Source path leads to a missing file — say so explicitly, do not
   fabricate context.

@@ -567,6 +567,66 @@ views under `_system/views/`, raw transcripts under
 TASKS.md / CALENDAR.md / POSTS.md — see batch-format.md
 "Owner-curated registries" note).
 
+**A.8 Projects-array drift detection:**
+
+Enforces the primary-topic-only semantic for `projects:` frontmatter
+arrays defined in `5_meta/PROCESSING_PRINCIPLES.md` §9.
+
+Iterate all records (`_records/`) and knowledge notes (PARA folders).
+For each note's `projects:` array:
+
+1. **Length check:**
+   - `projects.length == 0` → ignore (empty is valid).
+   - `projects.length == 1` → OK; no action.
+   - `projects.length == 2` → require body annotation indicating boundary
+     case. Acceptable markers (case-insensitive substring match):
+     `boundary case`, `cross-project`, `joint review`, `boundary:` (yaml
+     frontmatter field). If marker absent → `weak` floor, CLARIFICATION
+     `projects-array-2-without-boundary-marker`.
+   - `projects.length >= 3` → `weak` floor, CLARIFICATION
+     `projects-array-overcount`. Fix-suggestion: pick primary, demote
+     others to `tags: [project/{slug}]`.
+
+2. **Hub-kind check:**
+   For each entry in `projects:`, look up the corresponding hub
+   `5_meta/mocs/hub-{slug}.md`. Read frontmatter:
+   - `hub_kind: project` (or absent — backward-compat default `project`)
+     → OK.
+   - `hub_kind: trajectory` or `hub_kind: domain` → `weak` floor,
+     CLARIFICATION `projects-array-non-project-hub`. Fix-suggestion:
+     drop the entry from `projects:`; if the signal is meaningful, add
+     `tags: [trajectory/{slug}]` or `domains: [{slug}]` instead.
+
+3. **Existence check:** project ID must resolve to a row in PROJECTS.md
+   AND a hub file under `5_meta/mocs/hub-{slug}.md` (any `hub_kind`).
+   If neither exists → `weak`, CLARIFICATION `projects-array-unknown-id`.
+
+CLARIFICATION format:
+
+```markdown
+### YYYY-MM-DD — projects-array drift in {note-id}
+
+**Type:** projects-array-{overcount|2-without-boundary|non-project-hub|unknown-id}
+**Subject:** {note-id}
+**Source:** {note-path}
+**File path:** {absolute path}
+**Action taken:** none — pipeline-level drift; surfaced for owner review
+**Quote:** _(none — frontmatter-level issue)_
+**Current `projects:`:** [{list}]
+**Reason:** {one-line explanation per check 1/2/3 above}
+**To resolve:** {specific suggestion based on check}
+```
+
+This scan is **autofix-eligible only for `projects-array-non-project-hub`
+when the hub frontmatter explicitly carries `hub_kind: trajectory` AND
+the note is a record (not a knowledge note)** — `medium` floor autofix,
+fix-id `projects-array-trajectory-demote`. All other cases require owner
+review (no silent semantic change).
+
+Implementation: `_system/scripts/lint_projects_array.py` —
+single-pass scanner reading note frontmatter + hub frontmatter; emits
+CLARIFICATIONS via shared write helper.
+
 ### Scan B — Thread Lifecycle
 
 **B.1 Stale thread detection per-status:**
