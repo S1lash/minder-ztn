@@ -550,8 +550,13 @@ After updating runs.jsonl, look at the last 3 entries for this
 `lens_id`. If all 3 have `status: rejected`:
 - Update lens frontmatter `status: paused` in
   `_system/registries/lenses/{lens-id}/prompt.md`
-- Update registry table in `AGENT_LENSES.md` (move row from Active
-  to Paused-or-equivalent section, or update Status column)
+- **Move** the row in `AGENT_LENSES.md` from `## Active Lenses` to
+  `## Paused/Archived Lenses` (split-table per Archive Contract Form B
+  in `_system/docs/SYSTEM_CONFIG.md`), populating the row with:
+  - `Status: paused`
+  - `Paused: {today}`
+  - `Reason: "auto-pause: 3 consecutive validator rejections"`
+  Atomic write — never leave the row in Active with `Status: paused`.
 - Append CLARIFICATION «agent-lens: {id} auto-paused after 3
   consecutive validator rejections — see
   `_system/state/agent-lens-rejected/{id}/` for raw outputs»

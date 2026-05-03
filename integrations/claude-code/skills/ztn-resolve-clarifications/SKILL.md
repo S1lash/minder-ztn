@@ -372,6 +372,21 @@ On `y` → write. On `N` → re-prompt with the original options (a/b/c/d/e)
 for that question. The diff gate is friction — but it's the only gate
 where the owner can catch the skill misreading their answer.
 
+**Archive Contract enforcement (cross-cutting, applies to any Class A or Class B action whose effect is archival):**
+
+Per `_system/docs/SYSTEM_CONFIG.md → Archive Contract`, every archival event MUST carry a reason captured **with the entity**. When applying the actions below, the skill is responsible for writing the contract-required field in the same atomic operation as the archival flag. Skipping the field is a contract violation; a follow-up `/ztn:lint` Archive-contract scan will surface it as `archive-note-missing` / `archive-reason-missing` CLARIFICATION.
+
+| Resolution-action | Archive Contract form | Required write |
+|---|---|---|
+| `archive-hub` | Form A (file-based) | Move hub `.md` from `5_meta/mocs/` to `4_archive/` per `target_path` payload AND append `## Archive Note` block at the end of the hub file with `date: today`, `reason: {payload.reason}`, `triggered_by: /ztn:resolve-clarifications`, optional `superseded_by` if the resolution mentioned one. Frontmatter `status: archived` + `archived_at: today` flipped if the hub file uses the `archived` status (knowledge-style); for hub-status `resolved` the Archive Note alone is the canonical record. |
+| `dismiss` | Form C (queue) | The `**Rationale:**` line on the resolved CLARIFICATION block (what Step 7 already writes). Required for archival-effect dismissals — never leave the rationale empty for these. |
+| `dismiss-duplicate` | Form C (queue) | Same as `dismiss`. |
+| `merge-notes` (the merged-away note) | Form A (file-based) | Append `## Archive Note` to the merged-away note BEFORE removing it from active surface, with `reason: "merged into [[kept-note-id]]"`, `triggered_by: /ztn:resolve-clarifications`, `superseded_by: [[kept-note-id]]`. Move the merged-away file to `4_archive/` (do not delete). |
+| `close-thread` | Form C (queue) | The `resolution_text` payload populates the Resolved-section entry in `OPEN_THREADS.md`. Required for every `close-thread` and `pursue-or-close` with `choice: close`. |
+| `demote-tier` (to `stale`) | Form B (registry-row) | Move the row from `## People` to `## Stale People` in `PEOPLE.md` and populate the `Reason` cell with `payload.reason`. Same atomic write — never leave the row half-moved. |
+
+For all other Resolution-actions whose effect is non-archival (promotion, refresh, restructure), no Archive Contract write is required.
+
 **Class C — auto-invoked refresh (Step 9):**
 
 Some resolutions invalidate derived views or registries. Track which

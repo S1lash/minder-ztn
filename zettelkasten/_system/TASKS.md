@@ -44,3 +44,5 @@ _(empty)_
 ## Stale
 
 _(owner-curated; pipeline never resurrects items from this section)_
+
+Per Archive Contract Form B (`_system/docs/SYSTEM_CONFIG.md`) — bullet-list variant — every Stale bullet MUST end with an italic `*(reason)*` suffix. Free-form one-sentence rationale. Example: `- [ ] Подготовить презентацию для встречи в Баку — [[20260114-baku-presentation]] ^task-prepare-baku-presentation *(Баку прошло)*`. Forward-only: bullets that became stale before contract adoption are not backfilled. Missing `*(reason)*` on a new Stale bullet surfaces as `archive-reason-missing` CLARIFICATION on next `/ztn:lint`.

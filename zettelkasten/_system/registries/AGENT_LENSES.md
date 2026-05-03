@@ -33,7 +33,7 @@ cadence under `/ztn:agent-lens`.
 | `cadence` | `daily` / `weekly` / `biweekly` / `monthly` | scheduler runs it when due |
 | `cadence_anchor` | `monday` / `sunday` / `1` (day-of-month) / `daily` | calendar anchor — see Cadence semantics below |
 | `self_history` | `fresh-eyes` / `longitudinal` / `lens-decides` | NO default — must be explicit, lens fails registry validation otherwise |
-| `status` | `draft` / `active` / `paused` | scheduler runs only `active` (unless `--include-draft`) |
+| `status` | `draft` / `active` / `paused` / `archived` | scheduler runs only `active` (unless `--include-draft`); `paused`/`archived` rows MUST live under `## Paused/Archived Lenses` with required `Reason` per Archive Contract Form B (`_system/docs/SYSTEM_CONFIG.md`) |
 
 Each lens folder MUST contain `prompt.md`. It MAY contain any number of
 companion files (`what-counts.md`, `what-doesnt.md`, examples, anything).
@@ -130,6 +130,14 @@ Each lens prompt is calibrated against external frameworks (cited inline in the 
 ## Draft Lenses
 
 _(empty)_
+
+## Paused/Archived Lenses
+
+Lenses with `status: paused` or `status: archived`. Per Archive Contract Form B (`_system/docs/SYSTEM_CONFIG.md`), every row carries a `Reason` cell — free-form one-sentence rationale. Forward-only: lenses paused before contract adoption are not backfilled. Auto-pause writer (`/ztn:agent-lens` Step 5.5, after 3 consecutive validator rejections) populates Reason as `"auto-pause: 3 consecutive validator rejections"`.
+
+| ID | Name | Type | Input | Cadence | Self-history | Status | Paused | Reason |
+|---|---|---|---|---|---|---|---|---|
+| _(empty)_ | | | | | | | | |
 
 ## Output discipline
 
@@ -240,7 +248,10 @@ log entry, continue with remaining lenses.
 - **active** — included in scheduled `--all-due` runs
 - **paused** — manually paused by owner, OR auto-paused by runner after
   3 consecutive validator rejections; not run until owner flips to
-  `active`
+  `active`. Row MUST be moved to `## Paused/Archived Lenses` with
+  populated `Reason` per Archive Contract Form B
+- **archived** — permanently retired by owner; row lives under
+  `## Paused/Archived Lenses` with populated `Reason`
 
 To activate a draft lens: dry-run via `/ztn:agent-lens --lens <id>
 --dry-run` until output is satisfactory, then change status to `active`

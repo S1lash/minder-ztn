@@ -32,7 +32,7 @@ Do **not** invoke for:
   (`notes` or `crafted` are usually right).
 - Renaming an existing source — that is a manual edit (rename folder
   + edit SOURCES.md row + grep referrers); intentionally not automated.
-- Retiring a source — manual: move the row to `## Deprecated Sources`.
+- Retiring a source — manual: move the row to `## Deprecated Sources` and populate the `Reason` cell per Archive Contract Form B (`_system/docs/SYSTEM_CONFIG.md`). Empty `Reason` on a deprecated row surfaces as `archive-reason-missing` CLARIFICATION on next `/ztn:lint` Scan G.2.
 
 ## Arguments (all optional — skill prompts when missing)
 

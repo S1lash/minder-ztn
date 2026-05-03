@@ -204,6 +204,10 @@ Per-layer rule sets: `_system/registries/CONCEPT_NAMING.md`,
 `_system/registries/AUDIENCES.md`, `_system/docs/batch-format.md`
 "Autonomous resolution" clauses.
 
+### 3.1.5 Archive Contract — every archival event captures a reason
+
+Every archival event in the engine — knowledge-note moved to `4_archive/`, principle deprecated, registry row moved to a Stale / Deprecated / Archived sub-table, lens auto-paused, person tier dropped to `stale`, candidate dismissed via CLARIFICATION — MUST capture a reason **with the entity**. The reason lives in the file or registry row itself; there is no parallel archival log. Spec: `SYSTEM_CONFIG.md → Archive Contract` (Form A inline `## Archive Note`, Form B `Reason` column / italic suffix, Form C existing structured field). Forward-only: pre-contract archives are not backfilled. Enforcement: `/ztn:lint` Scan G surfaces missing reasons as `archive-note-missing` / `archive-reason-missing` CLARIFICATIONs.
+
 ### 3.2 Inclusion bias on capture, curation on promotion
 
 Capture (records, raw scan, candidates buffer) is high-recall: better
@@ -401,6 +405,7 @@ If those three transmission paths drift, the engine drifts.
 | System concept, three-layer model, full philosophy | `5_meta/CONCEPT.md` |
 | 8 processing principles + values-profile calibration | `5_meta/PROCESSING_PRINCIPLES.md` |
 | System contract, schemas, hard rules | `_system/docs/SYSTEM_CONFIG.md` |
+| Archive Contract (every archival event captures a reason — Forms A/B/C, enforcement) | `_system/docs/SYSTEM_CONFIG.md → ## Archive Contract` |
 | Documentation style (binding) | `_system/docs/CONVENTIONS.md` |
 | Architecture / multi-user planning | `_system/docs/ARCHITECTURE.md` |
 | Constitution protocol (axiom / principle / rule schema, scope, evolution ladder) | `0_constitution/CONSTITUTION.md` |

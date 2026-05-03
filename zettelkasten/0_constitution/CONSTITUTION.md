@@ -526,7 +526,11 @@ Evidence Trail entry, or an archive file. Auditable end-to-end.
 - **Refining** an existing principle: edit the file; run
   `/ztn:regen-constitution`; add a `refinement` Evidence Trail entry.
 - **Deprecating** a principle: set `status: archived`, append a `deprecated`
-  Evidence Trail entry. Do not delete the file.
+  Evidence Trail entry of the form `deprecated — reason: {reason}; status: archived`.
+  The `reason: {reason}` payload is the contract-required archival reason
+  (Archive Contract Form A constitution-principle exception in
+  `_system/docs/SYSTEM_CONFIG.md`) — do NOT also append a separate
+  `## Archive Note` block. Do not delete the file.
 - **Reviewing** CLARIFICATIONS: normal `CLARIFICATIONS.md` sweep. Constitution
   items mix with all other clarifications; resolve them the same way.
 

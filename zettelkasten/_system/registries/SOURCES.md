@@ -22,6 +22,7 @@ on this row.
 | `Skip Subdirs` | optional | Comma-separated list of subdirectory names (relative to `Inbox Path`) that the processor MUST ignore. Empty / `—` = scan everything. Used for reference material that lives alongside transcripts (e.g. `describe-me/` under `crafted`). |
 | `Description` | yes | One-line human description of what lives in this source. |
 | `Status` | yes | `active` / `reserved` / `deprecated`. Reserved = whitelisted but inbox empty by design (no error if no files). Deprecated = retain row for audit, skip during scan. |
+| `Reason` | required when `Status: deprecated` | Free-form one-sentence rationale per Archive Contract Form B (`SYSTEM_CONFIG.md`). Empty cell on a row in `## Deprecated Sources` is a contract violation — surfaces as `archive-reason-missing` CLARIFICATION on next `/ztn:lint`. |
 
 ### Layout types
 
@@ -61,7 +62,11 @@ _(Empty by default. Add rows here when whitelisting a source whose inbox stays e
 
 ## Deprecated Sources
 
-_(Empty by default. To retire a source, MOVE its row here — do not delete it. Audit trail matters more than table tidiness.)_
+_(Empty by default. To retire a source, MOVE its row here — do not delete it. Audit trail matters more than table tidiness. The deprecated table carries an additional `Reason` column per Archive Contract Form B.)_
+
+| ID | Inbox Path | Layout | Default Domain | Skip Subdirs | Description | Status | Reason |
+|---|---|---|---|---|---|---|---|
+| _(empty)_ | | | | | | | |
 
 ---
 
@@ -84,5 +89,5 @@ After either route, `/ztn:process` picks up the new source on the next run. No S
 
 - `/ztn:process` Step 2.1 iterates rows in declaration order, then sorts the resulting file list chronologically (Step 2.3) — declaration order is **not** processing order.
 - Reserved sources may have empty inbox folders. That is expected and never reported as an error.
-- Deprecation protocol: retire a source by moving its row to `## Deprecated Sources`. Do not delete rows.
+- Deprecation protocol: retire a source by moving its row to `## Deprecated Sources` and populate the `Reason` cell. Do not delete rows. (Archive Contract Form B — `SYSTEM_CONFIG.md`.)
 - The `crafted/describe-me/` exclusion is encoded declaratively via `Skip Subdirs: describe-me`. Bootstrap reads the same path through its own contract; `/ztn:process` simply skips it.

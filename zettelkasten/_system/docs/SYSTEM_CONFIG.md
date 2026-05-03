@@ -63,6 +63,8 @@ migrating existing open items.
 | `domain-resolution` | `/ztn:process` (Step 3.4.5) | Domain value cannot be resolved by the cascade `normalize_domain` → whitelist → LLM remap → trivial-vs-material | Drop the unmatched value; remaining `domains:` entries kept (possibly `[]`) |
 | `process-compatibility` | every skill writing manifests | Schema deviation that would break the manifest contract with downstream consumers | Suspend that section's manifest emission until owner resolves |
 | `concept-drift-on-reprocess` | `/ztn:process --reprocess-corpus` (Step 3.5) | Matcher's new `concepts:` set differs from prior set by > 50 % of the union (symmetric-difference / union ratio) | Apply the new (matcher-canonical) set; surface for owner audit, do not gate the write |
+| `archive-note-missing` | `/ztn:lint` | File-based entity in archived state without `## Archive Note` block (per Archive Contract Form A); forward-only — pre-contract archives ignored | Surface for owner to fill `reason` / `triggered_by`; do not auto-write |
+| `archive-reason-missing` | `/ztn:lint` | Registry-row in archived section with empty `Reason` cell, OR queue-archival action without required reason field (per Archive Contract Forms B and C) | Surface for owner to populate; do not auto-write |
 
 Per-skill SKILL.md may add narrower types for skill-internal flows;
 this table covers the cross-skill canonical set referenced in
@@ -491,6 +493,7 @@ people:
 #   ideas: N
 
 status: actionable|reference|archived
+archived_at: YYYY-MM-DD  # REQUIRED when status: archived (per Archive Contract Form A); equals `## Archive Note` date
 priority: high|normal|low
 content_potential: high|medium  # OPTIONAL — set by pipeline when note has public value
 content_type: expert|reflection|story|insight|observation  # OPTIONAL — set with content_potential
@@ -627,6 +630,87 @@ Full-text search по raw content: `grep -r "keyword" zettelkasten/_sources/`
 | someday | Когда-нибудь |
 | reference | Просто информация |
 | archived | В архиве |
+
+---
+
+## Archive Contract
+
+**Invariant:** every archival event captures a reason. The reason lives **with the entity** — never in a parallel log, never as derived state. One source of truth per archived entity.
+
+Archival event = transition where an entity stops being part of the active surface: knowledge-note moved to `4_archive/`, frontmatter `status: archived`, principle `status: archived`, registry row moved to a Deprecated/Stale section, lens `status: paused|archived`, person tier dropped to `stale`, candidate dismissed via CLARIFICATION resolution.
+
+This contract applies **forward-only**: every archival event from contract adoption onward MUST carry a reason. Pre-existing archived entities are not backfilled.
+
+### Form by entity shape
+
+Three forms — pick by shape, not by skill. Every archival pathway falls into exactly one.
+
+#### Form A — Inline `## Archive Note` (file-based entities)
+
+For knowledge notes, hubs, principles (axiom / principle / rule), and any other entity that exists as a standalone `.md` file. Append-only block at the **end** of the file (after Evidence Trail, before any other trailing sections):
+
+```markdown
+## Archive Note
+
+- date: YYYY-MM-DD
+- reason: "<one-sentence rationale in owner's natural language>"
+- triggered_by: owner | /ztn:lint F.3 | /ztn:resolve-clarifications | <skill-id>
+- superseded_by: [[wikilink]]   # optional — when archival is due to replacement
+```
+
+Plus frontmatter flags for machine-readable state:
+
+```yaml
+status: archived
+archived_at: YYYY-MM-DD
+```
+
+Frontmatter `archived_at` MUST equal `## Archive Note` `date`. Skill enforcement: any writer that flips `status: archived` MUST append `## Archive Note` in the same atomic write. Writing one without the other = contract violation; surfaces as `archive-note-missing` CLARIFICATION on next `/ztn:lint`.
+
+`triggered_by` value is the agent of the archival event — `owner` for direct hand-edits, the skill id (`/ztn:lint`, `/ztn:resolve-clarifications`, etc.) for engine-driven archivals. When a skill applies a CLARIFICATION resolution, the skill id wins (not `owner`); the resolution text is what carries the owner's reasoning into `reason`.
+
+**Constitution-principle exception (single-source-of-truth guard).** Files under `0_constitution/{axiom,principle,rule}/` already use the Evidence Trail pattern. Per `0_constitution/CONSTITUTION.md` §9, archiving a principle appends a `deprecated` entry of the form `deprecated — reason: {reason}; status: archived` to the Evidence Trail. **That entry IS the Form A storage for principles** — do not also append a `## Archive Note` block. The `deprecated` Evidence Trail entry is the contract-required reason for principles; frontmatter `status: archived` is the machine flag (no `archived_at` — Evidence Trail entry date is the authoritative date).
+
+#### Form B — `Reason` column (registry-row entities)
+
+For entities whose canonical form is a row in a registry table — PEOPLE.md, PROJECTS.md, SOURCES.md, AGENT_LENSES.md, TASKS.md.
+
+**Canonical pattern: split table.** Each registry holds active rows and archived rows in **separate tables / sections**. The archived sub-table carries a `Reason` column; the active table does not. Archival = move the row from the active table to the archived sub-table and populate `Reason`. This keeps active rows clean (no empty trailing cells) and makes archival a discrete writer operation.
+
+Where the archived sub-table lives per registry:
+
+| Registry | Active section | Archived sub-table |
+|---|---|---|
+| `_system/registries/PEOPLE.md` | `## People` (tier 1 / 2 / 3) | `## Stale People` (tier `stale`) |
+| `1_projects/PROJECTS.md` | `## Active Projects`, `## Completed Projects` | `## Archived Projects` (status `archived` — dropped before completion; completed projects are not an archival event and do not require Reason) |
+| `_system/registries/SOURCES.md` | `## Active Sources`, `## Reserved Sources` | `## Deprecated Sources` |
+| `_system/registries/AGENT_LENSES.md` | `## Active Lenses`, `## Draft Lenses` | `## Paused/Archived Lenses` (status `paused` / `archived`) |
+
+**Bullet-list variant for `_system/TASKS.md`.** Tasks live in bullet lists, not tables. The Stale section MUST carry a trailing `*(reason)*` italic suffix on every bullet — this is the bullet-list equivalent of the `Reason` column. Example: `- [ ] Подготовить презентацию для встречи в Баку — [[20260114-baku-presentation]] ^task-prepare-baku-presentation *(Баку прошло)*`.
+
+Skill enforcement: any writer that moves a row into an archived sub-table (or a bullet into TASKS Stale) MUST populate `Reason` / `*(reason)*`. Empty cell or missing italic surfaces as `archive-reason-missing` CLARIFICATION on next `/ztn:lint`.
+
+#### Form C — Existing structured field (queue-based archival)
+
+For archival driven by a CLARIFICATIONS resolution or by a candidate-buffer dismissal, the reason already lives in an existing structured field. The contract does not invent new fields — it makes existing ones **required** for the archival sub-set of actions.
+
+| Source | Field | Required for actions |
+|---|---|---|
+| `_system/state/CLARIFICATIONS.md` Resolved Items | `**Rationale:**` | every action whose effect is archival: `dismiss`, `dismiss-duplicate`, `archive-hub`, `close-thread`, `demote-tier`, `merge-notes` (the merged-away side), `pursue-or-close` with `choice: close` |
+| `_system/state/people-candidates.jsonl` weekly-dismissed archive | `dismissal_reason` | every line written to `lint-context/weekly/{YYYY-WW}-people-candidates-dismissed.jsonl` |
+| `_system/state/OPEN_THREADS.md` Resolved section | `resolution_text` (already required by `close-thread` action) | every entry under `## Resolved` |
+
+Skill enforcement: any resolution that triggers archival without populating the required field surfaces as `archive-reason-missing` CLARIFICATION.
+
+**Out of scope for Form C:** weekly bulk-archive of `principle-candidates.jsonl` via `archive_buffer.py` is a buffer-rollover snapshot, not a per-line rejection event — it preserves history of all candidates (promoted and rejected alike). Per-candidate rejection reason lives in the CLARIFICATIONS resolution that disposed of that candidate (Form C row 1).
+
+### Cross-cutting rules
+
+- **Atomic write.** The archival flag (`status: archived` / row move / tier change) and the reason (`## Archive Note` / `Reason` column / required field) MUST land in the same write. No two-stage archival.
+- **Append-only.** Archive Notes and Reason cells are written once at archival time. Owner can later edit free-form text but never deletes the structure. Re-archival of an already-archived entity is a no-op (idempotency); a second `## Archive Note` block is forbidden.
+- **No parallel log.** There is no `log_archival.md`. Cross-entity «what was archived in period X» is a derived view, generated on demand by reading the entities themselves.
+- **Lint enforcement.** `/ztn:lint` adds an Archive-contract scan that emits `archive-note-missing` / `archive-reason-missing` CLARIFICATIONs for entities found in archived state without the required reason. Forward-only: pre-contract archived entities are not flagged.
+- **Suggested-action vocabulary stays unchanged.** The canonical `Resolution-action` table above already carries `reason` payload examples (`dismiss`, `demote-tier`, `archive-hub`); this contract elevates them from documented-payload to enforced-required for the archival subset.
 
 ---
 

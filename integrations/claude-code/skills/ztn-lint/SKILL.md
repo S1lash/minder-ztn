@@ -1223,6 +1223,68 @@ To resolve).
 
 ---
 
+### Scan G — Archive Contract enforcement
+
+Forward-only enforcement of `_system/docs/SYSTEM_CONFIG.md → Archive Contract`. Surfaces archived entities that lack the contract-required reason. **Forward-only:** entities archived before the contract adoption date are not flagged. Adoption date is encoded as `archive_contract_adopted_at: 2026-05-04` constant in `_system/scripts/_common.py`; an archived entity is flagged only when its archival timestamp ≥ adoption date.
+
+#### G.1 — File-based entities (Form A): missing `## Archive Note`
+
+Glob targets:
+- Knowledge notes under `1_projects/`, `2_areas/`, `3_resources/`, `4_archive/` with frontmatter `status: archived`
+- Hubs under `5_meta/mocs/` AND `4_archive/` whose location is `4_archive/` (folder-move archival)
+
+For each candidate file:
+1. If frontmatter `archived_at` is absent OR `archived_at < archive_contract_adopted_at` → skip (legacy / pre-contract archival).
+2. Otherwise grep the file body for `## Archive Note` heading.
+3. If absent → emit `archive-note-missing` CLARIFICATION (surfaced tier) with the file path, the `archived_at` value, and the conservative default «Surface for owner to fill `reason` / `triggered_by`; do not auto-write.»
+
+Exception (single-source-of-truth): files under `0_constitution/{axiom,principle,rule}/` are NOT covered by G.1. Their Form A storage is the Evidence Trail `deprecated` entry — covered by Scan F (the constitution-alignment scans already enforce Evidence Trail health).
+
+#### G.2 — Registry-row entities (Form B): empty `Reason` cell
+
+Targets and the canonical archived sub-table per registry (per `SYSTEM_CONFIG.md → Archive Contract → Form B`):
+
+| File | Section | Required Reason cell |
+|---|---|---|
+| `_system/registries/SOURCES.md` | `## Deprecated Sources` | every row |
+| `3_resources/people/PEOPLE.md` | `## Stale People` | every row |
+| `1_projects/PROJECTS.md` | `## Archived Projects` | every row |
+| `_system/registries/AGENT_LENSES.md` | `## Paused/Archived Lenses` | every row |
+
+For each row:
+1. Parse the row's `Reason` cell.
+2. If empty (`-`, blank, `_(empty)_`, whitespace) AND the row's archival date (`Archived` / `Paused` / equivalent column) is ≥ adoption date → emit `archive-reason-missing` CLARIFICATION with file path, row identifier, archived date.
+3. Rows where archival date is absent OR pre-adoption → skip.
+
+#### G.3 — Bullet-list variant (Form B for TASKS Stale)
+
+Target: `_system/TASKS.md → ## Stale` section.
+
+For each `- [ ]` bullet under `## Stale`:
+1. Determine when the bullet entered Stale (heuristic: the bullet's `^task-id` appears in `## Stale` of the previous run's TASKS.md snapshot — read previous-run snapshot from git via `git show HEAD~1:_system/TASKS.md` if available; otherwise treat all current bullets as pre-existing and skip).
+2. For bullets that appeared in this run's Stale section but were NOT in the previous run's Stale section AND today's date ≥ adoption date:
+3. Check the bullet ends with an italic `*(...)*` suffix.
+4. If absent → emit `archive-reason-missing` CLARIFICATION with the bullet's `^task-id` and the offending line.
+
+#### G.4 — Queue-based archival (Form C): missing required field
+
+Targets:
+- `_system/state/CLARIFICATIONS.md` `## Resolved Items` — for entries whose `Resolution-action` ∈ archival-effect set (`dismiss`, `dismiss-duplicate`, `archive-hub`, `close-thread`, `demote-tier`, `merge-notes`, `pursue-or-close` with `choice: close`) AND `Resolution-date` ≥ adoption date — every entry MUST have a non-empty `**Rationale:**` line.
+- `_system/state/lint-context/weekly/{YYYY-WW}-people-candidates-dismissed.jsonl` — every line MUST have a non-empty `dismissal_reason` field (already enforced by R4 writer; G.4 is the audit).
+- `_system/state/OPEN_THREADS.md` `## Resolved` section — every entry MUST have a non-empty `**Resolution:**` (or `resolution_text`) line for entries with `Resolved-date` ≥ adoption date.
+
+Empty / missing required field → emit `archive-reason-missing` CLARIFICATION with the source file + entry identifier.
+
+#### Scan G output contract
+
+All Scan G output is additive to the existing worklist; Step 4 routes the two new CLARIFICATION types via the standard confidence-tier table. Both types are **surfaced tier** — never auto-resolve, owner populates the missing field via `/ztn:resolve-clarifications` round.
+
+New CLARIFICATION types introduced by Scan G (already registered in `SYSTEM_CONFIG.md → Canonical CLARIFICATION types`):
+- `archive-note-missing` (G.1)
+- `archive-reason-missing` (G.2 / G.3 / G.4)
+
+---
+
 ## Step 4 — Apply Worklist
 
 Iterate worklist в deterministic order (Scan A → F → within scan by candidate id).
