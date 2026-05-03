@@ -29,33 +29,52 @@ exchange for thinker freedom. Worth it for this use case.
 
 ---
 
-## Stage 1 — Thinker prompt (records-input variant)
+## Stage 1 — Thinker prompt (base-input variant)
 
 The runner concatenates: this frame body + lens folder content + a
 description of available paths. Below is the body that wraps every
-records-input lens.
+lens whose `input_type: records` (legacy enum value — semantically
+"primary-source-input": the lens reads the ZTN base directly, as
+opposed to meta-lenses that read other lenses' outputs).
+
+The lens prompt itself scopes which layer is primary — `_records/`,
+knowledge (`1_projects/`, `2_areas/`, `3_resources/`), constitution,
+hubs, or any combination. The frame stays neutral about layer
+priority; that decision belongs to the lens.
 
 ```
 You are an outside observer of a single person's structured personal
 knowledge base (ZTN). You exist to make observations the owner may
 not make themselves — patterns, gaps, drifts, recurring loops, latent
-connections — based on what is recorded in the base.
+connections — based on what is in the base.
 
 Read access to the entire ZTN base is available at the path provided
 to you by the runner (the repository's `zettelkasten/` directory).
 
 Folder tree and routing rules: `_system/registries/FOLDERS.md` —
-read it if you need to understand the layout. The high-level shape is:
-  - `_records/` — raw meetings + observations
-  - `1_projects/`, `2_areas/`, `3_resources/`, `4_archive/` — knowledge (PARA)
-  - `5_meta/mocs/` — hubs and synthesis
-  - `0_constitution/` — values
-  - `_system/` — identity (SOUL), tasks, calendar, state, registries
+read it if you need to understand the layout. The high-level shape:
+  - `_records/` — raw meetings + observations (record layer)
+  - `1_projects/`, `2_areas/`, `3_resources/` — distilled knowledge (PARA)
+  - `4_archive/` — archived material (still searchable)
+  - `5_meta/mocs/` — hubs (synthesis layer)
+  - `0_constitution/` — values (axioms / principles / rules)
+  - `_system/SOUL.md` — identity / focus / working style
+  - `_system/views/INDEX.md` — surface catalog of knowledge + archive +
+    constitution + hubs (one line per entry, faceted by PARA / domains
+    / cross-domain). Use as a navigation shortcut when populated
+    (`note_count: > 0` in frontmatter); walk the folders directly if
+    INDEX is stale or empty.
+  - `_system/views/HUB_INDEX.md` — detailed hub registry
+  - `_system/views/CONSTITUTION_INDEX.md` — detailed constitution registry
+
+Records and posts (`6_posts/`) are NOT in INDEX by design — INDEX
+covers the distilled and synthesised layers, not the raw stream.
 
 The lens-specific instructions follow this frame. They describe what
-this lens is looking for. Beyond that, you choose:
+this lens is looking for and which layer(s) it should treat as
+primary. Beyond what the lens scopes, you choose:
 
-  - which paths to read
+  - which specific paths to read within the lens's primary layer
   - what time window to consider, and whether to widen it if a pattern
     asks for longer history
   - whether to consult this lens's own past outputs (see
@@ -253,6 +272,9 @@ Canonical schema:
 lens_id: {id}
 run_at: {ISO timestamp}
 hits: {N}
+origin: personal
+audience_tags: []
+is_sensitive: {false | true}
 ---
 
 ## Observation 1 — {short title}
@@ -276,11 +298,25 @@ For zero-hit runs:
 lens_id: {id}
 run_at: {ISO timestamp}
 hits: 0
+origin: personal
+audience_tags: []
+is_sensitive: false
 ---
 
 ## Reasons
 
 {thinker's stated reason for finding nothing}
+
+Privacy-trio frontmatter is REQUIRED on every emission per
+ENGINE_DOCTRINE §3.8 (Tier-2 entity contract). Defaults:
+  - `origin: personal` — lens output is owner-internal hypothesis-grade
+    analysis; never `work` or `external`.
+  - `audience_tags: []` — owner-only by construction; never widened
+    automatically.
+  - `is_sensitive: false` by default. Set `true` ONLY when the lens
+    prompt explicitly surfaces sensitive patterns (relationship,
+    conflict, health). The thinker / lens prompt signals when this
+    applies; the structurer flips the bool.
 
 Output the structured file content only. No commentary, no preamble.
 ```
@@ -292,6 +328,12 @@ Output the structured file content only. No commentary, no preamble.
 Runs after the structurer. Checks form, not content. Pass conditions:
 
 - Frontmatter parses; contains `lens_id`, `run_at`, `hits` (integer ≥ 0)
+- Privacy trio present and well-formed (ENGINE_DOCTRINE §3.8):
+  - `origin` exists; value ∈ {`personal`, `work`, `external`} (lens
+    outputs default to `personal` and rarely diverge — but the field
+    must be present)
+  - `audience_tags` exists; value is a list (may be empty `[]`)
+  - `is_sensitive` exists; value is a boolean
 - If `hits == 0`: file has `## Reasons` section with at least one line
 - If `hits > 0`:
   - Exactly `hits` `## Observation N` sections
@@ -305,6 +347,12 @@ Runs after the structurer. Checks form, not content. Pass conditions:
   `1_projects/`, etc.) MUST resolve to existing files. Non-ZTN-path
   citations are allowed (the thinker may quote constitution by name,
   for example).
+
+Missing or malformed privacy-trio fields fail the validator with
+`rejection_reason: privacy-trio-{field}-missing-or-malformed`. The
+structurer schema (Stage 2) is contracted to emit them with sane
+defaults; validator failure here means structurer drift, not lens
+content drift — owner inspects via `_system/state/agent-lens-rejected/`.
 
 On validator failure:
 - The output is NOT written to `_system/agent-lens/{id}/`

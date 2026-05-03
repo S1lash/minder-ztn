@@ -60,11 +60,21 @@ Decide for yourself — full base read access. Suggested anchors:
   `description`, `domains`, `tags`, `types`, `extracted_from`,
   `created`, `modified`) + body sections (`## Ключевая мысль`,
   `## Применение / Следствие`, `## Связи`).
-- `_system/views/INDEX.md` — content-oriented catalog. **Use only if
-  populated** (check `note_count:` in frontmatter > 0). On a fresh
-  base or stale catalog (bootstrap state, or A.6 lint flagged
-  `index-stale`) walk PARA folders directly — INDEX is a navigation
-  shortcut, not the source of truth.
+- `_system/views/INDEX.md` — surface catalog of knowledge + archive +
+  constitution + hubs. **Use only if populated** (check `note_count:`
+  in frontmatter > 0). On a fresh base or stale catalog (bootstrap
+  state, or A.6 lint flagged `index-stale`) walk PARA folders directly
+  — INDEX is a navigation shortcut, not the source of truth. INDEX
+  contains four sources, but for **emergence** purposes scope to:
+  - `## By PARA` → `Projects` / `Areas` / `Resources` (the knowledge
+    layer — primary input)
+  - `## By Domain` and `## Cross-domain` (faceted views over the
+    same knowledge entries — useful for spotting cross-PARA themes)
+  Skip `## Archive` (out-of-scope for emerging-theme detection — these
+  notes are explicitly not active material), `## Constitution` (values
+  layer — different shape: principles, not knowledge fragments), and
+  `## Hubs` (already-promoted synthesis — use HUB_INDEX.md for
+  hub-absence verification instead).
 - **Cross-check:** `5_meta/mocs/` + `_system/views/HUB_INDEX.md` —
   to verify «no hub yet» and to detect mismatched-shape hubs.
 - **Anti-noise:** `_records/` is NOT primary input. Records may be
@@ -97,7 +107,7 @@ hindsight, when scattered notes are read as one corpus).
 
 1. **Recurrent framing.** The same concept / pattern / relational
    schema appears in **3+ knowledge notes** within the window. Match
-   on **smemantic role**, not just lexical match — the same operating
+   on **semantic role**, not just lexical match — the same operating
    logic in different vocabulary still counts. Example: «делегирование
    как акт доверия» в одной ноте + «отпустить контроль над процессом»
    в другой + «overdelivery как защитная реакция на потерю контроля»
@@ -177,6 +187,35 @@ hindsight, when scattered notes are read as one corpus).
   relational schema is weak or only one signal beyond recurrence.
   Surface as «watching, not yet a promotion candidate».
 
+### Mandatory downgrades (apply BEFORE settling on a tier)
+
+These rules force one tier down regardless of how strongly the
+positive signals fire. Calibrating them tightens the lens against
+sloppy synthesis and project-id false positives.
+
+1. **Project-id concentration (≥ 50% rule).** If the majority (≥ 50%)
+   of cited notes share a single `projects:` id, downgrade by one
+   tier (high → medium, medium → low). The relational shape may be
+   project-specific in disguise, not a generalisable theme. State the
+   downgrade explicitly: «high signals on the surface, downgraded to
+   medium because 4/6 notes carry `projects: [radar-pilot]` —
+   the catalyst may be project-bound rather than the schema being
+   generalisable». Anti-pattern #1 still REJECTS outright when ALL
+   notes share one project; this rule catches the borderline case.
+
+2. **Single-extraction concentration.** If 3+ cited notes share a
+   single `extracted_from:` source (one transcript spawned several
+   knowledge notes), downgrade one tier. Same source ≠ independent
+   derivation, even if the resulting notes look distinct.
+
+3. **One-month concentration.** If all cited notes were modified
+   within the same calendar month, downgrade one tier. Emerging
+   themes form across multi-month cadence; one-month spikes are
+   often topical bursts that fade.
+
+Downgrades stack: a hit that triggers two of the above lands two
+tiers below its raw signal count.
+
 Low confidence is a normal output. Empty windows (`hits: 0`) are
 normal — emerging themes are not weekly events. The cadence is weekly
 because the corpus moves at ~30+ knowledge notes per week; the lens
@@ -187,7 +226,7 @@ most weeks yield nothing.
 evidence that weakens the candidate (e.g. one of the 3 notes is
 actually about a different operating logic on closer read), include
 it explicitly in the falsifier and keep confidence at the level the
-structural signals support.
+structural signals support (after mandatory downgrades).
 
 ## Falsifiability test (apophenia guard)
 

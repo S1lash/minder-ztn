@@ -459,16 +459,29 @@ in one lens do NOT abort the loop.
 
 Concatenate, in order:
 1. Stage 1 frame body for `input_type` (extracted from `_frame.md`):
-   - `records` → records-input variant
+   - `records` → base-input variant (lens prompt scopes which layer is primary)
    - `lens-outputs` → lens-outputs-input variant
 2. Lens folder content (prompt.md first, other `*.md` alphabetically)
 3. Self-history hint (depends on `self_history` value):
    - `fresh-eyes` → frame mentions: «do not read your own past outputs»
    - `longitudinal` → frame mentions:
      «past outputs available at `_system/agent-lens/{lens-id}/`; use
-     as context, not as evidence — see lens prompt for guidance»
+     as context, not as evidence — see lens prompt for guidance.
+     Skip outputs that are superseded by a later run on the same
+     date — `runs.jsonl` entries with a `supersedes` field point to
+     the prior `run_at` they replace; the per-day file on disk
+     reflects the latest run only»
    - `lens-decides` → frame mentions same path; lens prompt itself
      decides whether to read
+
+**Supersedes filter (longitudinal lookup).** When the runner reads
+`agent-lens-runs.jsonl` for past `last_run` of this lens, exclude any
+entry whose `run_at` is referenced by a later entry's `supersedes`
+field. Same-day re-runs (e.g. owner iterating during prompt
+calibration) leave a chain in `runs.jsonl` but only the last file on
+disk; the longitudinal view should mirror what is actually persisted.
+The thinker is told the same in the self-history hint above so it
+does not double-count an iteration as two independent past surfaces.
 
 ### 5.2 Stage 1 — Thinker call
 
@@ -477,8 +490,8 @@ no subagent.
 
 Invoke primary LLM (Opus or equivalent) with:
 - **System prompt** = `_frame.md` Stage 1 body for the lens's
-  `input_type` (records or lens-outputs). Exact text, nothing
-  prepended/appended.
+  `input_type` — base-input variant for `records`, lens-outputs
+  variant for `lens-outputs`. Exact text, nothing prepended/appended.
 - **User message** = assembled lens prompt from Step 5.1 (lens folder
   content + self-history hint).
 - **Tool access** = read-only filesystem tools across the ZTN base.

@@ -147,7 +147,7 @@ Permitted reads:
 - `body` field of any principle-candidate or people-candidate
 - `**Quote:**` field of any CLARIFICATION
 - Prose description sections of registries (`AGENT_LENSES.md` `## Lens summaries`, profile body, project description)
-- Any `_records/` or knowledge-note content (out of navigator scope by design — that is the records-input lenses' job)
+- Any `_records/` or knowledge-note content (out of navigator scope by design — that is the base-input lenses' job)
 
 Citation surface for the digest — counts, dates, ids, status labels, F-codes, batch-ids, type labels, verbatim short titles, confidence labels. That is the entire allowed surface.
 

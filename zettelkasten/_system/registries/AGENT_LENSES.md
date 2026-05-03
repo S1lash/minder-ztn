@@ -29,7 +29,7 @@ cadence under `/ztn:agent-lens`.
 | `id` | kebab-case slug | matches folder under `lenses/` and output dir |
 | `name` | human title | shown in navigator |
 | `type` | `mechanical` / `psyche` / `meta` | flavour — informs review cadence |
-| `input_type` | `records` / `lens-outputs` | drives which frame variant wraps the prompt |
+| `input_type` | `records` / `lens-outputs` | drives which frame variant wraps the prompt. `records` = primary-source input (lens reads the ZTN base directly — records, knowledge, hubs, constitution, system; the lens prompt scopes which layer is primary). `lens-outputs` = meta-lens reads other lenses' outputs |
 | `cadence` | `daily` / `weekly` / `biweekly` / `monthly` | scheduler runs it when due |
 | `cadence_anchor` | `monday` / `sunday` / `1` (day-of-month) / `daily` | calendar anchor — see Cadence semantics below |
 | `self_history` | `fresh-eyes` / `longitudinal` / `lens-decides` | NO default — must be explicit, lens fails registry validation otherwise |
@@ -224,7 +224,10 @@ must satisfy:
 - `cadence` ∈ allowed set; `cadence_anchor` matches `cadence` (e.g.
   `weekly` requires day-of-week, `monthly` requires day-of-month)
 - `self_history` is one of three explicit values (no default)
-- `input_type` is one of two values
+- `input_type` is one of two values (`records` = primary-source-input, the
+  lens reads the ZTN base directly with the lens prompt scoping which
+  layer is primary; `lens-outputs` = meta-lens reading other lenses'
+  outputs)
 
 Failures: registry-level (table malformed) → abort tick, write
 CLARIFICATION. Lens-level (one lens malformed) → skip that lens with

@@ -35,7 +35,7 @@ There is no human in this loop. Your contract:
      returns control to you, it is done — proceed to step 3.
    - The skill reads `_system/registries/AGENT_LENSES.md`, filters
      lenses with `status: active` and that are due per their cadence,
-     runs them sequentially (records-input first, lens-outputs-input
+     runs them sequentially (base-input first, lens-outputs-input
      last), writes outputs to `_system/agent-lens/{id}/{date}.md`,
      appends to `_system/state/agent-lens-runs.jsonl`, and logs to
      `_system/state/log_agent_lens.md`. Each observation entity
