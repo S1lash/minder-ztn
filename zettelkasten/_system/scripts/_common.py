@@ -961,6 +961,105 @@ def find_soul_auto_zone(text: str) -> tuple[int, int] | None:
 
 
 # -----------------------------------------------------------------------------
+# Reprocess-corpus selection (deterministic substrate for /ztn:process §2.1)
+# -----------------------------------------------------------------------------
+
+# Roots walked by `/ztn:process --reprocess-corpus`. Keep aligned with the
+# SKILL spec's §2.1 reprocess-corpus branch: records cover transcript-grounded
+# logs, knowledge covers PARA layers (4_archive intentionally excluded — history
+# is not rewritten).
+REPROCESS_CORPUS_ROOTS: dict[str, tuple[str, ...]] = {
+    "records": ("_records/meetings", "_records/observations"),
+    "knowledge": ("1_projects", "2_areas", "3_resources"),
+}
+
+REPROCESS_CORPUS_LAYERS: frozenset[str] = frozenset({"record", "knowledge"})
+
+_FILENAME_DATE_PREFIX_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})-")
+
+
+def _reprocess_created_key(fm: dict, filename: str) -> str:
+    """Sort key for reprocess-corpus selection.
+
+    Prefer YAML `created:` (string or date object); fall back to filename
+    `YYYYMMDD-` prefix; last resort `9999-99-99` so files without any
+    extractable date sort to the end without crashing.
+    """
+    raw = fm.get("created")
+    if isinstance(raw, (date, datetime)):
+        return raw.isoformat()[:10]
+    if isinstance(raw, str) and raw:
+        return raw[:10]
+    m = _FILENAME_DATE_PREFIX_RE.match(filename)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    return "9999-99-99"
+
+
+def select_reprocess_corpus_files(
+    base: Path | str,
+    scope: str = "all",
+    limit: int | None = None,
+) -> list[Path]:
+    """Return chronologically-sorted corpus files for `--reprocess-corpus`.
+
+    Walks the roots determined by `scope`, keeps files whose YAML
+    frontmatter declares `layer:` ∈ {`record`, `knowledge`}, sorts by
+    `created:` (filename `YYYYMMDD-` prefix as fallback), then truncates
+    to the first `limit` entries when `limit` is non-negative.
+
+    scope:
+        ``records``   — `_records/meetings/`, `_records/observations/`
+        ``knowledge`` — `1_projects/`, `2_areas/`, `3_resources/`
+        ``all``       — both (default)
+
+    limit:
+        ``None`` or negative → no truncation (full list)
+        ``0``                → empty list (explicit no-op)
+        ``N >= len(files)``  → full list
+
+    `base` is the zettelkasten root (typically `repo_root()`).
+
+    Implementation notes: deterministic, no LLM. Matches §2.1 reprocess-
+    corpus branch of `/ztn:process` SKILL spec. Exposed so that the
+    orchestrator can shell out for a single source-of-truth file list
+    instead of reimplementing the walk per invocation.
+    """
+    if scope not in REPROCESS_CORPUS_ROOTS and scope != "all":
+        raise ValueError(
+            f"unknown scope {scope!r}; expected 'records', 'knowledge', or 'all'"
+        )
+    base = Path(base)
+    if scope == "all":
+        roots = REPROCESS_CORPUS_ROOTS["records"] + REPROCESS_CORPUS_ROOTS["knowledge"]
+    else:
+        roots = REPROCESS_CORPUS_ROOTS[scope]
+
+    entries: list[tuple[str, str, Path]] = []
+    for rel in roots:
+        root = base / rel
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*.md"):
+            if not path.is_file():
+                continue
+            parsed = read_frontmatter(path)
+            if parsed is None:
+                continue
+            fm, _body = parsed
+            if fm.get("layer") not in REPROCESS_CORPUS_LAYERS:
+                continue
+            entries.append((_reprocess_created_key(fm, path.name), path.name, path))
+
+    entries.sort(key=lambda e: (e[0], e[1]))
+    files = [e[2] for e in entries]
+
+    if limit is not None and limit >= 0:
+        files = files[:limit]
+    return files
+
+
+# -----------------------------------------------------------------------------
 # Misc
 # -----------------------------------------------------------------------------
 

@@ -45,6 +45,16 @@ Per-batch full-pipeline subagent (Step 3) + producer self-review (Step 3.7) guar
   `--reprocess` (which target raw transcripts in `_sources/`).
 - `--scope <records|knowledge|all>` — only meaningful with `--reprocess-corpus`;
   narrows the corpus walk. Default `all`.
+- `--corpus-limit N` — only meaningful with `--reprocess-corpus`. After the
+  chronological sort (§2.3 reprocess-corpus delta), truncate the in-scope
+  file list to the first `N` entries. Use for staged / smoke / chunked runs
+  on a large historical corpus when you want to exercise the full pipeline
+  (lock → matcher subagent → frontmatter writeback → manifest emission →
+  log entry → BATCH_LOG row) end-to-end on a bounded blast radius before
+  unleashing on the rest. `N <= 0` → process zero files (explicit no-op,
+  Early Exit Check fires). `N >= corpus size` → full list (no-op of the
+  flag). Silently ignored without `--reprocess-corpus`. The deterministic
+  substrate is `_common.py::select_reprocess_corpus_files`.
 - `--no-sync-check` — skip the data-freshness pre-flight (see below)
 
 ---
@@ -72,8 +82,8 @@ mental model.
 |---|---|
 | Pre-flight, Early Exit, Concurrency Lock | Same `_sources/.processing.lock`. Lock matrix unchanged. Early Exit Check is replaced by «corpus scope is non-empty» check (the inbox glob is irrelevant). |
 | Step 0 Pre-Scan | Skipped. The corpus is already classified; pre-scan exists to seed inbox→records mapping which doesn't apply. People Resolution Map is not built; concept-matcher operates on already-resolved frontmatter. |
-| Step 2.1 Scan Directories | **Branch:** walk `_records/{meetings,observations}/` and PARA `1_projects/`, `2_areas/`, `3_resources/` for files with `layer:` ∈ {`record`, `knowledge`}. Skip `4_archive/` (history is not rewritten). `--scope records` → records only; `--scope knowledge` → PARA only; `--scope all` (default) → both. |
-| Step 2.2–2.3 File Selection / Sort | Sort chronologically by `created:` frontmatter (fall back to filename date prefix). |
+| Step 2.1 Scan Directories | **Branch:** walk `_records/{meetings,observations}/` and PARA `1_projects/`, `2_areas/`, `3_resources/` for files with `layer:` ∈ {`record`, `knowledge`}. Skip `4_archive/` (history is not rewritten). `--scope records` → records only; `--scope knowledge` → PARA only; `--scope all` (default) → both. The deterministic substrate is `_common.py::select_reprocess_corpus_files(base, scope, limit)` — orchestrator MUST call it (or shell to a script that does) rather than reimplementing the walk. |
+| Step 2.2–2.3 File Selection / Sort | Sort chronologically by `created:` frontmatter (fall back to filename `YYYYMMDD-` prefix; final fallback `9999-99-99` so undated files land last without crashing). When `--corpus-limit N` is passed, truncate the post-sort list to the first `N` entries (`N <= 0` → empty list → Early Exit Check fires; `N >= len(files)` → full list, flag is no-op). |
 | Step 2.4 Move to Processed | **Skipped.** Sources are already in `_sources/processed/`; corpus files are themselves the artefacts being mutated. |
 | Step 3.0.1 Batch Partitioning | Token threshold T identical. Primary keys for batch grouping: by `extracted_from:` cluster (notes sharing a record) → by domain cluster → alphabetical fallback. Unchanged math. |
 | Step 3.1 Read Transcript | **Branch:** read the file ITSELF (frontmatter + body) AND, when present and accessible, read the underlying source via the file's `source:` frontmatter pointer for richer matcher context. If `source:` is missing or its target file does not exist on disk → log entry to `log_process.md` (`reprocess-corpus: missing-source`), continue with the note's body alone. NEVER raises CLARIFICATION (legacy state is expected). |
@@ -319,6 +329,15 @@ skill. Используются для лучшего понимания priorit
 > further narrows: `records` → first two roots only; `knowledge` → last
 > three only; `all` (default) → all five. PARA `README.md` files are
 > excluded (no `layer:` frontmatter).
+>
+> The deterministic walk + chronological sort + optional `--corpus-limit`
+> truncation lives in `_system/scripts/_common.py::select_reprocess_corpus_files`.
+> Orchestrator invokes it (directly via Python or via shell) so the file
+> list is reproducible and unit-testable. Sort precedence: YAML `created:`
+> → filename `YYYYMMDD-` prefix → `9999-99-99` sentinel. Truncation
+> happens AFTER sort so `--corpus-limit N` always returns the N
+> chronologically-earliest in-scope files — staged runs are deterministic
+> and contiguous along the timeline.
 
 Load `_system/registries/SOURCES.md` — the whitelist of inbox source types.
 SOURCES.md is the **only** place where source-specific behaviour lives; this
@@ -2367,4 +2386,7 @@ Output to user:
 /ztn:process --dry-run
 /ztn:process --file _sources/inbox/plaud/2026-01-25_meeting/transcript_with_summary.md
 /ztn:process --reprocess
+/ztn:process --reprocess-corpus --scope records --dry-run
+/ztn:process --reprocess-corpus --scope records --corpus-limit 6
+/ztn:process --reprocess-corpus --scope all
 ```

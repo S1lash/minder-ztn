@@ -6,6 +6,9 @@ tags:
 - type/structural
 created: '2024-12-01'
 modified: '2026-04-26'
+origin: personal
+audience_tags: []
+is_sensitive: false
 ---
 
 # Projects
