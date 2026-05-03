@@ -345,7 +345,7 @@ with full schemas; here is the index.
 | `_system/state/people-candidates.jsonl` | `/ztn:process`, `/ztn:bootstrap` | Append-only people buffer |
 | `_system/views/CURRENT_CONTEXT.md` | `/ztn:bootstrap`, `/ztn:maintain` | Auto-generated focus snapshot |
 | `_system/views/HUB_INDEX.md` | `/ztn:maintain` | Hub registry (auto-generated) |
-| `_system/views/INDEX.md` | `/ztn:maintain` | Content catalog of knowledge + hubs (auto-generated, faceted by PARA / domains / cross-domain) |
+| `_system/views/INDEX.md` | `/ztn:maintain` (via `render_index.py`) | Surface-line catalog of knowledge + archive + constitution + hubs (auto-generated, faceted by PARA / domains / cross-domain). Records and posts intentionally out of scope — own pipelines |
 | `_system/views/constitution-core.md` | `/ztn:regen-constitution` | Harness-loaded core principles |
 | `3_resources/people/PEOPLE.md` | `/ztn:bootstrap`, `/ztn:process`, `/ztn:lint` | People registry with tiers |
 | `1_projects/PROJECTS.md` | owner + `/ztn:bootstrap` (candidates) | Project registry |

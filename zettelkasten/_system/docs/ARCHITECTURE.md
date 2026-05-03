@@ -345,7 +345,7 @@ Markdown structures built into ZTN для dogfooding + friend rollout. Дета�
 | `_system/SOUL.md` | Identity + Current Focus + Working Style | bootstrap + вручную | lint (focus drift suggestions) |
 | `_system/state/OPEN_THREADS.md` | Незакрытые темы (отличается от TASKS — это ожидания/вопросы, не действия) | bootstrap + maintain | maintain + lint |
 | `_system/views/CURRENT_CONTEXT.md` | Live state для thin orientation | bootstrap, maintain after-batch | maintain + lint |
-| `_system/views/INDEX.md` | Content catalog (knowledge + hubs, faceted by PARA / domains / cross-domain) | bootstrap, maintain after-batch (Step 7.6) | maintain + lint A.6 (heartbeat) |
+| `_system/views/INDEX.md` | Surface catalog of knowledge + archive + constitution + hubs (faceted by PARA / domains / cross-domain); records and posts intentionally out of scope | bootstrap (Step 5.5), maintain after-batch (Step 7.6), regen_all.py — all via `_system/scripts/render_index.py` | maintain + lint A.6 (heartbeat) |
 | `_system/state/log_maintenance.md` | Append-only audit maintain + bootstrap | maintain, bootstrap | lint (reads) |
 | `_system/state/log_process.md` | Append-only chronological process log | process | lint, maintain (reads) |
 | `_system/state/log_lint.md` | Append-only lint audit trail | lint | — |

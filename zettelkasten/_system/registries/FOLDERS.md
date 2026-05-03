@@ -51,6 +51,7 @@ zettelkasten/
 │   │   ├── CONSTITUTION_INDEX.md    # registry активных principles
 │   │   ├── constitution-core.md  # harness view (symlinked from ~/.claude/rules/)
 │   │   ├── HUB_INDEX.md          # индекс всех hub-заметок
+│   │   ├── INDEX.md              # surface catalog: knowledge + archive + constitution + hubs (faceted)
 │   │   ├── CURRENT_CONTEXT.md    # live state snapshot
 │   │   └── CONTENT_OVERVIEW.md   # автогенерируемый обзор контент-кандидатов
 │   ├── state/                    # pipeline state (write-heavy)

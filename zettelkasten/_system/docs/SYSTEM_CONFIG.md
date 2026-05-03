@@ -173,7 +173,7 @@ a schema violation — audits check this via git diff scope.
 | SOUL.md auto-zone (Values between markers) | `render_soul_values.py` only | Deterministic render from `0_constitution/` |
 | Write `_system/state/batches/{id}.md` + `BATCH_LOG.md` row | `/ztn:process` only | One run = one batch; maintain reads, doesn't write |
 | Hub linkage back-write (`hub:` field on thread, bullet in hub Open Questions) | `/ztn:maintain` only | Both sides updated atomically; lint verifies |
-| Regenerate views (CONSTITUTION_INDEX, constitution-core, HUB_INDEX, CURRENT_CONTEXT) | Scripts via `regen_all.py` / relevant skill | Views are derived — source is `0_constitution/` / knowledge notes |
+| Regenerate views (CONSTITUTION_INDEX, constitution-core, INDEX, HUB_INDEX, CURRENT_CONTEXT) | Scripts via `regen_all.py` / relevant skill | Views are derived — source is `0_constitution/` / knowledge notes / hubs |
 
 **Supporting invariants:**
 1. `/ztn:maintain` NEVER creates content — only structural metadata (back-refs).
@@ -284,7 +284,7 @@ zettelkasten/
 │   │   ├── CONSTITUTION_INDEX.md     # Registry активных principles
 │   │   ├── constitution-core.md      # Harness view (symlinked from ~/.claude/rules/)
 │   │   ├── HUB_INDEX.md              # Индекс всех hub-заметок
-│   │   ├── INDEX.md                  # Content catalog (knowledge + hubs, faceted)
+│   │   ├── INDEX.md                  # Surface catalog (knowledge + archive + constitution + hubs, faceted)
 │   │   ├── CURRENT_CONTEXT.md        # Live state snapshot
 │   │   └── CONTENT_OVERVIEW.md       # Автогенерируемый обзор контент-кандидатов
 │   ├── state/                        # Pipeline state (write-heavy)
@@ -976,7 +976,7 @@ Before saving each note:
 | _system/SOUL.md | Identity + Focus + Working Style | Manual + /ztn:bootstrap (once) |
 | _system/state/OPEN_THREADS.md | Active open threads + resolved history | /ztn:bootstrap, /ztn:maintain |
 | _system/views/CURRENT_CONTEXT.md | Live state snapshot for thin orientation | /ztn:maintain, /ztn:lint |
-| _system/views/INDEX.md | Content catalog of knowledge notes + hubs (PARA / domains / cross-domain / hubs facets) | /ztn:maintain Step 7.6 |
+| _system/views/INDEX.md | Surface catalog of knowledge + archive + constitution + hubs (PARA / domains / cross-domain / hubs facets); records and posts intentionally out of scope | /ztn:bootstrap Step 5.5, /ztn:maintain Step 7.6, regen_all.py — all via `_system/scripts/render_index.py` |
 | _system/state/log_lint.md | Append-only log of /ztn:lint runs | Each /ztn:lint |
 | _system/state/log_maintenance.md | Append-only log of /ztn:maintain + /ztn:bootstrap runs | Each /ztn:maintain / /ztn:bootstrap |
 | _system/state/log_process.md | Chronological log of /ztn:process operations | Each /ztn:process |

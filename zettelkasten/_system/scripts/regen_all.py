@@ -5,6 +5,7 @@ Runs the generators in dependency order:
     1. gen_constitution_index   → _system/views/CONSTITUTION_INDEX.md
     2. gen_constitution_core    → _system/views/constitution-core.md
     3. render_soul_values       → _system/SOUL.md auto-zone (between markers)
+    4. render_index             → _system/views/INDEX.md (knowledge + archive + constitution + hubs surface catalog)
 
 Fail-fast: any step's non-zero exit propagates immediately — the remaining
 steps are not run. All writes are idempotent (same inputs → same outputs
@@ -89,7 +90,16 @@ def main(argv: list[str] | None = None) -> int:
         print("regen_all: gen_constitution_core failed", file=sys.stderr)
         return rc
 
-    # Step 3: SOUL — may be skipped if markers aren't in place yet
+    # Step 3: INDEX — surface catalog of knowledge + archive + constitution + hubs.
+    # Reads frontmatter across the base; no hard dependency on prior steps,
+    # but ordered after constitution regen so INDEX never lags constitution
+    # changes that landed in the same call.
+    rc = _run_step("render_index.py", [], args.dry_run)
+    if rc != 0:
+        print("regen_all: render_index failed", file=sys.stderr)
+        return rc
+
+    # Step 4: SOUL — may be skipped if markers aren't in place yet
     from _common import system_dir  # local import — avoids polluting module load
     soul_path = system_dir() / "SOUL.md"
     if not _soul_has_markers(soul_path):

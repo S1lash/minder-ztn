@@ -431,7 +431,7 @@ zettelkasten/
     │   ├── CONSTITUTION_INDEX.md      # Registry активных principles
     │   ├── constitution-core.md       # Harness view (symlinked from ~/.claude/rules/)
     │   ├── HUB_INDEX.md               # Индекс хабов
-    │   ├── INDEX.md                   # Content catalog (knowledge + hubs, faceted)
+    │   ├── INDEX.md                   # Surface catalog (knowledge + archive + constitution + hubs, faceted)
     │   ├── CURRENT_CONTEXT.md         # Live state snapshot
     │   └── CONTENT_OVERVIEW.md        # Автогенерируемый обзор контент-кандидатов
     ├── state/                         # Pipeline state (write-heavy)
@@ -1718,13 +1718,19 @@ Wikilinks = explicit, deliberate connections. Embeddings = latent, discovered co
 
 ### Конкретный план
 
-1. **Content catalog (INDEX.md)** — `_system/views/INDEX.md`, авто-
-   генерируется `/ztn:maintain` Step 7.6. Faceted by PARA (структурно),
-   `domains:` (семантически), cross-domain (≥2 доменов), hubs.
-   Content-oriented: каждая запись = заметка / хаб + одна строка summary.
-   Это первая точка входа: читаешь INDEX → drill в нужную ноту, без grep
-   и без embedding-RAG. Закрывает «что есть в базе» на текущем масштабе
-   (~500 нот). Karpathy-style navigation surface.
+1. **Surface catalog (INDEX.md)** — `_system/views/INDEX.md`, авто-
+   генерируется `_system/scripts/render_index.py` (запускается
+   `/ztn:maintain` Step 7.6 + доступен напрямую). Покрывает knowledge
+   (`1_projects` / `2_areas` / `3_resources`) + archive (`4_archive/`,
+   маркер `[archived]`) + constitution (`0_constitution/{axiom,principle,
+   rule}/`, маркер `tier N`) + hubs (`5_meta/mocs/`). Faceted by PARA
+   (структурно), `domains:` (семантически), cross-domain (≥2 доменов).
+   Surface-line discipline: одна строка на запись (`[[id]] — summary ·
+   [domains] · date`). Detail живёт в специализированных индексах —
+   `HUB_INDEX.md` (хабы) и `CONSTITUTION_INDEX.md` (axioms / principles /
+   rules). Records и posts вне INDEX — у них свои pipeline. Это первая
+   точка входа: читаешь INDEX → drill в нужную ноту или индекс. Karpathy-
+   style navigation surface.
 2. **FTS (Full-Text Search)** — grep + локальный поисковый MCP (qmd
    опционально). На текущем масштабе INDEX + grep достаточно.
 3. **Embedding index** — каждая knowledge note + hub → embedding vector.

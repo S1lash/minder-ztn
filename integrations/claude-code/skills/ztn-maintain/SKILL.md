@@ -878,168 +878,162 @@ Console trace lists each appended candidate for the run report.
 
 ## Step 7.6: INDEX.md Full Regen
 
-Overwrite `_system/views/INDEX.md` entirely. Content-oriented catalog
-of every knowledge note and hub, faceted by PARA + `domains:`. This is
-the «navigation surface» Karpathy-style: read INDEX → drill into pages,
-no embedding-RAG required at moderate scale.
+Overwrite `_system/views/INDEX.md` entirely via deterministic Python
+script. Surface-line catalog of every entry in the knowledge, archive,
+constitution, and synthesis (hub) layers — faceted by PARA + `domains:`.
+This is the «navigation surface» Karpathy-style: read INDEX → drill
+into the right page or specialised index.
 
 Runs **once** post-loop, after Step 7 (CURRENT_CONTEXT regen) and Step
-7.5 (pattern detect). Cost is one frontmatter pass over knowledge layer
-+ hubs (~500 files at current scale, sub-second).
+7.5 (pattern detect). Cost is one frontmatter pass + one wikilink pass
+(~600 files at current scale, sub-second).
+
+### Invocation
+
+```bash
+python3 _system/scripts/render_index.py
+```
+
+Pure, deterministic, idempotent. No LLM. Re-running on unchanged source
+data yields a byte-identical file modulo the `generated:` timestamp.
+Atomic write via `INDEX.md.tmp` + `rename` — readers never see a
+half-written file under concurrent access.
+
+The script is the single source of truth for INDEX scope, format, and
+sort order. The sections below mirror its behaviour for cross-skill
+reference; on conflict, the script wins.
 
 ### Input sources
 
-| Source | Used for |
+| Source | Section in INDEX |
 |---|---|
-| `1_projects/**/*.md` (excluding README, PROJECTS.md) | Knowledge notes — Projects facet |
-| `2_areas/**/*.md` (excluding README) | Knowledge notes — Areas facet |
-| `3_resources/**/*.md` (excluding README, PEOPLE.md) | Knowledge notes — Resources facet |
-| `5_meta/mocs/*.md` | Hubs facet |
+| `1_projects/**/*.md` (excl. README, `PROJECTS.md`, `PROJECTS.template.md`) | By PARA → Projects |
+| `2_areas/**/*.md` (excl. README) | By PARA → Areas |
+| `3_resources/**/*.md` (excl. README, `PEOPLE.md`, `PEOPLE.template.md`) | By PARA → Resources |
+| `4_archive/**/*.md` (excl. README) | Archive (rendered with `[archived]` marker) |
+| `0_constitution/{axiom,principle,rule}/**/*.md` | Constitution (rendered with `tier N`; `archived` / `placeholder` skipped — surfaced in `CONSTITUTION_INDEX.md` instead) |
+| `5_meta/mocs/*.md` | Hubs (rendered with `inbound_count`) |
 
-**Exclusions:** `_records/` (operational provenance, not catalog
-content), `_sources/`, `_system/`, `0_constitution/` (own
-`CONSTITUTION_INDEX.md`), `4_archive/` (dead material — out of scope
-for current iteration), `6_posts/` (own pipeline), `5_meta/CONCEPT.md`
-+ `5_meta/PROCESSING_PRINCIPLES.md` (engine docs, not knowledge),
-`5_meta/templates/`, `5_meta/starter-pack/`.
+**Out of scope by design** — each owns its own pipeline / store:
 
-### Per-entry rendering
+- `_records/` — operational provenance (record layer, growing
+  daily; would dominate the catalog without serving the «what's in
+  the wiki» question)
+- `6_posts/` — outbound publishing pipeline
+- `_sources/`, `_system/`, `5_meta/CONCEPT.md`,
+  `5_meta/PROCESSING_PRINCIPLES.md`, `5_meta/templates/`,
+  `5_meta/starter-pack/` — engine docs and scaffolds
 
-For each knowledge note, extract:
+### Per-entry rendering — knowledge / archive
+
+For each note in PARA / archive, extract:
 - `id` (frontmatter `id:`; fallback to filename stem)
-- `title` (frontmatter `title:`)
-- `description` (frontmatter `description:` if present)
+- `title` (frontmatter `title:`; fallback to filename stem)
+- `summary` via fallback chain (first non-empty wins):
+  1. `description:` from frontmatter
+  2. `title:` from frontmatter
+  3. First non-empty, non-heading, non-HTML-comment prose line,
+     trimmed to 100 chars + `…`
+  4. Literal `_(no description)_`
 - `domains` (frontmatter `domains:`; default `[]`)
 - `modified` (frontmatter `modified:`; fallback to `created:`)
 
-**Summary fallback chain** (first non-empty wins):
-1. `description:` from frontmatter
-2. `title:` from frontmatter
-3. First non-empty prose line after frontmatter, trimmed to 100 chars
-4. Literal `_(no description)_` — explicit signal to owner to add one
+Row format:
 
-For each hub, additionally extract:
-- `inbound_count` — count of `[[hub-id]]` references across the base
-  (grep `[[id]]` in all `.md` excluding the hub itself, the index
-  files in `_system/views/`, and `_system/state/log_*.md`)
+```
+- [[id]] — {summary} · `[domain1, domain2]` · YYYY-MM-DD
+```
 
-### Output format
+Archive rows prepend `[archived]` to the summary:
 
-```markdown
----
-id: index
-layer: system
-generated: {ISO UTC timestamp with Z suffix}
-generator: ztn:maintain
-note_count: {N}
-hub_count: {M}
-domain_count: {D}
----
+```
+- [[id]] — [archived] {summary} · `[domains]` · YYYY-MM-DD
+```
 
-# Wiki Index
+### Per-entry rendering — constitution
 
-Auto-generated by `/ztn:maintain`. Do not edit by hand — changes are
-overwritten on next regen. Content-oriented catalog of all knowledge
-notes and hubs in the base, with a one-line summary per entry.
+For each axiom / principle / rule with `status: active`, extract:
+- `id`
+- `title` (used as summary; statement detail lives in
+  `CONSTITUTION_INDEX.md` and the principle file itself —
+  surface-line discipline)
+- `domain` (rendered as a single-element list)
+- `priority_tier` (rendered as `tier N`)
+- `last_reviewed` (fallback to `created`)
 
-This view answers «what's in the wiki» without `grep`. Faceted by PARA
-(structural) and `domains:` (semantic). The cross-domain facet is the
-quickest way to spot work↔personal bridges already crystallised in the
-knowledge layer.
+Row format:
 
-For the synthesis layer (hubs only) see `HUB_INDEX.md`. For values /
-identity see `CONSTITUTION_INDEX.md`. For the live focus snapshot see
-`CURRENT_CONTEXT.md`.
+```
+- [[id]] — {title} · `[domain]` · tier N · YYYY-MM-DD
+```
 
----
+Grouped under `### Axioms — N`, `### Principles — N`, `### Rules — N`,
+sorted by tier ascending then id.
 
-## By PARA
+### Per-entry rendering — hubs
 
-### Projects (`1_projects/`) — {N_proj}
+For each hub in `5_meta/mocs/`, additionally extract:
+- `inbound_count` — count of `[[hub-id]]` and `[[hub-id|alias]]`
+  references across the base, excluding `_system/views/` (would
+  self-amplify) and `_system/state/` (audit trail, not graph edges).
+  Self-references inside the hub file itself are subtracted to keep
+  the centrality signal honest.
 
-- [[note-id]] — {summary} · `[domain1, domain2]` · {YYYY-MM-DD}
-- ...
+Row format:
 
-(empty → `_(empty)_`)
-
-### Areas (`2_areas/`) — {N_areas}
-
-- [[note-id]] — {summary} · `[domain1]` · {YYYY-MM-DD}
-- ...
-
-### Resources (`3_resources/`) — {N_res}
-
-- [[note-id]] — {summary} · `[domain1]` · {YYYY-MM-DD}
-- ...
-
----
-
-## By Domain
-
-### work ({N_work})
-- [[note-id]] — {summary}
-- ...
-
-### identity ({N_identity})
-- ...
-
-### {other domain} ({N})
-- ...
-
-(Domains rendered in descending count order. Notes with no `domains:`
-field appear under `### unscoped ({N_unscoped})` last.)
-
----
-
-## Cross-domain (≥ 2 domains, {N_cross})
-
-Notes whose `domains:` list contains 2+ values. The highest-leverage
-class per engine doctrine §1.4. Observation lens
-`cross-domain-bridge` discovers latent bridges; this section
-inventories the explicit ones.
-
-- [[note-id]] — {summary} · `[work, identity]` · {YYYY-MM-DD}
-- ...
-
-(empty → `_(no cross-domain notes yet)_`)
-
----
-
-## Hubs (`5_meta/mocs/`) — {M}
-
-- [[hub-id]] — {summary} · `[domains]` · {inbound_count} inbound · upd {YYYY-MM-DD}
-- ...
-
-(Sorted by `inbound_count` descending — the centrality signal.)
+```
+- [[hub-id]] — {summary} · `[domains]` · {inbound_count} inbound · upd YYYY-MM-DD
 ```
 
 ### Sort order within sections
 
-- **By PARA / Cross-domain**: `modified` descending (freshest first)
-- **By Domain**: same — `modified` descending within each domain
+- **By PARA / Archive / Cross-domain / By Domain**: `modified`
+  descending (freshest first), tie-break by `id` descending
+- **Constitution**: `priority_tier` ascending then `id` ascending
 - **Hubs**: `inbound_count` descending (centrality first), tie-break
-  by `modified` descending
+  by `modified` descending then `id` ascending
+
+### By Domain / Cross-domain facet
+
+The `## By Domain` and `## Cross-domain` sections pull from
+**knowledge + archive + constitution** (NOT hubs — hubs have their own
+section + dedicated `HUB_INDEX.md`). Domain headers are emitted in
+descending count order; entries with no canonical-domain values land
+under `### unscoped (N)` last. Unknown domain strings (drift) are
+silently skipped at this layer — surfaced through lint, never INDEX.
+
+Cross-domain row format keeps marker information so the facet stays
+informative when read in isolation:
+
+```
+- [[id]] — [archived?] {summary} · [tier N?] · `[domain1, domain2]` · YYYY-MM-DD
+```
 
 ### Counts in frontmatter
 
-- `note_count` = total knowledge notes (sum across PARA folders)
-- `hub_count` = `len(5_meta/mocs/*.md)`
-- `domain_count` = `len(set(union of all domains values))` excluding
-  the synthetic `unscoped` bucket
+```yaml
+generated: {ISO UTC timestamp with Z suffix}
+generator: render_index.py
+note_count:        {len(knowledge entries)}              # 1_projects + 2_areas + 3_resources
+archive_count:     {len(archive entries)}                # 4_archive/
+constitution_count: {len(active axioms + principles + rules)}
+hub_count:         {len(5_meta/mocs/*.md)}
+domain_count:      {len(distinct canonical domains across knowledge+archive+constitution)}
+```
 
 ### Atomicity
 
-Write to `_system/views/INDEX.md.tmp` first, then atomic `mv` over
-`INDEX.md`. This prevents readers from seeing a half-written file if a
-concurrent skill (lens, lint) reads during regen.
+The script writes to `_system/views/INDEX.md.tmp` then atomically
+`rename`s over `INDEX.md`. Concurrent readers (lens, lint) never see a
+half-written file.
 
 ### Failure mode
 
-If frontmatter parsing fails for ≥ 1 file: continue with that file
-under «unparseable» surfaced in the run report; do not abort INDEX
-write. The note is rendered as `[[note-id]] — _(frontmatter parse
-error)_` and surfaces to the run report. Lint Scan A.2 already handles
-schema normalisation, so this is a transient state.
+If `render_index.py` exits non-zero, surface
+`INDEX.md: regen-failed ({error})` in the log patch (Step 8) and
+continue. Per-file frontmatter parse failures are skipped silently
+(consistent with `read_frontmatter()` semantics in `_common.py`); Lint
+Scan A.2 normalises schema, so this is a transient state.
 
 ---
 
@@ -1098,7 +1092,7 @@ Step 7.5, Step 7.6, and Step 7.7 complete successfully:
 2. Replace `CURRENT_CONTEXT.md: pending (regenerated post-loop; see last-batch entry for confirmation)`
    with `CURRENT_CONTEXT.md: regenerated (generated: {timestamp}, covers batches {first_id}..{last_id})`.
 3. Replace `INDEX.md: pending (regenerated post-loop; see last-batch entry for confirmation)`
-   with `INDEX.md: regenerated (generated: {timestamp}, note_count: {N}, hub_count: {M}, domain_count: {D})`.
+   with `INDEX.md: regenerated (generated: {timestamp}, note_count: {N}, archive_count: {A}, constitution_count: {C}, hub_count: {M}, domain_count: {D})`.
 4. Append a line immediately below noting the Step 7.5 pattern-detect
    result: `principle-candidates.jsonl: +{candidate_count} new candidates
    (session_id: {session_id})`. If Step 7.5 produced zero new candidates,
@@ -1200,7 +1194,7 @@ Write to user (stdout) at end of run:
 ### State Updates
 - OPEN_THREADS.md: {Active N→M}
 - CURRENT_CONTEXT.md: regenerated (batch_id: {last})
-- INDEX.md: regenerated (note_count: {N}, hub_count: {M}, domain_count: {D})
+- INDEX.md: regenerated (note_count: {N}, archive_count: {A}, constitution_count: {C}, hub_count: {M}, domain_count: {D})
 - log_maintenance.md: +{N} entries
 
 ### Completion Gate

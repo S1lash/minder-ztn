@@ -746,23 +746,31 @@ Frontmatter: `generated_by: ztn:bootstrap`, `batch_id: bootstrap`, `generated: {
 
 ### Step 5.5: INDEX.md generation
 
-Generate `_system/views/INDEX.md` following the same algorithm as
-`/ztn:maintain` Step 7.6 (input sources, fallback chain
-description→title→prose→`_(no description)_`, output format, sort
-order, atomicity).
+Generate `_system/views/INDEX.md` via `_system/scripts/render_index.py`
+— same script invoked by `/ztn:maintain` Step 7.6. Bootstrap and
+maintain MUST produce byte-identical INDEX format on the same base.
 
-Bootstrap-time invariants:
-- Empty knowledge layer (fresh setup) → render INDEX with all
-  sections as `_(empty — no notes yet)_` placeholders, frontmatter
-  counts at zero.
-- Existing knowledge layer (bootstrap on populated base) → full
-  catalog rendering, identical output to a maintain-driven Step 7.6
-  pass.
-- Frontmatter: `generated_by: ztn:bootstrap`, `generator: ztn:bootstrap`,
-  `generated: {now ISO 8601}`.
+```bash
+python3 _system/scripts/render_index.py
+```
 
-Atomicity: write to `_system/views/INDEX.md.tmp` then atomic `mv` over
-`INDEX.md` (same as Step 7.6).
+Pure, deterministic, idempotent. Atomic write via `.tmp` + rename. The
+script handles both states uniformly:
+- Empty knowledge layer (fresh setup) → all sections render as
+  `_(empty)_`, frontmatter counts at zero.
+- Populated base → full catalog: knowledge (`1_projects` / `2_areas` /
+  `3_resources`), archive (`4_archive`), constitution
+  (`0_constitution/{axiom,principle,rule}`), hubs (`5_meta/mocs`).
+  Records and posts intentionally out of scope.
+
+The script writes `generator: render_index.py` in the frontmatter —
+ZTN-wide single source of truth, regardless of which skill triggered
+the call.
+
+Failure mode: non-zero exit → surface
+`INDEX.md: regen-failed ({error})` in the log entry (Step 6) and
+continue the rest of bootstrap. INDEX is a derived view; `/ztn:maintain`
+will retry on next run.
 
 ### Step 6: log_maintenance.md entry
 
@@ -777,7 +785,7 @@ Append to `_system/state/log_maintenance.md` (newest first, below the `<!-- Entr
   - Tier 1: {N} | Tier 2: {N} | Tier 3: {N}
 - OPEN_THREADS.md: {N} active, {M} resolved
 - CURRENT_CONTEXT.md: generated
-- INDEX.md: generated (note_count: {N}, hub_count: {M}, domain_count: {D})
+- INDEX.md: generated (note_count: {N}, archive_count: {A}, constitution_count: {C}, hub_count: {M}, domain_count: {D})
 
 ### Auto-Fixes
 - {anything auto-corrected — normally empty for bootstrap}
@@ -1033,7 +1041,7 @@ Write to `_system/state/CLARIFICATIONS.md` under `## bootstrap YYYY-MM-DD` heade
 | `_system/SOUL.md` | rewrite (draft) | Sections present in profile/interview filled; gaps marked TODO |
 | `_system/state/OPEN_THREADS.md` | populate | Active + Resolved sections |
 | `_system/views/CURRENT_CONTEXT.md` | rewrite | `generated_by: ztn:bootstrap`, `batch_id: bootstrap` |
-| `_system/views/INDEX.md` | rewrite | `generator: ztn:bootstrap`; full PARA + hubs catalog if base populated, empty placeholders if fresh setup |
+| `_system/views/INDEX.md` | rewrite (via `render_index.py`) | `generator: render_index.py`; surface catalog of knowledge + archive + constitution + hubs (records / posts excluded by design); empty placeholders on fresh setup |
 | `_system/state/log_maintenance.md` | append | One bootstrap entry |
 | `_system/state/CLARIFICATIONS.md` | append | Under `## bootstrap YYYY-MM-DD` header, grouped by subsection |
 | `_system/state/principle-candidates.jsonl` | append | One record per harvested principle; `origin: bootstrap-raw-scan` |

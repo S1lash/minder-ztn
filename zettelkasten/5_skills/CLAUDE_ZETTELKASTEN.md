@@ -29,7 +29,7 @@ modified: '2026-04-26'
 9.  _system/registries/CONCEPT_NAMING.md   ← Concept-name format spec (autonomous resolution)
 10. _system/registries/AUDIENCES.md        ← `audience_tags` whitelist (canonical 5 + extensions)
 11. _system/views/HUB_INDEX.md             ← Индекс хабов
-12. _system/views/INDEX.md                 ← Content catalog (knowledge + hubs, faceted)
+12. _system/views/INDEX.md                 ← Surface catalog (knowledge + archive + constitution + hubs, faceted)
 13. _system/state/PROCESSED.md             ← Что обработано
 14. _system/state/CLARIFICATIONS.md        ← Pending clarifications
 ```

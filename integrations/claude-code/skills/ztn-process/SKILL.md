@@ -1352,8 +1352,10 @@ If extracted from a record: add `extracted_from: {record-id}` to frontmatter.
   sensitive than its parent record).
 
 **`description:` field — mandatory for new knowledge notes.** One-line
-summary (≤100 chars) of what the note is about. Used by `/ztn:maintain`
-Step 7.6 to render the INDEX.md catalog. Distinct from `title:`:
+summary (≤100 chars) of what the note is about. Consumed by
+`_system/scripts/render_index.py` (invoked from `/ztn:maintain`
+Step 7.6, `/ztn:bootstrap` Step 5.5, and `regen_all.py`) to render the
+INDEX.md catalog. Distinct from `title:`:
 - `title:` names the note («Стратегический разбор встречи с Василием»)
 - `description:` describes its content («Решение перейти к ежемесячным
   планам, а не квартальным; reasoning по 1-1 cadence»)
