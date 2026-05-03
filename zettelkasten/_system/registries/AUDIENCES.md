@@ -149,7 +149,7 @@ whitelist check (canonical 5 ∪ active Extensions) performed by
 | Condition | Engine action |
 |---|---|
 | Tag in canonical 5 verbatim | Pass-through. |
-| Tag normalises to a canonical or active extension entry | **Silent autofix** — rewrite to normalised form. Fix-id `audience-tag-normalise-autofix`. |
+| Tag normalises to a canonical or active extension entry | **Silent autofix** — rewrite to normalised form. Fix-id `audience-tag-normalise-autofix`. (Catches `Family` → `family`, `professional_network` → `professional-network`.) |
 | Tag well-formed but NOT in canonical or extension list | **Silent drop** — entity falls back to `[]` (owner-only). Fix-id `audience-tag-drop-autofix` with reason `not-in-whitelist`. |
 | Tag fails kebab-case ASCII / length 2-32 / contains non-ASCII | **Silent drop**. Fix-id `audience-tag-drop-autofix` with reason `format-unfixable`. |
 
@@ -159,6 +159,11 @@ default). The engine never coins new extensions on its own — the
 Extensions table below remains owner-curated outside the pipeline.
 When owner wants a new audience available to the engine, owner adds
 a row; subsequent emissions can use it.
+
+`/ztn:process` Q16 applies a heuristic canonical-mapping at extraction
+time when the model's intended audience semantically fits a canonical
+(e.g. "team" → `work`, "linkedin" → `professional-network`, "tweet" →
+`world`). Only after that mapping fails is the tag silently dropped.
 
 ---
 

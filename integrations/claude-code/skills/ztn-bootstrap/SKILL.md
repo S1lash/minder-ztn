@@ -744,18 +744,44 @@ Compose snapshot from updated SOUL + OPEN_THREADS + TASKS + CALENDAR:
 
 Frontmatter: `generated_by: ztn:bootstrap`, `batch_id: bootstrap`, `generated: {now ISO 8601}`.
 
-### Step 5.5: INDEX.md generation
+### Step 5.5: Derived registries + views generation
 
-Generate `_system/views/INDEX.md` via `_system/scripts/render_index.py`
-— same script invoked by `/ztn:maintain` Step 7.6. Bootstrap and
-maintain MUST produce byte-identical INDEX format on the same base.
+Generate the two derived files that downstream skills assume exist:
+the concept registry (`_system/registries/CONCEPTS.md`) and the wiki
+index (`_system/views/INDEX.md`). Both scripts are pure, deterministic,
+idempotent; bootstrap and `/ztn:maintain` MUST produce byte-identical
+output on the same base.
+
+#### 5.5.a CONCEPTS.md
+
+```bash
+python3 _system/scripts/build_concept_registry.py
+```
+
+Same script invoked by `/ztn:maintain` Step 4.5. On a fresh-onboarding
+clone the corpus is empty, so the script writes a registry with zero
+rows and the placeholder body `_(none — registry is empty)_`. This
+matters because `/ztn:process` Step 3.4.5 reads `CONCEPTS.md` verbatim
+into the matcher subagent prompt — without this step the file would not
+exist on first `/ztn:process` and the matcher prompt would silently
+inject a read error.
+
+Owner-edit preservation contract (aliases column) is documented in
+`/ztn:maintain` Step 4.5; it is a no-op on fresh setup but the same
+code path runs here.
+
+Failure mode: non-zero exit → surface
+`CONCEPTS.md: regen-failed ({error})` in the log entry (Step 6) and
+continue the rest of bootstrap. `/ztn:maintain` will retry on next run.
+
+#### 5.5.b INDEX.md
 
 ```bash
 python3 _system/scripts/render_index.py
 ```
 
-Pure, deterministic, idempotent. Atomic write via `.tmp` + rename. The
-script handles both states uniformly:
+Same script invoked by `/ztn:maintain` Step 7.6. Atomic write via
+`.tmp` + rename. The script handles both states uniformly:
 - Empty knowledge layer (fresh setup) → all sections render as
   `_(empty)_`, frontmatter counts at zero.
 - Populated base → full catalog: knowledge (`1_projects` / `2_areas` /
@@ -785,6 +811,7 @@ Append to `_system/state/log_maintenance.md` (newest first, below the `<!-- Entr
   - Tier 1: {N} | Tier 2: {N} | Tier 3: {N}
 - OPEN_THREADS.md: {N} active, {M} resolved
 - CURRENT_CONTEXT.md: generated
+- CONCEPTS.md: generated (total_concepts: {T}, total_mentions: {U})
 - INDEX.md: generated (note_count: {N}, archive_count: {A}, constitution_count: {C}, hub_count: {M}, domain_count: {D})
 
 ### Auto-Fixes
@@ -1041,6 +1068,7 @@ Write to `_system/state/CLARIFICATIONS.md` under `## bootstrap YYYY-MM-DD` heade
 | `_system/SOUL.md` | rewrite (draft) | Sections present in profile/interview filled; gaps marked TODO |
 | `_system/state/OPEN_THREADS.md` | populate | Active + Resolved sections |
 | `_system/views/CURRENT_CONTEXT.md` | rewrite | `generated_by: ztn:bootstrap`, `batch_id: bootstrap` |
+| `_system/registries/CONCEPTS.md` | rewrite (via `build_concept_registry.py`) | Same script as `/ztn:maintain` Step 4.5; on fresh setup writes an empty registry so `/ztn:process` Step 3.4.5 matcher prompt has a file to read |
 | `_system/views/INDEX.md` | rewrite (via `render_index.py`) | `generator: render_index.py`; surface catalog of knowledge + archive + constitution + hubs (records / posts excluded by design); empty placeholders on fresh setup |
 | `_system/state/log_maintenance.md` | append | One bootstrap entry |
 | `_system/state/CLARIFICATIONS.md` | append | Under `## bootstrap YYYY-MM-DD` header, grouped by subsection |
