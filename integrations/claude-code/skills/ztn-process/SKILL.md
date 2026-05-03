@@ -1665,6 +1665,12 @@ their manifests are aggregated.
   path + stated rationale from the record)
 - `record_ref` = wiki-link to the record (meeting or observation), e.g. `[[YYYYMMDD-meeting-...]]` or `[[YYYYMMDD-observation-...]]`
 - `dry_run: false` (Evidence Trail append on cited principles is desired)
+- `--from-pipeline /ztn:process` — marks the call as `caller_class:
+  mechanical`. Skips per-decision auto-commit on the telemetry JSONL
+  (`_system/state/check-decision-runs.jsonl`); the orchestrator's batch
+  commit (or `/ztn:save`) picks up the accumulated telemetry lines.
+  Without this flag every decision in the batch would create its own
+  tiny commit.
 
 **Verdict handling:**
 

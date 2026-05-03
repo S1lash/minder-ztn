@@ -447,7 +447,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     jsonl_path = args.jsonl or (state_dir() / JSONL_FILENAME)
-    lock_path = state_dir() / LOCK_FILENAME
+    # Lock co-locates with JSONL so test paths and overrides keep the
+    # lock alongside the data they protect.
+    lock_path = jsonl_path.parent / LOCK_FILENAME
 
     if args.kind == "run":
         entry = build_run_entry(args)

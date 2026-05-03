@@ -242,6 +242,7 @@ surfaced as warnings, never silently deleted.
 | `_system/state/BATCH_LOG.md` | `/ztn:process` | yes |
 | `_system/state/PROCESSED.md` | `/ztn:process` | yes |
 | `_system/state/agent-lens-runs.jsonl` | `/ztn:agent-lens` | yes |
+| `_system/state/check-decision-runs.jsonl` | `/ztn:check-decision` (run + optional followup lines per invocation) | yes |
 | Knowledge note `## Evidence Trail` | every skill that touches the note | yes |
 
 Logs document WHAT happened and WHY. They are the engine's memory of
@@ -319,7 +320,10 @@ change to integrate. The contract is engine-level, not skill-level.
   `principle-candidates.jsonl`)
 - Working memory (`OPEN_THREADS.md` — until focus engine arrives)
 - HITL queues (`CLARIFICATIONS.md`)
-- Audit trails (`log_*.md`)
+- Audit trails (`log_*.md`, `agent-lens-runs.jsonl`,
+  `check-decision-runs.jsonl`) — owner-internal feedback substrate;
+  consumed by lenses + future cross-source analysis, not by Minder
+  backend
 - Derived/regenerable views (`CURRENT_CONTEXT.md`,
   `lint-context/{daily,monthly}/*`)
 
@@ -343,6 +347,7 @@ with full schemas; here is the index.
 | `_system/state/CLARIFICATIONS.md` | every skill | Owner-gated resolution queue |
 | `_system/state/principle-candidates.jsonl` | `/ztn:capture-candidate`, `/ztn:bootstrap` | Append-only principle buffer |
 | `_system/state/people-candidates.jsonl` | `/ztn:process`, `/ztn:bootstrap` | Append-only people buffer |
+| `_system/state/check-decision-runs.jsonl` | `/ztn:check-decision` | Append-only audit substrate (run + followup lines per invocation); consumed by `decision-review` lens + future cross-source autonomy analysis |
 | `_system/views/CURRENT_CONTEXT.md` | `/ztn:bootstrap`, `/ztn:maintain` | Auto-generated focus snapshot |
 | `_system/views/HUB_INDEX.md` | `/ztn:maintain` | Hub registry (auto-generated) |
 | `_system/views/INDEX.md` | `/ztn:maintain` (via `render_index.py`) | Surface-line catalog of knowledge + archive + constitution + hubs (auto-generated, faceted by PARA / domains / cross-domain). Records and posts intentionally out of scope — own pipelines |

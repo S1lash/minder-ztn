@@ -36,6 +36,7 @@ status: active
 - Records после decision-даты — для проверки исхода: `_records/observations/`, `_records/meetings/`, последующие knowledge-notes / knowledge-updates по теме.
 - **Hubs по теме decision'а** в `5_meta/mocs/` — обязательно. Резолви через `domains:` или `projects:` фронтматтера decision-ноты (например `project: career-promotion` → `5_meta/mocs/hub-career-promotion.md`). Хабы читаются ДО формулировки observation (см. hub-awareness echo guard ниже).
 - Свои прошлые outputs в `_system/agent-lens/decision-review/{date}.md` — как age-trail для self-history (см. ниже), не как evidence.
+- **Skill audit substrate**: `_system/state/check-decision-runs.jsonl` — append-only telemetry от `/ztn:check-decision`. Используется в sub-concern «Skill-telemetry» (см. ниже). Существующая работа линзы (assumption calibration) substrate **не использует** — это отдельный additive слой.
 
 **Frontmatter signals полезные для приоритизации substantive:**
 - `priority: high` — owner маркировал как значимое.
@@ -153,6 +154,98 @@ Surface как `hits: 0` в нескольких разных сценариях
 Это ОДНА строка, не observation. Не повторять per-hit. Если все decisions окна имели explicit-секции — строка всё равно пишется (`M/M / M/M`) как позитивный сигнал. Если M=0 (decisions в окне нет вообще) — строку опустить.
 
 Назначение: накопительный сигнал owner'у про template decision-нот. Если паттерн `N << M` повторяется run-за-run — это триггер для template upgrade или для CLARIFICATION «consider explicit Альтернативы section in decision template».
+
+## Skill-telemetry sub-concern (additive — НЕ замещает основную работу)
+
+Линза дополнительно читает audit substrate скилла `/ztn:check-decision`:
+файл `_system/state/check-decision-runs.jsonl`. Этот substrate собирается
+автоматически на каждый вызов скилла и содержит per-invocation записи
+(один JSON на строку, два `kind`'а: `run` и `followup`). Substrate
+является machine-state по типизации frame'а — поля квотятся свободно,
+но **claims строятся только об agent-usage patterns**, никогда о владельце.
+
+Sub-concern работает в **двух слоях**, оба additive к основной работе линзы.
+
+### Layer A — Joint enrichment per existing decision-hit
+
+Когда основная логика уже нашла substantive decision в окне 90-180 дней
+(после применения всех существующих критериев hit), **дополнительно**:
+
+1. Сканируешь JSONL за период `[decision_date - 7 days, today]` (буфер 7
+   дней назад покрывает случай когда skill звался до фиксации decision-нота).
+2. Ищешь run-line с **exact match** по `record_ref` к decision-нотa
+   (wikilink ID совпадает). Heuristic similarity по `situation_hash` не
+   используешь — конструктивно конservative join, иначе ложные совпадения
+   исказят сигнал.
+3. Если match найден — обогащаешь существующий per-decision observation
+   доп. строкой:
+   - `Skill-verdict: <verdict> (<comma-separated citations>) at <run_at>` —
+     что skill сказал на момент решения
+   - Если followup-line есть для того же run_id: `caller decision: <decision_taken>; verdict_resolved: <bool>; human_needed_after: <bool>` — что caller дальше сделал
+   - Корреляция со своим net-call'ом: совпадает ли skill-verdict с
+     records-side оценкой допущений? Calibration сигнал: skill хорошо
+     калиброван если verdict consistent с тем как records показывают
+     развитие.
+
+4. Если match нет — **не упоминаешь** (отсутствие skill-вызова на
+   decision'е — нормальный default; не surface'ить пустоту как сигнал
+   на уровне per-decision observation'а; bypass-rate отдельно не
+   считаешь, это вне scope линзы).
+
+Layer A не создаёт новых observation-блоков — обогащает существующие.
+
+### Layer B — Standalone telemetry observations (rolling 30-day window)
+
+После основной работы (per-decision observations + run-level format-quality
+строка) добавляешь **отдельные aggregate observations** на mechanical
+данных JSONL'а за последние 30 дней. Каждый — отдельный
+`## Observation N` блок (как обычные observations):
+
+**Тип B.1 — Constitution coverage gap** (surface если signal): No-match
+verdicts разложенные по `domains_filter`. Если домен X получает no-match
+в ≥40% инвокаций где он был в фильтре — surface как «coverage gap». Это
+сигнал что constitution недопокрывает класс agent-decisions в этом домене.
+Конкретные `intent` / `caller_context` фразы (≤120 chars) могут процитироваться
+как identifier-like, чтобы owner понял какие именно ситуации не покрыты.
+
+**Тип B.2 — Principle utilization** (surface если signal): Top-3 most-cited
+principles за окно + явный список principles которые не цитировались **вообще**
+за последние 90 дней (расширенное окно — для надёжности «никогда не
+звонит»). Пересечение со списком active principles из constitution. Это
+сигнал что owner может пересмотреть: либо principle мёртвый (кандидат на
+archive), либо невидим для агентов (формулировка / domain не находит).
+
+**Тип B.3 — Skill stability** (surface ТОЛЬКО при аномалии): Если
+`status != "ok"` rate ≥10%, или если `tree_size==0` встретился, или если
+volume резко упал к нулю при стабильном baseline'е — одно observation
+с указанием precise counts. В нормальном режиме (всё ok) **пропускаешь**
+этот тип — пустой observation в линзе хуже отсутствия.
+
+### Hard guard для sub-concern
+
+Claims строятся **исключительно об agent-usage patterns**. Запрещено:
+- Делать выводы о владельце из intent / decision_taken / caller_context
+  (эти строки описывают что делал агент, не владелец).
+- Связывать skill-телеметрию с psyche / values-сигналами owner'а.
+- Использовать pre/post_confidence как сигнал об autonomy владельца —
+  это self-report от LLM caller'а, не калиброван внешне.
+
+Allowed:
+- «skill вызывался N раз; верdict X в M% случаев»
+- «principle Y цитировался Z раз; principle W не цитировался за 90 дней»
+- «no-match преобладает в domain D на K% инвокаций»
+
+Если за окно JSONL пуст (early adoption) — **пропускаешь sub-concern целиком**,
+не пишешь padding'и типа «недостаточно данных». Основная работа линзы
+продолжается без изменений.
+
+### Что меняется в `Что хочется получить от тебя`
+
+Поверх существующих требований к per-hit output'у:
+- Layer A enrichment — доп. строка в существующих observation'ах при exact
+  record_ref match
+- Layer B — 0-3 отдельных observation'ов (по одному на signal-тип) только
+  при наличии сигнала
 
 ## Что хочется получить от тебя
 
