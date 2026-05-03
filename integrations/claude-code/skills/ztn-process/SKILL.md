@@ -104,7 +104,7 @@ mental model.
 | Step 4.6 Content Proportionality | Skipped (no creation ratio to evaluate). |
 | Step 4.7 Batch Data Accumulation | Runs. The accumulator's `records[]` and `knowledge_notes[]` lists are populated under the `updated[]` keys (not `created[]`). `concepts.upserts[]` IS populated — this is the load-bearing output of the mode. |
 | Step 5 Completion Gate | Runs unchanged. |
-| Step 5.5.1.5 Batch Manifest | **Branch (data-only):** identical schema; populates `records.updated[]`, `knowledge_notes.updated[]`, `concepts.upserts[]`. `created[]` arrays are emitted empty. `processor: "ztn:process"` unchanged; `format_version: "2.0"` unchanged. |
+| Step 5.5.1.5 Batch Manifest | **Branch (data-only):** identical schema; populates `records.updated[]`, `knowledge_notes.updated[]`, `concepts.upserts[]`. `created[]` arrays are emitted empty. `processor: "ztn:process"` unchanged; `format_version: "2.1"` unchanged. |
 | Step 6 Report | Renders «Reprocessed: N» instead of «Created: N». |
 
 **Idempotency.** Re-running `--reprocess-corpus` on a clean post-reprocess
@@ -2044,7 +2044,7 @@ Accumulate:
 - **`batch_id`** = UTC timestamp of run start, format `YYYYMMDD-HHmmss`. Fixed at the moment the concurrency lock was acquired and stable for the rest of the run. On collision (theoretical, due to concurrency lock this should not happen) — append suffix `-1`, `-2`.
 - **`timestamp`** = ISO 8601 UTC with trailing `Z` (run start).
 - **`processor`** = `ztn:process`.
-- **`batch_format_version`** = per `_system/docs/batch-format.md` current spec version (currently `2.0`).
+- **`batch_format_version`** = per `_system/docs/batch-format.md` current spec version (currently `2.1`).
 - **Counts:** `sources`, `records`, `notes`, `tasks`, `events`, `threads_opened = 0`, `threads_resolved = 0`, `clarifications_raised`, `people_candidates_appended`, `concepts_upserted`, `sensitive_entities`, `concept_type_conflicts`, `concept_translations_dropped` (see counter mechanics below).
 - **Lists for each section of the batch report:** Sources Processed (with source type ID), Records Created (id + title + people + projects), Knowledge Notes Created (id + title + types + domains + Evidence Trail status), Tasks Extracted (task-id + description + deadline + priority + from-note), Events Extracted (datetime + description + participants + from-note), People Updates (id + change type + mentions delta + tier note), Hubs Updated (id list), CLARIFICATIONS Raised (type + summary per item), Concepts Upserted (name + type + subtype + related_concepts), Sensitive Entities (path + kind + audience_tags).
 
@@ -2247,7 +2247,7 @@ report. Schema: `minder-project/strategy/ARCHITECTURE.md` §4.5
 
 Assemble the JSON dict in memory from the in-memory accumulator
 (§4.7) — top-level keys per ARCHITECTURE.md §4.5 (`batch_id`,
-`timestamp`, `format_version: "2.0"`, `processor: "ztn:process"`,
+`timestamp`, `format_version: "2.1"`, `processor: "ztn:process"`,
 `sources_processed[]`, `records.{created,updated}[]`,
 `knowledge_notes.{created,updated}[]`, `hubs.{created,updated}[]`,
 `constitution{}`, `tier1_objects{}`, `tier2_objects{}`,

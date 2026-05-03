@@ -693,7 +693,7 @@ manifest of this maintain batch's state changes. Schema:
 `processor: "ztn:maintain"`. Top-level: `batch_id` (matches the
 upstream /ztn:process batch_id this maintain run integrated),
 `timestamp` (this maintain iteration's UTC start),
-`format_version: "2.0"`, `processor: "ztn:maintain"`, plus the
+`format_version: "2.1"`, `processor: "ztn:maintain"`, plus the
 per-skill sections relevant to maintain output:
 `hubs.updated[]` (with `member_concepts[]` derived via
 `_common.py::normalize_concept_list`, plus the post-recompute
@@ -1043,11 +1043,55 @@ schema normalisation, so this is a transient state.
 
 ---
 
+## Step 7.7: Derived Chronological-Map Render (project hubs)
+
+Regenerate the auto-derived chronological map for each hub with
+`chronological_map_mode: derived` in frontmatter (typically project
+hubs). The map is rendered between `<!-- AUTO-GENERATED -->` markers
+and reflects every record / knowledge note where `projects:` contains
+the hub's project ID, minus records listed in `excluded_from_map`.
+
+Hubs with `chronological_map_mode: curated` (default; trajectory and
+domain hubs) are skipped — their maps stay hand-curated.
+
+**Invocation.**
+
+```bash
+python3 _system/scripts/render_hub_maps.py --root . --apply
+```
+
+The script is deterministic, idempotent, and pure — no LLM. Re-running
+on unchanged source data yields zero file modifications.
+
+Per-hub event JSONL on stdout (`hub`, `project_id`, `members`,
+`visible`, `excluded`, `replace_mode` ∈ {replaced,
+inserted-from-legacy, appended}, `changed`). Aggregate summary on
+stderr. Capture both for the run report.
+
+**First-run behaviour.** When a hub has no AUTO-GENERATED markers yet,
+the script replaces the existing `## Хронологическая карта` section
+in-place (anchor-based replacement). This is the migration path for
+hubs that pre-date ARCH-B. Subsequent runs use the markers directly.
+
+**Failure mode.** Same as Step 4.5: surface `derived-hub-map-failed`
+to log_maintenance.md with stderr captured; continue the rest of the
+pipeline. Maps remain in their last good state.
+
+**Editorial exclusions.** When a record matches a hub's project but
+the curator wants it excluded from the map (low signal, repetitive,
+narrative noise), add the record-id to hub frontmatter
+`excluded_from_map:` and a 1-line rationale to
+`excluded_from_map_reasons:` at the same index. The renderer surfaces
+exclusions in a separate «Excluded from map (editorial)» table at the
+bottom of the AUTO-GENERATED block — visible audit trail.
+
+---
+
 ## Step 8: Patch last-batch log_maintenance.md entry with regen + pattern-detect confirmation
 
 The per-batch entries were written in Step 6.5 with
 `CURRENT_CONTEXT.md: pending` and `INDEX.md: pending`. After Step 7,
-Step 7.5, and Step 7.6 complete successfully:
+Step 7.5, Step 7.6, and Step 7.7 complete successfully:
 
 1. Locate the log_maintenance.md entry for the **last batch** of this run
    (highest batch_id processed).

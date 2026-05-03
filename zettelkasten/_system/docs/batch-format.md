@@ -1,8 +1,8 @@
 ---
 id: batch-format
 layer: system
-version: 2.0
-modified: 2026-05-02
+version: 2.1
+modified: 2026-05-03
 ---
 
 # Batch Format
@@ -22,6 +22,11 @@ modified: 2026-05-02
 
 ## Version History
 
+- **v2.1**: added ARCH-B hub-state fields per hub entry —
+  `hub_kind` (project / trajectory / domain), `chronological_map_mode`
+  (derived / curated), `excluded_from_map_count`, and `auto_member_count`.
+  Additive minor — pre-2.1 consumers ignore unknown fields via
+  `section_extras` pattern. No breaking change.
 - **v2.0**: added concept emission (`concepts:` frontmatter,
   `concept_hints[]` per-entity, `member_concepts[]` per-hub,
   `concepts.upserts[]` registry-level) and privacy trio (`origin`,

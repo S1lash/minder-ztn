@@ -90,7 +90,7 @@ def _minimal_manifest() -> dict:
     return {
         "batch_id": "20260502-120000",
         "timestamp": "2026-05-02T12:00:00Z",
-        "format_version": "2.0",
+        "format_version": "2.1",
         "processor": "ztn:process",
         "sources_processed": [],
         "records": {"created": [], "updated": []},
@@ -381,7 +381,7 @@ class ManifestContractValidationTests(unittest.TestCase):
                 data = {
                     "batch_id": "20260502-120000",
                     "timestamp": "2026-05-02T12:00:00Z",
-                    "format_version": "2.0",
+                    "format_version": "2.1",
                     "processor": proc,
                     "stats": {},
                 }
