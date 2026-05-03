@@ -1,14 +1,18 @@
 ---
 name: ztn:resolve-clarifications
 description: >
-  Interactive facilitator for the owner's CLARIFICATIONS queue. Loads
-  open items, clusters by Type, presents one theme at a time as a
+  Interactive facilitator for the owner's CLARIFICATIONS queue. Pre-syncs
+  via /ztn:sync-data so the queue reflects state from all devices, then
+  loads open items, clusters by Type, presents one theme at a time as a
   numbered batch (≤5 items, adaptive — 3 for heavy types, 5 for light),
   reminds full situation + verbatim quotes already stored in the file,
   pre-checks values-bearing items against the constitution, proposes
   resolution with labelled options, applies confirmed actions (silent
   for archival ops, diff-first for content edits), archives resolved
-  items and re-prioritises deferred ones. Manual, owner-driven —
+  items and re-prioritises deferred ones. After resolutions, refreshes
+  derived views (/ztn:regen-constitution if principle accepts; /ztn:maintain
+  if registries / hubs touched) and reminds owner to run /ztn:save when
+  the working tree is dirty. Manual, owner-driven —
   never dumps the whole queue, never asks the owner to recall meeting
   context unaided.
 disable-model-invocation: false
@@ -38,8 +42,36 @@ version/phase/rename-history narratives.
 - `--dry-run` — render the round but do not apply any resolution
 - `--no-constitution` — skip constitution lookup even for values-bearing items
 - `--continue` — after closing one round, immediately offer the next theme
+- `--no-sync` — skip Step 0 pre-sync (offline review, known-current state)
+- `--no-refresh` — skip Step 9 post-resolution refresh (`/ztn:regen-constitution`,
+  `/ztn:maintain`); owner promises to run them manually
+- `--no-save` — skip the Step 9.5 save reminder (commit later by hand)
 
 ---
+
+## Step 0: Pre-sync
+
+Before acquiring the lock, invoke `/ztn:sync-data` inline. Owner may be
+working from a multi-device setup (phone captures, server processing,
+laptop A vs laptop B); reviewing a stale CLARIFICATIONS queue wastes the
+owner's attention on items already resolved elsewhere.
+
+Behaviour:
+- Up-to-date or no `origin` → continue silently to the lock step.
+- Pulled commits → report one-line recap («синхронизировался: pulled
+  N commits, K new clarifications») then continue.
+- Working tree dirty → `/ztn:sync-data` aborts with its own message;
+  surface it verbatim to the owner and exit (owner runs `/ztn:save`
+  first, then re-invokes this skill).
+- Conflict during rebase → `/ztn:sync-data` aborts and prints recovery
+  instructions; surface verbatim and exit.
+- Unsupported in `--dry-run` mode → still run sync (read-mostly; only
+  effect is moving local HEAD), since stale data poisons the dry-run
+  preview too.
+
+Skip the sync only when `--no-sync` is passed (escape hatch for offline
+review or known-current state). The skill never auto-syncs after Step 0
+— the owner's session works against the snapshot taken here.
 
 ## Concurrency Lock
 
@@ -56,10 +88,10 @@ Read all three before starting:
 2. Delete it on every exit path (normal, error, abort, early exit)
 3. Stale lock (>2h) — warn and offer to clear
 
-Views (`constitution-core.md`, `CURRENT_CONTEXT.md`, etc.) are read as-is.
-This skill does NOT regenerate them — that is the producer skills'
-responsibility. If the owner edited `0_constitution/` directly and wants
-fresh views before reviewing, they run `/ztn:regen-constitution` first.
+Views (`constitution-core.md`, `CURRENT_CONTEXT.md`, etc.) are read as-is
+during Steps 1–7. Regeneration is deferred to Step 9 (post-resolution
+refresh) and runs only when this session's resolutions actually touched
+the underlying source of truth.
 
 ---
 
@@ -340,13 +372,19 @@ On `y` → write. On `N` → re-prompt with the original options (a/b/c/d/e)
 for that question. The diff gate is friction — but it's the only gate
 where the owner can catch the skill misreading their answer.
 
-**Class C — propose follow-up command (do not invoke):**
-- `content-pipeline-reminder` → suggest «запустить `/ztn:check-content`?»
-- `principle-candidate` accept → suggest «`/ztn:regen-constitution` после
-  записи принципа?»
+**Class C — auto-invoked refresh (Step 9):**
 
-The skill prints the suggestion alongside the round-close report; owner
-runs the command (or not) at their discretion.
+Some resolutions invalidate derived views or registries. Track which
+classes of writes happened during the session (counters, not file lists):
+
+| Counter | Incremented by | Triggers in Step 9 |
+|---|---|---|
+| `constitution_writes` | principle-candidate accept (new file under `0_constitution/{type}/{domain}/`) | `/ztn:regen-constitution` |
+| `registry_writes` | person-identity (new profile + PEOPLE.md row), project-identity (PROJECTS.md), thread-closure (OPEN_THREADS.md), hub edits (`5_meta/mocs/`) | `/ztn:maintain` |
+| `content_pipeline_writes` | `content-pipeline-reminder` accept | suggest `/ztn:check-content` (do NOT auto-invoke — content review is a separate owner gesture) |
+
+These are surfaced + acted on by Step 9. The skill no longer leaves
+them as text suggestions in the round-close report.
 
 ---
 
@@ -375,7 +413,7 @@ git is the rollback mechanism.
 
 ## Step 8: Round Close + Continue
 
-Final report:
+Per-round report (printed after Step 7 each round, BEFORE Step 9):
 
 ```
 Раунд закрыт — тема: {type}
@@ -388,14 +426,86 @@ Final report:
 
 Осталось в очереди: {remaining} items в {remaining-themes} темах.
 
-{Class C suggestions, if any: «можно запустить /ztn:check-content для
-закрытия content-pipeline-reminder»}
-
 {If --continue passed: jump to Step 4 with refreshed counts.}
 {Else: «Запустить ещё круг? — `y` или укажи тему: …». Wait for owner.}
 ```
 
-If owner declines or queue is empty → release lock, exit clean.
+When the owner declines further rounds (or queue empties) → proceed to
+Step 9. Lock is held through Step 9 and released at the end.
+
+---
+
+## Step 9: Post-resolution refresh + save reminder
+
+Always runs after the rounds end (even pure defer/skip/dismiss sessions
+leave CLARIFICATIONS.md / ARCHIVE.md dirty and need a save reminder).
+Sub-steps gate independently on what actually happened.
+
+### 9.1 — Release lock first
+
+Delete `_sources/.resolve.lock` before any Step 9.2 / 9.3 invocation
+and before printing the save reminder. Two reasons:
+- `/ztn:save` checks `_sources/.resolve.lock` and refuses if held —
+  the owner running save next would hit a confusing abort.
+- Cleanliness — the session's writes are committed in CLARIFICATIONS.md
+  by Step 7 already; the lock has no further purpose.
+
+`/ztn:maintain` and `/ztn:regen-constitution` do NOT check
+`.resolve.lock` today, so the order of 9.1 vs 9.2/9.3 is not load-
+bearing for them — but releasing first keeps the invariant simple
+(no producer skill ever sees a stranded lock from this skill).
+
+### 9.2 — Constitution refresh
+
+Fires only if `constitution_writes > 0` and `--no-refresh` not passed.
+- Print: «Записал N новых принципов — обновляю constitution-core view…»
+- Invoke `/ztn:regen-constitution` inline.
+- On failure → print the skill's error verbatim, continue to 9.3 (don't
+  block other refreshes on one failure).
+
+### 9.3 — Registry / hub refresh
+
+Fires only if `registry_writes > 0` and `--no-refresh` not passed.
+- Print: «Тронул N registries / hubs — запускаю /ztn:maintain для
+  пересборки HUB_INDEX / INDEX / CONCEPTS…»
+- Invoke `/ztn:maintain --no-sync-check` inline (Step 0 already synced;
+  double-sync is wasteful and may surprise the owner with a second
+  rebase preview).
+- On failure → print the skill's error verbatim, continue.
+
+### 9.4 — Content pipeline reminder
+
+If `content_pipeline_writes > 0`:
+- Print suggestion only, do NOT auto-invoke: «можешь прогнать
+  `/ztn:check-content` — есть свежие content candidates».
+
+### 9.5 — Save reminder
+
+`/ztn:save` per its contract is **never auto-fired by other skills** —
+it stays an explicit owner gesture. This step only reminds, never
+invokes.
+
+Compute `git status --porcelain` to detect dirty files (any of:
+CLARIFICATIONS.md / ARCHIVE.md from Step 7, profile / record edits
+from Class B, regen / maintain outputs from 9.2 / 9.3).
+
+If dirty and `--no-save` not passed:
+```
+Сессия закрыта. Изменено файлов: <K>
+
+  Закоммить и пушни когда готов:
+    /ztn:save
+```
+If clean → print «Working tree clean — nothing to commit». Exit.
+
+### 9.6 — Final recap
+
+```
+Сессия завершена.
+  Резолюций: <closed>     Deferred: <M>     Dismissed: <K>
+  Refreshes: constitution=<y/n/skipped>  maintain=<y/n/skipped>
+  Working tree: <dirty K files | clean>
+```
 
 ---
 
@@ -431,11 +541,26 @@ If owner declines or queue is empty → release lock, exit clean.
 - **No re-render of stored blocks.** When archiving, the block markdown
   is copied verbatim plus a `**Resolution:**` line. Never normalise
   fields, never strip whitespace — preserves audit trail.
+- **Sync before review (`--no-sync` to opt out).** Reviewing a stale
+  queue wastes attention on items already resolved on another device.
+  Step 0 always fronts the session unless owner opts out explicitly.
+- **Refresh fires only on material writes.** Sub-steps 9.2 / 9.3 run
+  `/ztn:regen-constitution` / `/ztn:maintain` only when this session
+  produced principle accepts / registry edits respectively. Pure
+  defer/skip/dismiss sessions still trigger 9.1 (lock release) and
+  9.5 (save reminder) — the working tree is dirty either way.
+- **Save is never auto-invoked.** Step 9.5 prints a reminder; the
+  owner runs `/ztn:save` themselves. This preserves `/ztn:save`'s
+  contract («never auto-fired by other skills»).
+- **Lock released before any 9.2/9.3/9.5 step.** `/ztn:save` checks
+  `.resolve.lock` and would refuse if held; releasing in 9.1 keeps
+  the invariant simple regardless of which sub-steps fire.
 
 ---
 
 ## Output Files Touched
 
+Direct writes by this skill (Steps 1–8):
 - `_system/state/CLARIFICATIONS.md` — items removed / deferred-line appended
 - `_system/state/CLARIFICATIONS_ARCHIVE.md` — resolved blocks appended
 - `_sources/.resolve.lock` — created/deleted
@@ -445,6 +570,16 @@ If owner declines or queue is empty → release lock, exit clean.
 - `5_meta/mocs/{hub}.md` — open questions / current understanding edits when thread-closure
 - `_system/state/OPEN_THREADS.md` — thread state moves
 - `0_constitution/{type}/{domain}/{slug}.md` — principle accepts (creates only)
+
+Indirect writes via Step 9 chained skills:
+- `/ztn:sync-data` (Step 0) — `git fetch` + rebase / fast-forward against `origin`
+- `/ztn:regen-constitution` (Step 9.2) — `_system/views/constitution-core.md`,
+  `_system/SOUL.md` Values zone, `_system/views/CONSTITUTION_INDEX.md`
+- `/ztn:maintain` (Step 9.3) — `_system/views/HUB_INDEX.md`,
+  `_system/views/INDEX.md`, `_system/registries/CONCEPTS.md`, registry hygiene
+- `/ztn:save` (Step 9.5) — NOT invoked by this skill; reminder only,
+  owner runs explicitly per save's contract
+
 (Concept/audience format issues do NOT pass through this skill —
 autonomous resolution by `/ztn:lint` Scan A.7 handles them
 upstream. AUDIENCES.md Extensions table is owner-curated outside
@@ -453,14 +588,13 @@ the pipeline.)
 ## What This Skill Does NOT Do
 
 - Does not invent new ambiguities — only resolves what producers wrote.
-- Does not regenerate derived views — that is the producer skills' job.
-  Owner runs `/ztn:regen-constitution` manually if they edited
-  `0_constitution/` directly between sessions.
 - Does not edit principle bodies in `0_constitution/` (only creates new
   files on accept).
-- Does not invoke other skills — proposes follow-up commands; owner runs.
+- Does not invoke `/ztn:save` — Step 9.5 reminds, owner runs.
 - Does not reorder or rewrite open items beyond the deferred-line append.
 - Does not auto-resolve Class B without diff confirmation, even on
   unambiguous owner answers.
 - Does not back up CLARIFICATIONS.md before writing — git is the
   rollback mechanism.
+- Does not auto-invoke `/ztn:check-content` — content review is a
+  separate owner gesture; Step 9.4 only suggests it.

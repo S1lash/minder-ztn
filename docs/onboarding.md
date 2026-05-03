@@ -102,11 +102,16 @@ After bootstrap (and after every `/ztn:process`, `/ztn:lint`, or
 /ztn:resolve-clarifications
 ```
 
-The skill clusters open items by theme, presents one round at a time
-with full meeting context + verbatim quotes inline, pre-forms
-hypotheses against your constitution, and applies confirmed
-resolutions in place. Designed for offline-style review — you do not
-need to recall meeting context from memory; the skill reminds you.
+The skill pre-syncs against `origin` (so a queue resolved on another
+device doesn't waste your attention), clusters open items by theme,
+presents one round at a time with full meeting context + verbatim
+quotes inline, pre-forms hypotheses against your constitution, and
+applies confirmed resolutions in place. After your rounds it
+auto-refreshes derived views (`/ztn:regen-constitution` if you
+accepted principle candidates; `/ztn:maintain` if you touched
+registries / hubs) and reminds you to run `/ztn:save`. Designed for
+offline-style review — you do not need to recall meeting context from
+memory; the skill reminds you.
 
 ## 6. Save your work — `/ztn:save`
 

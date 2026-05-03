@@ -111,9 +111,12 @@ same prompt bodies. Ensure:
 The other half of the loop. Whatever happened overnight + during the
 day lands in CLARIFICATIONS by morning.
 
-1. `git pull` (or `/ztn:sync-data` if working from another device).
-2. `/ztn:resolve-clarifications` — walk through queue.
-3. `/ztn:save` (interactive, not `--auto`) — commit your resolutions.
+1. `/ztn:resolve-clarifications` — pre-syncs against `origin`, walks
+   you through the queue one theme at a time, refreshes derived views
+   (`/ztn:regen-constitution`, `/ztn:maintain`) when your resolutions
+   touched constitution / registries, and reminds you to save.
+2. `/ztn:save` (interactive, not `--auto`) — commit + push your
+   resolutions when the skill prompts you.
 
 That's it. The scheduler covers ingestion + slop-catching; you cover
 judgement + resolution.

@@ -4,8 +4,8 @@
 > the ZTN engine. Every skill (`/ztn:bootstrap`, `/ztn:process`,
 > `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`, `/ztn:agent-lens-add`,
 > `/ztn:capture-candidate`, `/ztn:check-decision`,
-> `/ztn:regen-constitution`, `/ztn:check-content`, `/ztn:source-add`)
-> reads this file as
+> `/ztn:regen-constitution`, `/ztn:check-content`, `/ztn:source-add`,
+> `/ztn:resolve-clarifications`) reads this file as
 > part of Step 1 / Load Context. It is symlinked
 > into `~/.claude/rules/ztn-engine-doctrine.md` by `install.sh` so it
 > auto-loads in every Claude Code session opened in this repo.
@@ -228,7 +228,13 @@ invoking it. `/ztn:capture-candidate` is fire-and-forget, no lock.
 `/ztn:agent-lens-add` does not acquire its own lock but respects
 `/ztn:agent-lens`'s lock at pre-flight (registry would race) and uses
 concurrent-edit detection (snapshot + re-validate) to defend against
-parallel owner-driven invocations of itself. Stale locks > 2 h are
+parallel owner-driven invocations of itself.
+`/ztn:resolve-clarifications` is owner-driven, takes its own
+`.resolve.lock`, reads the four pipeline locks at start, and pre-syncs
+via `/ztn:sync-data` (Step 0) so multi-device queues stay current.
+`/ztn:sync-data` and `/ztn:save` read `.resolve.lock` and refuse while
+a resolve session is in progress; the resolve skill's Step 9.1 releases
+the lock before reminding the owner to run save. Stale locks > 2 h are
 surfaced as warnings, never silently deleted.
 
 ### 3.5 Logs and audit trail
