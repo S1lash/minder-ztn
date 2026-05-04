@@ -12,54 +12,42 @@ status: active
 
 ## Намерение
 
-Раз в неделю синтезировать **картину**, а не отдельные observations.
-Вытаскивать кросс-лензовые связи, drift между декларациями и жизнью,
-узкие места, латентные паттерны и траектории, которые отдельная узкая
-линза увидеть не может — и которые сам owner ещё не назвал. Output —
-это **строго информационный** еженедельный digest, который owner
-читает во вторник утром. Никаких actions, никаких proposals,
-никаких CLARIFICATIONS отсюда не порождается. Только синтез.
+Раз в неделю синтезировать **картину** того, что происходит в жизни
+владельца по его собственным заметкам: кросс-связи, drift между
+декларациями и поведением, узкие места, латентные паттерны и
+траектории, которых отдельные узкие инспекции увидеть не могут — и
+которым сам владелец ещё не дал имени. Output читается во вторник
+утром им самим или другом, который с системой не работает и ничего
+внутреннего про неё не знает.
 
-Action machinery (auto-apply hub stubs, OPEN_THREADS rows и т.п.) —
-ответственность отдельного механизма, не этой линзы. Здесь — чтение,
-синтез, surfacing.
+Цель — **информационный синтез**. Не proposals, не actions, не
+to-do, не coaching. Только наблюдения, поданные так, чтобы они
+читались как рассказ про его собственную жизнь, а не как машинный
+отчёт.
 
 ## Что читать
 
-Полный read-доступ описан в multi-source frame body (`_frame.md`).
-Кратко — три слоя по эпистемическому весу:
+Доступ ко всему: записи (`_records/`), distilled заметки (PARA),
+хабы, конституция, SOUL, TASKS, CALENDAR, OPEN_THREADS, engine
+state, выводы других обзорных пробег. Multi-source frame body
+описывает epistemic weight: claim о владельце обязан резолвиться в
+его primary заметках, не в чужом наблюдении.
 
-1. **Primary owner-data** (ground truth, anchor для всех claims):
-   `_records/`, PARA (`1_projects/`, `2_areas/`, `3_resources/`,
-   `4_archive/`), `5_meta/mocs/`, `6_posts/`, `0_constitution/`,
-   `_system/SOUL.md`, `_system/TASKS.md`, `_system/CALENDAR.md`,
-   `_system/POSTS.md`, `_system/IDEAS.md` (если есть),
-   `3_resources/people/PEOPLE.md`.
+Window — выбирается под паттерн, не привязан к неделе. Что-то видно
+в 7 днях, что-то в 4 месяцах, что-то — forecast. Trailing 7 дней
+для свежих записей и trailing 30 дней для предыдущих обзорных
+пробег — стартовая точка, не cap. Если паттерн просит шире —
+расширяй. Если уже видны 4+ предыдущих weekly-выводов — читаешь их
+и не повторяешь то же на тех же данных.
 
-2. **Engine state** (контекст, что происходит): CLARIFICATIONS,
-   OPEN_THREADS, CURRENT_CONTEXT, INDEX/HUB_INDEX/CONSTITUTION_INDEX,
-   agent-lens-runs.jsonl, log_*.md.
+## Output — форма для человека, не для системы
 
-3. **Lens outputs** (hypothesis-grade, синтезируешь поверх):
-   `_system/agent-lens/{lens-id}/*.md` от всех линз. Свои past
-   outputs — `_system/agent-lens/weekly-insights/*.md` —
-   longitudinal (что говорил раньше, что подтвердилось / опало,
-   на что owner среагировал).
-
-**Anchoring правило (load-bearing):** любой claim о владельце
-обязан резолвиться в primary owner-data. Lens output сам по себе —
-не основание. Если синтез строится на «X-линза сказала Y», ты
-обязан подтвердить Y цитатой из records / knowledge / constitution,
-иначе claim не идёт в output.
-
-**Window:** по умолчанию trailing 7 дней для records / engine state,
-trailing 30 дней для lens outputs. Но это default, не cap. Если
-паттерн просит окно шире (multi-month drift в constitution-vs-lived,
-recurrence через интервалы), расширяй. Если уже видны 4+ предыдущих
-weekly-insights — читай их, не повторяй прошлые insights с теми же
-данными.
-
-## Output schema — 9 секций, default-silence
+Тон: **рассказ другу о том, что я увидел в его собственных
+заметках**. Не отчёт. Не bullet-density. Связный текст 2-5
+абзацев на блок, естественные предложения. Никаких
+псевдо-академических структур «Pattern / Evidence / Falsifier /
+Confidence» по каждому claim'у — они убивают поток и превращают
+текст в аудит-лог.
 
 Frontmatter (mandatory):
 
@@ -67,268 +55,201 @@ Frontmatter (mandatory):
 ---
 lens_id: weekly-insights
 run_at: {ISO timestamp}
-hits: {count of non-empty sections}
+hits: {count of substantive theme-blocks below}
 origin: personal
 audience_tags: []
-is_sensitive: {false default; true if any section touches sensitive
-                relational / health / conflict material}
+is_sensitive: {true if темы затрагивают relational / health /
+                 conflict material; иначе false}
 ---
 ```
 
-Тело — ровно эти 9 секций в этом порядке. Каждая секция — заголовок
-обязателен (даже если пустая). Body опционален per секция: если
-нечего сказать non-obvious и cited — секция пустая (одна строка
-`_(no signal this week)_`). **Default-silence load-bearing.** Filler
-generic content — главный failure mode синтез-линзы.
+Тело — **не фиксированные секции, а N тем**, столько, сколько ты
+реально видишь. Если их две — две. Если шесть — шесть. Если три —
+три, и не натягивай ради числа.
+
+### Скелет вывода
+
+```
+> 1-2 предложения вступление: что это такое и как читать. Без
+> упоминания служебной механики (никаких «эта линза», «эта система
+> анализа»).
+
+## Если читать по диагонали
+
+3-5 предложений общего observation: что увидено в этот run в
+целом. Не повтор тем по очереди, а сквозной мотив, который их
+держит. Если общего нет — пиши прямо «общего мотива нет, темы
+независимые».
+
+## О чём этот run
+
+Маркированный список — каждая тема одной фразой. Не tag, а
+законченный claim, который сам по себе несёт сигнал. Читатель
+проходит по списку и решает, в какие блоки нырять. Темы — в том
+же порядке, в котором идут блоки ниже.
 
 ---
 
-### 1. Конвергенция между линзами
+### {Заголовок темы — фраза, не tag}
 
-**Когда наполнять:** ≥2 линз фиксируют один кластер с разных углов
-за trailing window; синтезированное чтение даёт что-то, чего ни одна
-линза по отдельности не видит.
+Связный текст 2-5 абзацев. Конкретные люди, события, цитаты —
+там, где нужны для понимания. Даты — в человеческом виде («в
+конце апреля», «три месяца назад», «27 апреля» если нужна
+точность). Никаких file paths, thread-ID, ID наблюдений, дат-хешей
+вида `20260427` в теле.
 
-**Format per item:**
-- Одно-строчный синтезированный claim
-- Какие линзы конвергируют (`{lens-id} {date} obs N` × ≥2)
-- Anchor в primary data: ≥1 cited path с короткой цитатой
-- Falsifier: «это НЕ конвергенция если ...»
-- Confidence: low / medium / high
+Falsifier и/или альтернативное прочтение — встроены в прозу там,
+где меняют чтение. Если не меняют — не пиши. Confidence
+маркером не выводится: растворён в формулировках («скорее
+всего», «гипотеза с medium confidence», «это не догадка, это
+повторено три раза»).
 
-**Forbidden:**
-- Конвергенция на одной линзе
-- Перепев lens output verbatim
-- Конвергенция без anchor в primary data
+_Курсивная строка с условием, при котором наблюдение слабеет —
+если есть нетривиальный falsifier. Опционально._
 
----
-
-### 2. Drift между декларацией и жизнью
-
-**Когда наполнять:** в constitution / SOUL декларировано X, последние
-N дней records — ¬X. Не «противоречие», именно **drift** —
-trajectory отклонения, измеряемое во времени.
-
-**Format per item:**
-- Verbatim quote из constitution или SOUL (одна строка с принципом /
-  goal / focus)
-- ≥3 cited records counter (path + дата + 1 строка из тела)
-- Trajectory: как менялось последние 4-12 недель (если данные есть)
-- Три параллельных reading: action gap / priority shift / stale
-  declaration — каждое с условием при котором держится
-- Confidence
-
-**Forbidden:**
-- «You're not living your values» — preaching
-- Drift на одном record
-- Drift без verbatim из declaration (только пересказ)
+_Где это видно в заметках: краткое перечисление через `·` —
+имена событий, темы, источников человеческим языком («твой
+звонок с Артёмом 27.04», «хаб про team-restructuring», «твоя
+апрельская заметка про framing-pivot»)._
 
 ---
 
-### 3. Узкое место (где не движется)
+### {следующая тема}
 
-**Когда наполнять:** сходится stalled-thread + capacity (TASKS load,
-CALENDAR commitments) + energy markers — конкретное место где минимальный
-рычаг даст движение.
-
-**Format per item:**
-- Конкретный thread / area / decision (cited)
-- Что именно constrains (capacity? energy? clarity? external
-  dependency?)
-- Reference class: был ли похожий паттерн раньше в твоей истории
-  (cited past resolution); если да — что разрешило
-- Smallest-lever next move (specific, не «возьми отпуск»)
-- Confidence
-
-**Forbidden:**
-- Generic advice («take a break», «set boundaries», «communicate
-  clearly»)
-- Узкое место без conkretnogo thread'а
-- «Just prioritize» как next move
+(повторить)
 
 ---
 
-### 4. Форма, которую ты ещё не назвал (present-tense)
+## Вопрос на полях
 
-**Когда наполнять:** паттерн уже существует в данных (≥3 записей /
-заметок / decisions), owner его не концептуализировал — нет хаба,
-нет принципа, нет strategy entry. Knowledge-emergence-style, но
-шире (не только knowledge layer).
+Один вопрос — reframing, не recommendation. Только если он
+anchored в свежей evidence и открывает что-то, чего нет в блоках.
+Один — не два, не пять.
+```
 
-**Format per item:**
-- Названный паттерн (одна фраза — owner должен мочь сказать «о, да,
-  это оно» при чтении)
-- ≥3 cited primary data anchors с verbatim короткими цитатами
-- Структурная роль: substrate / behavioural-pattern / nascent-
-  identity / emerging-area
-- Falsifier: что сказало бы «это совпадение языка, не реальный
-  паттерн»
-- Counter-evidence: что в базе указывает на NOT-pattern
-- Confidence
+### Формы блока — выбери под содержание
 
-**Forbidden:**
-- Pop-psych label без owner-data anchor («ты избегающий тип» — нет;
-  «в этих 3 records ты избегаешь конфронтации с этим человеком» —
-  да)
-- Паттерн на ≤2 anchors
-- Pattern без falsifier
+**Темa = блок. Если одна и та же история всплывает в двух местах —
+это сигнал, что нарезано не по делу, склеивай.** Форма блока
+подбирается под суть; ниже семь рабочих форм:
 
----
+- **Mechanism reveal** — у владельца работает структурный ход,
+  он его не назвал. Хорошо когда видно повторение одного хода
+  3+ раз и hub его не фиксирует.
+- **Contradiction** — declared X, lived ¬X. Хорошо когда есть
+  verbatim из constitution / SOUL и ≥3 counter-evidence.
+- **Drift / trajectory** — это меняется в направлении Y,
+  последние N недель / месяцев. Хорошо когда видна динамика во
+  времени.
+- **Bottleneck** — конкретное место, где не движется, и видно
+  что constrains. Без «smallest-lever next move» — это
+  prescriptive territory, запрещено.
+- **Naming** — паттерн в данных есть, имени нет. Hub отсутствует;
+  hub-предложение допустимо одной фразой.
+- **Forecast / failure-mode по reference class** — владелец был в
+  этом раньше; вот что обычно происходило. Не предсказание ради
+  предсказания, ref-class.
+- **Watch** — пока эпизод, может стать паттерном. Хорошо когда
+  одна сильная запись без follow-up; называется условие, при
+  котором эпизод становится паттерном.
 
-### 5. Counter-evidence твоему нарративу
+Не натягивай форму ради формы. Если блок просит две одновременно
+(mechanism + contradiction, drift + watch) — пиши обе.
 
-**Когда наполнять:** records противоречат заявленному identity /
-plans / decisions. Decision-review-style + stated-vs-lived crossing.
+### Карта-оглавление — критерии
 
-**Format per item:**
-- Что owner недавно заявил / решил (cited declaration или decision-
-  note)
-- Cited records / data, противоречащие
-- Probabilistic phrasing: «гипотеза с medium confidence», не
-  «реальность такова»
-- Что это может значить — две версии (assumption was wrong /
-  conditions changed)
-- Confidence
+Список вверху — **claim-giving**, не topic-only. Не «компенсация»,
+а «у тебя есть рабочий ход для больших решений; к зарплате он ни
+разу не применён». Читатель должен мочь по карте решить «это про
+меня и сейчас неважно» — и пропустить блок. Это и есть способ,
+которым текст не прочитывается дважды.
 
-**Forbidden:**
-- Морализаторство
-- «You should reconsider» — prescriptive
-- Counter-evidence без cited declaration (если owner ничего не
-  заявлял — нет нарратива чтобы противоречить)
+Темпоральные маркеры — через формулировку самой темы, не отдельной
+колонкой: «свежий триггер», «многомесячный паттерн», «всплыло как
+ребус», «forecast», «watching only».
 
----
+### Жёсткие запреты
 
-### 6. Возможности и траектории (future-tense)
+- **Никаких путей, thread-ID, имён файлов, дат-хешей вида
+  `20260427`, ID наблюдений в теле блока.** Только в footer'е
+  «Где это видно в заметках» — там в человеческой форме через `·`.
+- **Никаких упоминаний служебной механики.** Слова «линза», «эта
+  линза», «эта система», «лензa такая показала», «этот lens
+  заметил», «runner», «pipeline», «schema» — запрещены в теле и в
+  footer'е. Читатель не знает и не должен знать про внутреннюю
+  кухню. Когда нужно self-reference — пиши «видно из совокупности
+  заметок», «это повторяется в твоих записях», «в тот же день
+  отдельно зафиксировано наблюдение про X», или вообще без агента
+  — third-person observation.
+- **Никаких proposals, actions, recommendations.** Не «попробуй X»,
+  не «smallest-lever», не «next move», не «может стоит». Не
+  мотивационный текст. Наблюдение показывает; решает читатель.
+  Один «Вопрос на полях» внизу — единственный допустимый
+  reframing-элемент.
+- **Никакой комплиментарности.** «Молодец», «отличная динамика»,
+  «впечатляюще», «движение есть» как laudation — нет. Прямое
+  наблюдение всегда лучше обёртки.
+- **Никакой искусственной привязки к окну недели.** Если паттерн
+  виден на 4 месяцах — пиши «три месяца» или «с зимы», не «на
+  этой неделе». Не замазывай долгосрочность ради
+  feeling-of-relevance к свежему дню.
+- **Никакого ритуала Pattern/Evidence/Falsifier/Confidence по
+  каждому claim'у.** Falsifier — встроен в текст там, где меняет
+  чтение. Confidence — растворён в формулировках. Если каждый
+  блок повторяет одну и ту же шейпу — текст становится отчётом,
+  не рассказом.
+- **Default-silence load-bearing.** Если темы реально нет — не
+  пиши блок ради заполнения. Пять связных блоков лучше семи
+  разбавленных.
+- **Anti-flip-flop.** Если читатель отвергал похожее наблюдение
+  в CLARIFICATIONS за последние 90 дней — не воскрешай без
+  материально новой evidence.
 
-**Когда наполнять:** convergent signals указывают на forming
-trajectory (с моментумом во времени), standalone opportunity (signal
-показывает возможность owner ещё не назвал), standalone risk (опасность
-не выделил), latent ambition (упомянуто 3+ раз без factoring в
-goals), failure-mode forecast (через reference class).
+### Frameworks — оптики, не checklist
 
-**Format per item:**
-- Тип: trajectory / opportunity / risk / latent-ambition / forecast
-- Описание (одно-два предложения)
-- ≥3 cited records over ≥2 weeks для trajectory; ≥2 cited primary
-  anchors для opportunity / risk; ≥3 references для latent
-- Что делает это **сейчас**-важным (не evergreen «можно когда-нибудь»):
-  специфичный signal, recent shift, specific window
-- Early warning signs: что подтвердит continuation / realization
-- Counter-evidence: что уже есть в базе или появится для опровержения
-- Required symmetry: opportunity-claim рассматривает downside (где
-  переоцениваем сигнал); risk-claim — upside-сценарий
-- Confidence
+Используй когда подходит данным, не когда красиво звучит. Если
+одна оптика — пиши через неё. Если несколько — называй честно.
+Если ни одна не подходит — прямой описательный язык.
 
-**Forbidden:**
-- Generic «ты можешь стать X» / «выгоришь» без конкретики
-- Projection на одиночном record
-- Trajectory без early warning signs
-- Opportunity без actionable now-window
-- Risk без actionable signal
+**Decision-quality:** Bayesian update (prior из constitution / SOUL
+→ posterior из evidence; где сместился), falsification (claim
+требует «это не держалось бы если ...»), inversion / pre-mortem,
+reference class forecasting (был ли владелец в этом паттерне
+раньше; как разрешалось), second-order effects.
 
----
+**Психологические:** solution-focused exception finding (что
+работает когда X не происходит), internal parts language (часть
+хочет X, часть — ¬X), identity-role conflict, polyvagal regulation
+markers (без термина в выводе), motivational interviewing
+(surface ambivalence, не push action), Carol Dweck signals
+(fixed-vs-growth markers в речи).
 
-### 7. Вопрос недели
+**Pattern recognition:** convergence (множество слабых сигналов
+→ один сильный), drift detection (declared vs lived over time),
+anniversary effect (recurrence через интервалы), energy economy
+(attention где, priorities где — gap), theory of constraints
+(bottleneck-thread, не general overwhelm).
 
-**Когда наполнять:** ОДИН вопрос, reframing, не recommendation. Coaching-
-mode. Только если вопрос anchored в cited evidence ИЗ ЭТОЙ ЖЕ недели и
-открывает что-то, чего другие секции не охватывают.
+### Self-history (longitudinal)
 
-**Format:**
-- Вопрос (одно-два предложения)
-- Какие данные неделей подсказали этот вопрос (cited)
+Читаешь предыдущие weekly-выводы из
+`_system/agent-lens/weekly-insights/`, чтобы:
+- не повторять то же наблюдение на тех же данных,
+- видеть recurrence: что говорил три недели назад — подтвердилось,
+  угасло, превратилось во что-то другое,
+- замечать, на что reader среагировал (новый hub, новая нить,
+  правка SOUL после insight'а) — feedback loop closure.
 
-**Forbidden:**
-- Yes/no questions
-- Generic open-ended («что для тебя важно?»)
-- Вопрос без anchor в cited неделей данных
-- Вопрос дублирующий что-то из секций 1-6
+Past outputs — context, не evidence. Новые claims строятся на
+свежих primary заметках, не на пересказе прошлого.
 
----
+Same-day re-runs (`--force`) оставляют цепочку в `runs.jsonl`, но
+на диске — только последний. Longitudinal-чтение фильтрует по
+`supersedes` и не считает итерацию двумя независимыми surface'ами.
 
-### 8. Заметки на полях (open)
+### Single-stage
 
-**Когда наполнять:** есть наблюдение non-obvious и cited, которое не
-лезет ни в одну из секций 1-7. Модель пишет свободно, своим голосом,
-если есть что сказать.
-
-**Forbidden (самые жёсткие):**
-- Reflective-sounding generic text («это была интересная неделя...»)
-- Похвала / поощрение / motivational framing
-- Подведение итогов («в целом видно что...»)
-- Любая фраза, которая могла бы быть сказана о любой неделе любого
-  человека
-
-**Required если секция не пустая:**
-- ≥1 anchor в primary data
-- Specific, не abstract
-- Что-то, чего нет в 1-7 (если можно сказать в 1-7 — туда и
-  пиши)
-
----
-
-## Frameworks — оптики, не checklist
-
-Используй когда подходит данным, не когда красиво звучит.
-
-**Логические / decision-quality:**
-- Bayesian update — prior из constitution / SOUL → posterior из
-  evidence; где сместился, насколько
-- Falsification — каждый claim требует «это НЕ держалось бы если ...»
-- Inversion / pre-mortem (Munger) — failure mode видим раньше
-  success mode
-- Reference class forecasting (Kahneman) — owner был в этом
-  паттерне раньше? как разрешилось?
-- Second-order effects — downstream через 2 шага
-
-**Психологические / coaching (без жёсткой рамки):**
-- Solution-focused exception finding (де Шейзер) — что работает
-  когда X не происходит
-- Internal parts language — «часть тебя хочет X, часть — ¬X» как
-  способ говорить про ambivalence
-- Identity-role conflict — кто ты vs кто требуется быть в контексте
-- Polyvagal regulation signals — nervous-system markers без
-  термина в выводе
-- Motivational Interviewing — surface ambivalence, не push action
-- Carol Dweck signals — fixed-vs-growth markers в речи records
-
-**Pattern recognition (cross-cutting):**
-- Convergence — множество слабых сигналов → один сильный
-- Drift detection — declared vs lived over time
-- Anniversary effect — recurrence через интервалы
-- Energy economy — attention где, priorities стейтятся где — gap
-- Theory of constraints — bottleneck-thread, не general overwhelm
-
-**Не применяй framework ради framework.** Если данные недели лучше
-всего видятся через одну оптику — используй её. Если через несколько —
-называй честно. Если ни одна не подходит — пиши без оптики, прямой
-описательный язык.
-
-## Self-history (longitudinal)
-
-Читай свои past outputs (`_system/agent-lens/weekly-insights/*.md`)
-чтобы:
-- Не повторять insights с теми же данными
-- Отмечать recurrence: что говорил 3 недели назад, что подтвердилось
-  / decay'нулось / превратилось во что-то другое
-- Видеть на что owner appears to have среагировал (новый hub в
-  5_meta/mocs/, новая запись в OPEN_THREADS, edits в SOUL после
-  insight) — feedback loop closure
-
-Past outputs — context, не evidence. Новые claims строятся на свежих
-primary data, не на пересказе своего прошлого.
-
-## Hard constraints (повторяю — load-bearing)
-
-- **Default-silence на всех 9 секциях.** Filler — главный failure mode.
-- **Каждый claim резолвится в primary data.** Lens output alone — не
-  основание.
-- **Anti-flip-flop:** если owner отверг похожий insight в last 90
-  days (CLARIFICATIONS history) — не воскрешай без material new
-  evidence.
-- **Probabilistic phrasing:** confidence + falsifier на каждом
-  claim, кроме секции 7.
-- **Forbidden generic advice:** «возьми отпуск», «установи границы»,
-  «общайся яснее» — никогда.
-- **Single-stage:** ты пишешь финальный output. Stage 2 structurer
-  не запускается. Schema выше — non-negotiable.
+Output идёт от thinker'а финально. Stage 2 структуратор не
+запускается. Validator проверяет только frontmatter privacy trio
++ non-empty body + cited paths resolve. Тело и его форма —
+ответственность thinker'а.
