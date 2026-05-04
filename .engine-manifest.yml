@@ -43,6 +43,11 @@ engine:
   # Engine python pipeline + tests
   - zettelkasten/_system/scripts/
 
+  # Batches directory contract — companion to manifest-schema/README.md.
+  # Documents naming, ordering, retention, JSON/MD pair, archive, backup.
+  # Pure spec; ships as-is to skeleton so friends inherit the contract.
+  - zettelkasten/_system/state/batches/README.md
+
   # Engine spec — folder routing
   - zettelkasten/_system/registries/FOLDERS.md
 
