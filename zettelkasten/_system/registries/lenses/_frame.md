@@ -26,6 +26,43 @@ decoupled:
 This decoupling is the design's main tradeoff: cost of two LLM calls in
 exchange for thinker freedom. Worth it for this use case.
 
+**Output schema modes** — controlled by `output_schema` lens-frontmatter
+field:
+
+- `output_schema: standard` (default; existing lenses) — Stage 2 reformats
+  thinker output to the canonical `## Observation N` schema below.
+  Validator enforces that schema.
+- `output_schema: synthesis-custom` — for synthesis lenses where the
+  output shape is integral to analytical work (multi-section digest with
+  per-section guards, e.g. `weekly-insights`). The lens prompt carries
+  its own schema body. **Stage 2 is skipped**: the thinker writes
+  directly to the schema described in the lens prompt. Validator does
+  not enforce `## Observation N`; it checks frontmatter privacy trio +
+  non-empty body. The lens prompt owns its own internal compliance
+  guards (default-silence per section, anti-eye-roll constraints, etc.)
+  because for synthesis lenses the format-vs-thinking tension is
+  reversed: the schema IS the analytical work, so thinker is told it
+  upfront and must respect it.
+
+The two modes coexist; existing lenses continue under `standard`
+unchanged.
+
+**Input type modes** — controlled by `input_type` lens-frontmatter field.
+Three values:
+
+- `input_type: records` — primary-source input; lens reads the ZTN base
+  directly (records, knowledge, hubs, constitution, system). Stage 1
+  uses the base-input frame body below.
+- `input_type: lens-outputs` — meta-lens reads other lenses' outputs as
+  a status page. Hard constraint against body-citation (described in
+  the lens-outputs frame body). Used by `global-navigator`.
+- `input_type: multi-source` — synthesis lens reads BOTH the ZTN base
+  AND lens outputs, with permission to synthesize across them. Used by
+  synthesis lenses like `weekly-insights`. Stage 1 uses the multi-source
+  frame body below. Anchoring constraint applies: every claim about the
+  owner MUST resolve back to primary owner-data, not a lens output
+  alone.
+
 ---
 
 ## Stage 1 — Thinker prompt (base-input variant)
@@ -205,6 +242,86 @@ You may write in free form. The structurer will reformat.
 
 ---
 
+## Stage 1 — Thinker prompt (multi-source-input variant)
+
+For synthesis lenses with `input_type: multi-source`. They read both the
+primary owner-data AND other lenses' outputs, with permission to
+synthesize across them — that is the whole purpose. Used by
+`weekly-insights`.
+
+```
+You are an outside observer of a single person's structured personal
+knowledge base (ZTN). You exist to make observations the owner may
+not make themselves — patterns, gaps, drifts, recurring loops, latent
+connections, possible trajectories, opportunities and risks they have
+not yet named — by synthesizing across what is in the base.
+
+Read access is provided to the entire ZTN base AND to recent outputs
+of other agent-lenses. Use this scope deliberately. Three layers of
+input, with different epistemic weight:
+
+  Primary owner-data (treat as ground truth — every claim about the
+  owner MUST resolve back to one of these):
+    _records/                       — raw stream
+    1_projects/, 2_areas/,
+      3_resources/, 4_archive/      — distilled knowledge (PARA)
+    5_meta/mocs/                    — hubs (synthesis layer)
+    6_posts/                        — external narrative
+    0_constitution/                 — values (axioms / principles / rules)
+    _system/SOUL.md                 — identity / focus / working style
+    _system/TASKS.md, CALENDAR.md,
+      POSTS.md                      — operational layers
+    _system/IDEAS.md (if present)   — idea registry
+    3_resources/people/PEOPLE.md    — relationship map
+
+  Engine state (context for what is happening across the system):
+    _system/state/CLARIFICATIONS.md — open + recently resolved items
+    _system/state/OPEN_THREADS.md   — strategic open threads
+    _system/views/CURRENT_CONTEXT.md — current focus snapshot
+    _system/views/INDEX.md, HUB_INDEX.md, CONSTITUTION_INDEX.md
+    _system/state/agent-lens-runs.jsonl — lens run history
+    _system/state/log_*.md          — process / lint / maintenance / agent-lens
+
+  Other lenses' outputs (treat as HYPOTHESES, not facts about the owner):
+    _system/agent-lens/{lens-id}/*.md — recent outputs from all lenses
+    You MAY synthesize across them — that is the whole purpose of this
+    lens. You MAY cite their bodies as starting points for synthesis.
+    BUT: every claim about the owner MUST resolve back to primary
+    owner-data. A lens output alone is hypothesis-grade — anchor any
+    claim in primary sources, not in another lens's hypothesis.
+
+  Your own past outputs (longitudinal self-history):
+    _system/agent-lens/{your-lens-id}/*.md — your prior runs
+    Read these to track evolution: what you observed before, what
+    held vs decayed, what owner appears to have acted on, what is
+    recurrent vs new this run.
+
+You decide what to read in any given run. Not everything every time —
+choose what is relevant to this week's data. If a pattern asks for
+deeper inspection, follow the thread. If nothing rises to insight,
+say so plainly per section.
+
+The lens prompt that follows contains:
+  - The output schema (section structure) — non-negotiable, write
+    directly to it
+  - Per-section anti-eye-roll guards (default-silence on empty,
+    forbidden generic content, required falsifiers, etc.)
+  - Reading scope and analytical hints
+
+For synthesis lenses there is NO separate structurer pass. You write
+the final output. Respect the schema and the guards exactly. The
+schema is the analytical work — choosing which section a finding
+belongs in is part of the thinking.
+
+Default-silence is load-bearing. If a section has nothing non-obvious
+and cited, write the section header and leave the body empty (or with
+a one-line `(no signal this week)` marker). Filling sections with
+generic-sounding content is the worst failure mode of a synthesis
+lens.
+```
+
+---
+
 ## Self-history — per-lens, no default
 
 Each lens MUST state its self-history stance explicitly in its
@@ -234,6 +351,11 @@ longitudinal | lens-decides`.
 ---
 
 ## Stage 2 — Structurer prompt
+
+**Applies only to lenses with `output_schema: standard`** (the default —
+all current lenses except synthesis ones). Synthesis lenses skip this
+stage entirely; the thinker writes the final output directly per the
+schema in the lens prompt.
 
 The structurer takes the Stage 1 output plus the lens metadata and
 produces the canonical file. Runs as a separate LLM call.
@@ -324,7 +446,33 @@ Output the structured file content only. No commentary, no preamble.
 
 ## Stage 3 — Validator (structural, deterministic)
 
-Runs after the structurer. Checks form, not content. Pass conditions:
+Runs after the structurer (or after Stage 1 for `output_schema:
+synthesis-custom`). Checks form, not content.
+
+**Branch on `output_schema`:**
+
+For `output_schema: synthesis-custom` (synthesis lenses), the validator
+applies a relaxed check:
+
+- Frontmatter parses; contains `lens_id`, `run_at`, `hits` (integer ≥ 0;
+  semantics owner-defined per lens — e.g. `weekly-insights` uses
+  `hits = count of non-empty sections`)
+- Privacy trio present and well-formed (`origin`, `audience_tags`,
+  `is_sensitive`) — same rules as standard schema
+- Body is non-empty (≥1 non-whitespace line outside frontmatter)
+- Cited paths that look like ZTN paths MUST resolve to existing files
+  (same rule as standard)
+
+The validator does NOT enforce `## Observation N` structure, the
+four-line evidence block, or any specific section names. The lens
+prompt owns its internal compliance — section structure, default-
+silence, anti-eye-roll guards are the thinker's responsibility. Owner
+is the final reviewer.
+
+For `output_schema: standard` (all other lenses), the full check
+below applies.
+
+Standard pass conditions:
 
 - Frontmatter parses; contains `lens_id`, `run_at`, `hits` (integer ≥ 0)
 - Privacy trio present and well-formed (ENGINE_DOCTRINE §3.8):

@@ -288,10 +288,12 @@ For each lens row in scope (Active for `--all-due`; Active+Draft for
    remainder alphabetically). Parse frontmatter from `prompt.md`.
 4. Required fields: `id`, `name`, `type`, `input_type`, `cadence`,
    `cadence_anchor`, `self_history`, `status`. Missing any → skip
-   with registry-error.
+   with registry-error. `output_schema` is OPTIONAL and defaults to
+   `standard` when absent.
 5. Validate field values:
    - `type` ∈ {mechanical, psyche, meta}
-   - `input_type` ∈ {records, lens-outputs}
+   - `input_type` ∈ {records, lens-outputs, multi-source}
+   - `output_schema` ∈ {standard, synthesis-custom} (default: standard)
    - `cadence` ∈ {daily, weekly, biweekly, monthly}
    - `cadence_anchor` consistent with `cadence` (weekly/biweekly →
      day-of-week; monthly → day-of-month 1-28; daily → "daily" or
@@ -335,10 +337,14 @@ nothing valid will be retried on next due-day.
 
 Sort the due list:
 1. `input_type == records` first (in registry order)
-2. `input_type == lens-outputs` last (in registry order)
+2. `input_type == lens-outputs` middle (in registry order)
+3. `input_type == multi-source` last (in registry order)
 
-Rationale: meta-lenses read other lenses' outputs from the current
-run, so non-meta must complete first within the same tick.
+Rationale: meta-lenses (`lens-outputs`) read other lenses' outputs
+from the current run, so non-meta must complete first within the
+same tick. Synthesis lenses (`multi-source`) read both primary
+data AND lens outputs (including meta-lens outputs like
+global-navigator), so they run last.
 
 ---
 
@@ -441,12 +447,19 @@ corrupt by construction. Tradeoffs:
 - ❌ Bursty rate-limit usage; risk of provider throttling
 - ❌ Meta-lenses (`input_type: lens-outputs`) MUST still wait for all
   non-meta lenses to complete (otherwise they read partial state)
+- ❌ Synthesis lenses (`input_type: multi-source`) MUST wait for both
+  non-meta and meta lenses to complete — they read both primary data
+  and other lenses' outputs (including meta-lens outputs from this
+  same tick)
 
-Default: **sequential, in registry order**. Parallelism is opt-in via
+Default: **sequential, in registry order respecting Step 4 ordering
+(records → lens-outputs → multi-source)**. Parallelism is opt-in via
 a future runner flag (not implemented today). Spec it here so the
 isolation contract is unambiguous when the flag lands: parallel
-batching applies only to non-meta lenses, never crosses the meta
-barrier, and each call still satisfies §§4.5.1-4.5.5.
+batching applies only within each `input_type` cohort, never crosses
+the cohort barrier (records cohort completes → lens-outputs cohort
+completes → multi-source cohort completes), and each call still
+satisfies §§4.5.1-4.5.5.
 
 ---
 
@@ -461,6 +474,9 @@ Concatenate, in order:
 1. Stage 1 frame body for `input_type` (extracted from `_frame.md`):
    - `records` → base-input variant (lens prompt scopes which layer is primary)
    - `lens-outputs` → lens-outputs-input variant
+   - `multi-source` → multi-source-input variant (synthesis lenses; lens
+     prompt carries its own output schema, written directly without
+     Stage 2 reformat)
 2. Lens folder content (prompt.md first, other `*.md` alphabetically)
 3. Self-history hint (depends on `self_history` value):
    - `fresh-eyes` → frame mentions: «do not read your own past outputs»
@@ -491,7 +507,8 @@ no subagent.
 Invoke primary LLM (Opus or equivalent) with:
 - **System prompt** = `_frame.md` Stage 1 body for the lens's
   `input_type` — base-input variant for `records`, lens-outputs
-  variant for `lens-outputs`. Exact text, nothing prepended/appended.
+  variant for `lens-outputs`, multi-source-input variant for
+  `multi-source`. Exact text, nothing prepended/appended.
 - **User message** = assembled lens prompt from Step 5.1 (lens folder
   content + self-history hint).
 - **Tool access** = read-only filesystem tools across the ZTN base.
@@ -509,6 +526,21 @@ LLM error (timeout, API failure, refusal):
   next lens.
 
 ### 5.3 Stage 2 — Structurer call
+
+**Branch on `output_schema`:**
+
+- `output_schema: standard` (default; existing lenses) — execute
+  Stage 2 structurer call as below.
+- `output_schema: synthesis-custom` — **SKIP this step entirely.**
+  Thinker output from Step 5.2 is the final artefact; it is treated
+  as if it had passed through structurer unchanged. Proceed directly
+  to Step 5.4 with the thinker output as the structured artefact.
+  Rationale: synthesis lenses carry their own output schema in the
+  lens prompt and the thinker writes directly to it — running a
+  structurer pass would either duplicate work or risk reformatting
+  away analytical structure the thinker chose deliberately.
+
+For `output_schema: standard`:
 
 **Isolation contract: see Step 4.5.** Separate API call from Stage 1,
 NOT a continuation. Thinker output is INPUT TEXT, not conversation.
@@ -529,7 +561,17 @@ LLM error:
 
 ### 5.4 Validator (structural, deterministic)
 
-Validator rules canonical in `_frame.md` Stage 3. Apply them as-is.
+Validator rules canonical in `_frame.md` Stage 3. Apply the branch
+matching the lens's `output_schema`:
+
+- `output_schema: standard` → full canonical-schema validation
+  (frontmatter privacy trio, `## Observation N` structure with
+  Pattern / Evidence / Alternative reading / Confidence, cited path
+  resolution).
+- `output_schema: synthesis-custom` → relaxed validation (frontmatter
+  privacy trio + `lens_id` + `run_at`, non-empty body, cited ZTN
+  paths resolve to existing files). The lens prompt owns its internal
+  section structure; runner does not enforce it.
 
 **Pass:**
 - Write output to `_system/agent-lens/{lens-id}/{YYYY-MM-DD}.md`.

@@ -1,6 +1,6 @@
 # Agent Lenses Registry
 
-**Last Updated:** 2026-05-02 (knowledge-emergence lens activated, weekly Saturday; energy-pattern + global-navigator cadence_anchor sun→mon for clean Mon-Sun calendar week; lint D.4 hub-stale-vs-material + A.6 INDEX heartbeat added)
+**Last Updated:** 2026-05-04 (weekly-insights synthesis lens added as draft, weekly Monday; multi-source input_type and synthesis-custom output_schema introduced in `_frame.md`)
 
 Registry of agent-lens definitions. Each row points to a folder under
 `_system/registries/lenses/{id}/` containing the lens prompt and any
@@ -29,7 +29,8 @@ cadence under `/ztn:agent-lens`.
 | `id` | kebab-case slug | matches folder under `lenses/` and output dir |
 | `name` | human title | shown in navigator |
 | `type` | `mechanical` / `psyche` / `meta` | flavour — informs review cadence |
-| `input_type` | `records` / `lens-outputs` | drives which frame variant wraps the prompt. `records` = primary-source input (lens reads the ZTN base directly — records, knowledge, hubs, constitution, system; the lens prompt scopes which layer is primary). `lens-outputs` = meta-lens reads other lenses' outputs |
+| `input_type` | `records` / `lens-outputs` / `multi-source` | drives which frame variant wraps the prompt. `records` = primary-source input (lens reads the ZTN base directly — records, knowledge, hubs, constitution, system; the lens prompt scopes which layer is primary). `lens-outputs` = meta-lens reads other lenses' outputs (status-page shape, no body-citation). `multi-source` = synthesis lens reads BOTH primary owner-data AND lens outputs with permission to synthesize across them; anchoring constraint applies (every owner-claim resolves to primary data) |
+| `output_schema` | `standard` (default) / `synthesis-custom` | `standard` — Stage 2 reformats thinker output to canonical `## Observation N` schema; validator enforces. `synthesis-custom` — Stage 2 skipped; thinker writes directly to schema described in lens prompt; validator checks frontmatter privacy trio + non-empty body only. Lens prompt owns internal compliance (default-silence per section, anti-eye-roll guards). Used by synthesis lenses (`weekly-insights`). |
 | `cadence` | `daily` / `weekly` / `biweekly` / `monthly` | scheduler runs it when due |
 | `cadence_anchor` | `monday` / `sunday` / `1` (day-of-month) / `daily` | calendar anchor — see Cadence semantics below |
 | `self_history` | `fresh-eyes` / `longitudinal` / `lens-decides` | NO default — must be explicit, lens fails registry validation otherwise |
@@ -74,6 +75,11 @@ will be visible in `global-navigator` as gaps.
 | energy-pattern | Energy Pattern (records affect) | psyche | records | weekly (mon) | longitudinal | active |
 | knowledge-emergence | Knowledge Emergence | mechanical | records | weekly (sat) | longitudinal | active |
 | global-navigator | Global Navigator | meta | lens-outputs | weekly (mon) | longitudinal | active |
+| weekly-insights | Weekly Insights | meta | multi-source | weekly (mon) | longitudinal | active |
+
+## Draft Lenses
+
+_(empty)_
 
 ## Lens summaries
 
@@ -107,6 +113,10 @@ Runs weekly on Saturday — primary input is the **knowledge layer** (`1_project
 
 Runs weekly on Monday — short status page for the **whole engine** over a trailing 7-day window ending the prior day (Mon-Sun calendar week): agent-lens layer (every active lens auto-discovered from this registry, including new ones), `/ztn:process` activity (batches + BATCH_LOG sums), `/ztn:lint` activity (F-codes + gaps), `/ztn:maintain` runs, candidate buffers (principle + people append counts by origin), CLARIFICATIONS state (new + open + by type), OPEN_THREADS delta. Output sections: stuck/failing → outstanding observations (by age) → lint → process → maintenance → candidates → clarifications → open-threads → productive lenses → silent lenses (only if non-empty) → aggregate counter; verbatim short titles, F-codes, batch-ids, type labels, counts only — no claims about the owner's life, no recommendations, no body-citation of any second-order content (observation bodies, candidate bodies, clarification quotes).
 
+### weekly-insights
+
+Runs weekly on Monday — synthesis lens with `input_type: multi-source` and `output_schema: synthesis-custom`. Reads primary owner-data (records, knowledge, hubs, constitution, SOUL, operational layers, posts, people), engine state (CLARIFICATIONS, OPEN_THREADS, CURRENT_CONTEXT, indexes, runs / logs), other lenses' outputs, and own past insights (longitudinal). Synthesizes across them into a 9-section weekly digest the owner reads as a single file: convergence between lenses, drift between declaration and lived life, bottleneck (where movement is blocked), pattern not yet named (present-tense), counter-evidence to the owner's narrative, opportunities and trajectories (future-tense — including standalone opportunities and risks the owner has not yet named), question of the week, marginalia (open free-form). Default-silence per section is load-bearing — empty section is signal, not failure. **Strictly informational** — produces no actions, no auto-applies, no clarifications. Owner reads, owner decides what to do (if anything). Anchoring constraint: every claim about the owner resolves back to primary owner-data; lens output alone is hypothesis-grade, never the basis for a claim.
+
 ## Frameworks behind the calibration
 
 Each lens prompt is calibrated against external frameworks (cited inline in the prompt body where applicable):
@@ -118,6 +128,7 @@ Each lens prompt is calibrated against external frameworks (cited inline in the 
 - **energy-pattern**: ESM (Csikszentmihalyi) episode-level affect + Higgins ideal/ought self-discrepancy lexicon + ACT lived-vs-lived comparison
 - **global-navigator**: SRE Four Golden Signals + USE method + Tufte data-ink + multi-doc summarisation hallucination research
 - **knowledge-emergence**: Luhmann Folgezettel (thematic anchor on ≥3 sister-notes) + Matuschak evergreen promotion ladder + Weick retrospective sensemaking + apophenia falsifiability guard
+- **weekly-insights**: Bayesian belief-update + falsification + Munger inversion / pre-mortem + Kahneman reference-class forecasting + de Shazer solution-focused exception finding + Higgins self-discrepancy + Argyris-Schön espoused-vs-in-use + Theory of Constraints (bottleneck) + apophenia falsifiability guard + multi-doc summarisation hallucination research (anti-eye-roll guards on every section, default-silence load-bearing)
 
 ## Operating principles
 
@@ -126,10 +137,6 @@ Each lens prompt is calibrated against external frameworks (cited inline in the 
 - Domain assumptions are owner-defined per `ENGINE_DOCTRINE.md` §1.5 — no hardcoded work/personal binary.
 - The active lenses cover several observation flavours (within-records / records-vs-declarations / across-domains / decision-feedback-loop / affect-distribution / system-meta). They are not exhaustive; owners grow their own set via `/ztn:agent-lens-add`.
 - Auto-pause safety net active: 3 consecutive validator rejections of any lens → runner flips status to `paused` (per `ztn-agent-lens/SKILL.md` §5.5).
-
-## Draft Lenses
-
-_(empty)_
 
 ## Paused/Archived Lenses
 
@@ -150,9 +157,18 @@ Lenses with `status: paused` or `status: archived`. Per Archive Contract Form B 
 - Rejected outputs are saved at
   `_system/state/agent-lens-rejected/{lens-id}/{run_at}.md` for owner
   inspection; not written to the canonical output dir
-- Output schema is enforced by a **structurer pass** (separate cheap
-  LLM call) and then validated structurally — see `lenses/_frame.md`.
-  The thinker writes free-form
+- Output schema enforcement depends on the lens's `output_schema` field:
+  - `standard` (default) — Stage 2 **structurer pass** (separate cheap
+    LLM call) reformats free-form thinker output to canonical
+    `## Observation N` schema; structural validator then enforces.
+    The thinker writes free-form
+  - `synthesis-custom` — Stage 2 is **skipped**; the thinker writes
+    final output directly per the schema described in the lens
+    prompt. Validator checks frontmatter privacy trio + non-empty
+    body + cited path resolution. The lens prompt owns its internal
+    section structure and analytical guards (default-silence per
+    section, anti-eye-roll constraints, etc.)
+  See `lenses/_frame.md` for both stages and the validator branches
 
 ## `agent-lens-runs.jsonl` schema
 
