@@ -1,27 +1,42 @@
 ---
 id: batch-format
 layer: system
-version: 2.1
-modified: 2026-05-03
+version: 2.2
+modified: 2026-05-04
 ---
 
 # Batch Format
 
-> Контракт формата batch-отчётов `/ztn:process`. Все skill-потребители
-> (`/ztn:maintain`, `/ztn:lint`) и `ztn-bridge` plugin ссылаются сюда.
-> Изменение формата = bump `version:` во frontmatter + добавление row в Version History.
+> Контракт формата batch-отчётов ZTN engine. Two artefacts per batch
+> live side by side under `_system/state/batches/`:
 >
-> **Authority for downstream contract.** Markdown report (`{batch-id}.md`)
-> is human-readable narrative; the JSON manifest (`{batch-id}.json`) is the
-> machine-parseable contract consumed by Minder backend. The full JSON
-> schema lives in `minder-project/strategy/ARCHITECTURE.md` §4.5 — this
-> file mirrors the per-entity field set so ZTN-side emitters stay
-> consistent with downstream expectations.
+> - **`{batch_id}-{skill}.json`** — machine-parseable manifest. **The
+>   canonical contract** consumed by every downstream process. Schema
+>   lives at `_system/docs/manifest-schema/v{N}.json`; reference doc
+>   at `_system/docs/manifest-schema/README.md`. This file does NOT
+>   re-document the JSON manifest field-by-field — read the JSON
+>   Schema for that. Anything below this line covers only the
+>   markdown summary.
+> - **`{batch_id}-{skill}.md`** — human-narrative summary. Owner
+>   reading + lint scanning surface; not a contract for any external
+>   consumer. The contents below are about this file only.
+>
+> Изменение формата markdown summary = bump `version:` во frontmatter
+> + добавление row в Version History. Изменение формата JSON manifest
+> = SemVer bump в `manifest-schema/v{N}.json` per
+> `manifest-schema/README.md` evolution rules.
 
 ---
 
 ## Version History
 
+- **v2.2**: extracted JSON manifest contract into
+  `_system/docs/manifest-schema/v2.json` + `README.md` (consumer-
+  agnostic); renamed frontmatter field `batch_format_version` →
+  `format_version` for parity with the JSON manifest's top-level
+  field; clarified that this file documents only the markdown
+  summary, not the JSON manifest. No content change to either
+  artefact at runtime.
 - **v2.1**: added ARCH-B hub-state fields per hub entry —
   `hub_kind` (project / trajectory / domain), `chronological_map_mode`
   (derived / curated), `excluded_from_map_count`, and `auto_member_count`.
@@ -39,8 +54,9 @@ modified: 2026-05-03
 
 ## File Locations
 
-- **Index:** `_system/state/BATCH_LOG.md` — append-only markdown table, one row per batch
-- **Reports:** `_system/state/batches/{batch-id}.md` — one file per batch, full structured report
+- **Index:** `_system/state/BATCH_LOG.md` — append-only markdown table, one row per `/ztn:process` batch
+- **Reports:** `_system/state/batches/{batch-id}-{skill}.md` — one file per batch, full structured report
+- **Manifests:** `_system/state/batches/{batch-id}-{skill}.json` — machine contract; schema in `_system/docs/manifest-schema/v{N}.json`
 
 ---
 
@@ -60,7 +76,8 @@ YYYYMMDD-HHmmss
 
 ## BATCH_LOG.md Schema
 
-Одна строка markdown-таблицы на каждый batch. Append-only, не перезаписывается.
+Одна строка markdown-таблицы на каждый `/ztn:process` batch.
+Append-only, не перезаписывается.
 
 | Column | Type | Description |
 |---|---|---|
@@ -76,7 +93,7 @@ YYYYMMDD-HHmmss
 
 ---
 
-## batches/{batch-id}.md Schema
+## batches/{batch-id}-{skill}.md Schema (markdown summary, owner-narrative)
 
 ### Frontmatter (required)
 
@@ -85,7 +102,7 @@ YYYYMMDD-HHmmss
 batch_id: YYYYMMDD-HHmmss
 timestamp: YYYY-MM-DDTHH:MM:SSZ
 processor: ztn:process v{version}
-batch_format_version: 2.0
+format_version: 2.0
 sources: N
 records: N
 notes: N
@@ -99,6 +116,10 @@ concepts_upserted: N        # count of distinct concepts in concepts.upserts[]
 sensitive_entities: N       # count of entities with is_sensitive=true
 ---
 ```
+
+`format_version` value mirrors the JSON manifest's top-level
+`format_version`. Same SemVer evolution rules — see
+`manifest-schema/README.md`.
 
 ### Sections (in order)
 
@@ -119,14 +140,14 @@ sensitive_entities: N       # count of entities with is_sensitive=true
 
 ---
 
-## Example Batch Report
+## Example Batch Report (markdown summary)
 
 ```markdown
 ---
 batch_id: 20260416-103000
 timestamp: 2026-04-16T10:30:00Z
 processor: ztn:process
-batch_format_version: 2.0
+format_version: 2.0
 sources: 1
 records: 1
 notes: 2
@@ -188,23 +209,21 @@ sensitive_entities: 0
 
 ---
 
----
+## Per-Entity Fields — Concepts and Privacy Trio (markdown narrative side)
 
-## Per-Entity Fields — Concepts and Privacy Trio
-
-Every entity emitted by `/ztn:process` (record, knowledge note, hub,
-task, event, idea, person profile, project profile, principle, content
-candidate) carries the **privacy trio**:
+Every entity surfaced in the markdown summary mirrors the manifest's
+**privacy trio**:
 
 | Field | Type | Default | Source of values |
 |---|---|---|---|
-| `origin` | enum | `personal` | `personal` / `work` / `external`. Inferred per `/ztn:process` Step 3.4 Q16 from SOURCE TYPE + content signals. |
+| `origin` | enum | `personal` | `personal` / `work` / `external` (plus `bootstrap-*`/`sync-*` synthetic origins). Inferred per `/ztn:process` Step 3.4 Q16 from SOURCE TYPE + content signals. |
 | `audience_tags` | `text[]` | `[]` | Whitelist in `_system/registries/AUDIENCES.md` (canonical 5 + Extensions). Empty = owner-only. |
 | `is_sensitive` | bool | `false` | Set `true` on NDA, salary, health, financial detail, intimate disclosure. Friction-modifier, NOT audience narrower. |
 
 The trio is **slot-only** at this layer: ZTN emits values, downstream
-consumers (Minder backend, sync targets) apply policy. Defaults are
-chosen so that absence of inference fails closed (private, not leaked).
+consumers (Minder backend, sync targets, custom forks) apply policy.
+Defaults are chosen so that absence of inference fails closed
+(private, not leaked).
 
 Concept fields per entity:
 
@@ -278,75 +297,29 @@ audience_tags / is_sensitive). Lint Scan A.7 explicitly skips them:
 - `_system/POSTS.md` (publishing log — owner-controlled publication
   records; sharing decisions made at compose-time, not via trio)
 - `_system/registries/{TAGS,SOURCES,PEOPLE,PROJECTS,AGENT_LENSES,
-  CONCEPT_NAMING,AUDIENCES}.md` (engine registries — meta-spec, not
+  CONCEPT_NAMING,AUDIENCES,DOMAINS}.md` (engine registries — meta-spec, not
   content)
 - `_system/views/*.md` (auto-generated derived views — derive
   privacy from inputs at consumption time, do not store)
 - `_sources/processed/**/*.md` (raw transcripts — pre-processing
   artefacts)
-- `_system/state/log_*.md` (append-only audit trails)
+- `_system/state/log_*.md` (append-only audit logs)
 
-### Manifest Section Sketch (JSON, illustrative)
+---
 
-The JSON manifest schema is authoritative in
-`minder-project/strategy/ARCHITECTURE.md` §4.5. ZTN emits to that schema.
-Privacy + concept fields on every per-entity entry:
+## JSON manifest — pointer
 
-```json
-{
-  "format_version": "2.0",
-  "records": {
-    "created": [
-      {
-        "path": "_records/meetings/...",
-        "concept_hints": ["org_structure", "delivery_lead_role"],
-        "origin": "work",
-        "audience_tags": ["work"],
-        "is_sensitive": false
-      }
-    ]
-  },
-  "knowledge_notes": {
-    "created": [
-      {
-        "path": "1_projects/.../...md",
-        "concept_hints": ["org_structure", "intl_restructuring"],
-        "origin": "work",
-        "audience_tags": [],
-        "is_sensitive": false
-      }
-    ]
-  },
-  "hubs": {
-    "updated": [
-      {
-        "path": "5_meta/mocs/hub-team-restructuring.md",
-        "member_concepts": ["org_structure", "delivery_lead_role"],
-        "origin": "work",
-        "audience_tags": [],
-        "is_sensitive": false
-      }
-    ]
-  },
-  "concepts": {
-    "upserts": [
-      {
-        "name": "org_structure",
-        "type": "theme",
-        "subtype": null,
-        "related_concepts": ["intl_restructuring", "delivery_lead_role"],
-        "previous_slugs": []
-      }
-    ]
-  }
-}
-```
+The JSON manifest schema is **canonical** in
+`_system/docs/manifest-schema/v{N}.json` (currently `v2.json`).
+Documentation, version evolution rules, consumer integration patterns,
+and the "what is NOT in the manifest" contract live in
+`_system/docs/manifest-schema/README.md` — that doc is consumer-agnostic
+and is the source of truth for any process consuming ZTN output.
 
-`type` enum (lowercase): `theme`, `tool`, `decision`, `idea`, `event`,
-`organization`, `skill`, `location`, `emotion`, `goal`, `value`,
-`preference`, `constraint`, `algorithm`, `fact`, `other`. (`person` and
-`project` are reserved in CONCEPT_NAMING but not emitted by ZTN — see
-"Concept scope" above.)
+This file no longer maintains a separate JSON sketch — the schema
+file is itself the spec. Keeping a parallel narrative led to drift
+(field names diverging, optional/required shifting). One spec, one
+location.
 
 ---
 
@@ -354,9 +327,22 @@ Privacy + concept fields on every per-entity entry:
 
 Формат потребляют:
 
-- **`/ztn:process`** (writer) — генерирует `batches/{id}.md` + добавляет строку в `BATCH_LOG.md`
-- **`/ztn:maintain`** (reader) — читает последний batch для incremental обновлений (mention counts, thread detection, CURRENT_CONTEXT regen)
-- **`/ztn:lint`** (reader) — сканирует `BATCH_LOG.md` для detect stale threads, Evidence Trail gaps, content pipeline candidates
-- **`ztn-bridge` plugin** (reader) — читает последний batch для session_end обогащения
+- **`/ztn:process`** (writer) — генерирует `batches/{id}-process.md` +
+  `batches/{id}-process.json` + добавляет строку в `BATCH_LOG.md`
+- **`/ztn:maintain`** (writer + reader) — читает последний batch для
+  incremental обновлений (mention counts, thread detection,
+  CURRENT_CONTEXT regen); пишет `batches/{id}-maintain.json`
+- **`/ztn:lint`** (writer + reader) — сканирует `BATCH_LOG.md` для
+  detect stale threads, Evidence Trail gaps, content pipeline candidates;
+  пишет `batches/{id}-lint.json`; Scan G validates every recent JSON
+  manifest against the active schema
+- **`/ztn:agent-lens`** (writer) — пишет
+  `batches/{id}-agent-lens.json` per universal manifest contract;
+  audit trail остаётся в `_system/state/agent-lens-runs.jsonl`
+- **Downstream consumers** (open set — Minder backend, custom forks,
+  experimental tooling) — read manifests per
+  `manifest-schema/README.md` integration patterns
 
-При bump версии (v2.0+) — migration path документируется здесь же.
+При bump версии — migration path документируется здесь же (для
+markdown summary) или в `manifest-schema/v{N}.json` history (для JSON
+manifest).

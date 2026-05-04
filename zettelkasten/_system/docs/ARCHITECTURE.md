@@ -284,8 +284,8 @@ Each user gets a fully isolated Docker stack with its own network.
           │  6. Extract tasks → _system/TASKS.md
           │  7. Update _system/state/OPEN_THREADS.md (via /ztn:maintain post-batch)
           │  8. Update _system/views/HUB_INDEX.md, 3_resources/people/PEOPLE.md
-          │  9. Write _system/state/batches/{batch_id}.md (markdown report per batch-format spec)
-          │ 9a. Write _system/state/batches/{batch_id}.json (JSON manifest via emit_batch_manifest.py — Minder consumer contract per ARCHITECTURE.md §4.5)
+          │  9. Write _system/state/batches/{batch_id}-process.md (markdown report per batch-format spec)
+          │ 9a. Write _system/state/batches/{batch_id}-process.json (JSON manifest via emit_batch_manifest.py — canonical contract in _system/docs/manifest-schema/v{N}.json; consumer-agnostic)
           │ 10. Append row to _system/state/BATCH_LOG.md (markdown table)
           │ 11. git commit + push
           │
@@ -298,7 +298,7 @@ Each user gets a fully isolated Docker stack with its own network.
           │
  ~8m    OpenClaw receives notification:
           │  "[ZTN] New batch: 1 record, 2 tasks, 1 event"
-          │  Agent reads _system/state/batches/{batch_id}.md via ztn_get
+          │  Agent reads _system/state/batches/{batch_id}-process.md via ztn_get
           │  For each task → creates in ClickUp (via MCP)
           │  For each event → creates in Calendar (via MCP)
           │  Sends summary to user via Telegram
@@ -502,7 +502,7 @@ Called by webhook notification AND heartbeat poll:
 1. Read _system/state/BATCH_LOG.md via ztn_get (markdown table per batch-format spec)
 2. Compare batch IDs with last_processed_batch_id (from ztn-state.json)
 3. For each new batch (chronological order):
-   a. Read _system/state/batches/{batch_id}.md via ztn_get (markdown report per batch-format spec)
+   a. Read _system/state/batches/{batch_id}-process.md via ztn_get (markdown report per batch-format spec)
    b. For each task: check if already in ClickUp → if not, create
    c. For each event: check if already in Calendar → if not, create
    d. Compile summary message

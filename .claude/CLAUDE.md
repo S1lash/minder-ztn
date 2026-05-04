@@ -106,7 +106,10 @@ When engine behaviour changes, these are the docs that must move with it. Drift 
 | `zettelkasten/_system/docs/CONVENTIONS.md` | Documentation style; binding on every edit listed in this table |
 | `zettelkasten/_system/docs/ENGINE_DOCTRINE.md` | Operating philosophy; auto-loaded into every session via `~/.claude/rules/ztn-engine-doctrine.md` |
 | `zettelkasten/_system/docs/ARCHITECTURE.md` | System design; multi-user planning |
-| `zettelkasten/_system/docs/batch-format.md` | Batch manifest schema; downstream contract with Minder backend |
+| `zettelkasten/_system/docs/manifest-schema/v{N}.json` | Canonical JSON Schema for ZTN engine manifest (consumer-agnostic). New major = new file alongside; old majors retained for validating old batches |
+| `zettelkasten/_system/docs/manifest-schema/README.md` | Reference doc for manifest contract: SemVer evolution rules, per-skill semantics, "what is NOT in the manifest", consumer integration patterns |
+| `zettelkasten/_system/docs/manifest-schema/fixtures/` | Per-skill sanitized example manifests; regression test for schema evolution — schema changes MUST keep these validating |
+| `zettelkasten/_system/docs/batch-format.md` | Markdown batch-summary format (`{ts}-{skill}.md` next to each JSON manifest); narrative side only — JSON contract canonical lives in `manifest-schema/` |
 | `zettelkasten/_system/docs/constitution-capture.md` | In-the-moment capture trigger spec |
 | `zettelkasten/_system/docs/harness-setup.md` | Harness setup |
 | `zettelkasten/5_meta/CONCEPT.md` | Three-layer model; long-form philosophy |

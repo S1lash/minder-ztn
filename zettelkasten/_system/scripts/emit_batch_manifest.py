@@ -91,6 +91,19 @@ PROCESSOR_REQUIRED_SECTIONS: dict[str, tuple[str, ...]] = {
     "ztn:agent-lens": ("stats",),
 }
 
+# Empty-shorthand reconciliation. The accumulator inside Claude-driven
+# /ztn:process sometimes emits `tier1_objects.tasks: []` (and friends) as
+# a literal empty list when no entities exist, instead of the canonical
+# `{"created": [], "updated": []}` envelope from ARCHITECTURE.md §4.5.
+# The schema (manifest-schema/v2.json) is strict on the sectioned shape,
+# so this normaliser coerces empty `[]` to the proper empty-envelope
+# form at write time. Future-conformant; existing legacy batches are
+# excluded from validator coverage by the lint baseline marker.
+TIER1_CREATE_UPDATE_KEYS: frozenset[str] = frozenset({
+    "tasks", "ideas", "events", "decisions", "content",
+})
+TIER1_UPSERT_KEYS: frozenset[str] = frozenset({"people", "projects"})
+
 
 class ManifestValidationError(Exception):
     """Raised on structural failures that the autonomous-resolution
@@ -350,6 +363,82 @@ def process_concepts_upserts(
     return kept
 
 
+def normalise_empty_section_shapes(data: dict, events: list[dict]) -> None:
+    """Coerce empty-shorthand `[]` to canonical empty-envelope `{}` form
+    on sections where the schema expects an object.
+
+    Why this lives at the producer-side normaliser, not in the schema:
+    the manifest schema (manifest-schema/v2.json) is the consumer-facing
+    contract — keeping it strict means downstream consumers do not have
+    to handle two equivalent representations of "nothing here". The
+    /ztn:process accumulator (Claude-driven) sometimes drops to literal
+    `[]` on empty sections; this helper rewrites them to the canonical
+    `{"created": [], "updated": []}` (Tier 1 create-update sections),
+    `{"upserts": []}` (people / projects / concepts / constitution
+    principles), or `{}` (tier2_objects when no Tier 2 entities) before
+    the schema validator runs.
+
+    Forward-conformant; legacy batches predate the validator baseline
+    and stay as-is (append-only).
+    """
+    tier1 = data.get("tier1_objects")
+    if isinstance(tier1, dict):
+        for key in TIER1_CREATE_UPDATE_KEYS:
+            if isinstance(tier1.get(key), list) and len(tier1[key]) == 0:
+                tier1[key] = {"created": [], "updated": []}
+                events.append({
+                    "fix_id": "tier1-empty-shape-autofix",
+                    "field_path": f"$.tier1_objects.{key}",
+                    "before": [], "after": {"created": [], "updated": []},
+                })
+        for key in TIER1_UPSERT_KEYS:
+            if isinstance(tier1.get(key), list) and len(tier1[key]) == 0:
+                tier1[key] = {"upserts": []}
+                events.append({
+                    "fix_id": "tier1-empty-shape-autofix",
+                    "field_path": f"$.tier1_objects.{key}",
+                    "before": [], "after": {"upserts": []},
+                })
+
+    tier2 = data.get("tier2_objects")
+    if isinstance(tier2, list) and len(tier2) == 0:
+        data["tier2_objects"] = {}
+        events.append({
+            "fix_id": "tier2-empty-shape-autofix",
+            "field_path": "$.tier2_objects",
+            "before": [], "after": {},
+        })
+    elif isinstance(tier2, dict):
+        for type_key, value in list(tier2.items()):
+            if isinstance(value, list) and len(value) == 0:
+                tier2[type_key] = {"upserts": []}
+                events.append({
+                    "fix_id": "tier2-empty-shape-autofix",
+                    "field_path": f"$.tier2_objects.{type_key}",
+                    "before": [], "after": {"upserts": []},
+                })
+
+    constitution = data.get("constitution")
+    if isinstance(constitution, dict):
+        if isinstance(constitution.get("principles"), list) and len(constitution["principles"]) == 0:
+            constitution["principles"] = {"upserts": [], "archived": [], "superseded": []}
+            events.append({
+                "fix_id": "constitution-principles-empty-shape-autofix",
+                "field_path": "$.constitution.principles",
+                "before": [],
+                "after": {"upserts": [], "archived": [], "superseded": []},
+            })
+
+    concepts = data.get("concepts")
+    if isinstance(concepts, list) and len(concepts) == 0:
+        data["concepts"] = {"upserts": []}
+        events.append({
+            "fix_id": "concepts-empty-shape-autofix",
+            "field_path": "$.concepts",
+            "before": [], "after": {"upserts": []},
+        })
+
+
 def walk_and_normalise(
     node,
     audience_accept: set[str],
@@ -547,6 +636,7 @@ def main(argv: list[str] | None = None) -> int:
     domain_accept = set(ALLOWED_DOMAINS) | domain_extensions
 
     events: list[dict] = []
+    normalise_empty_section_shapes(data, events)
     walk_and_normalise(data, audience_accept, domain_accept, events)
 
     try:

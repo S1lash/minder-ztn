@@ -1,0 +1,46 @@
+{
+  "batch_id": "20260501-040000",
+  "timestamp": "2026-05-01T04:00:00Z",
+  "format_version": "2.0",
+  "processor": "ztn:agent-lens",
+  "tier2_objects": {
+    "lens_observation": {
+      "upserts": [
+        {
+          "id": "lens-obs-energy-pattern-20260501",
+          "lens_name": "energy-pattern",
+          "observed_on": "2026-05-01",
+          "observation_period": "last 4 weeks",
+          "body_markdown": "Across the last four weeks, your energy peaks correlate with mornings spent on focused single-domain work; afternoons of meeting-heavy days show consistent post-15:00 dip. Two cross-domain (work + personal projects) sessions early in the period left no trailing fatigue, suggesting context-switch cost is low when both contexts are owner-initiated.",
+          "is_hypothesis": true,
+          "generated_by_lens_run": "agent-lens-run-20260501-040000-energy-pattern",
+          "related_concepts": [
+            "energy_cycle",
+            "deep_work"
+          ],
+          "related_entity_refs": {
+            "decisions_referenced": [],
+            "threads_referenced": []
+          },
+          "prompt_version": "energy-pattern@v1.2.0",
+          "path": "_system/agent-lens/energy-pattern/2026-05-01.md",
+          "checksum_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "origin": "personal",
+          "audience_tags": [],
+          "is_sensitive": false
+        }
+      ]
+    }
+  },
+  "constitution": {
+    "candidates_appended": 1
+  },
+  "stats": {
+    "lenses_run": 1,
+    "lenses_skipped": 0,
+    "lenses_failed": 0,
+    "observations_emitted": 1,
+    "candidates_appended": 1,
+    "clarifications_raised": 0
+  }
+}

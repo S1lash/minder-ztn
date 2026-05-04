@@ -363,7 +363,7 @@ Load into memory (streamed on-demand where noted):
 
 ---
 
-## Step 3 — Scan Pipeline (Scans A–E)
+## Step 3 — Scan Pipeline (Scans A–H)
 
 Scans run sequentially (some feed each other: A-fixed links used by B; C-normalized people used by D). Each scan:
 1. Collects raw candidates
@@ -386,7 +386,7 @@ Scans run sequentially (some feed each other: A-fixed links used by B; C-normali
 3. If match AND within active suppression window → do NOT add к CLARIFICATIONS worklist. Instead log к `log_lint.md` `### Hidden (verbose audit)` с reason `suppressed-via-resolved` + Resolved Item's `Resolution-date` + suppression window end date.
 4. **Semantic-change exception:** if candidate's underlying evidence materially changed post-resolution (dedup similarity Δ >10%, thread gained new back-refs, orphan got inbound link), bypass suppression — re-surface CLARIFICATION с explicit prefix в Context: «⚠ Re-surfaced after `{resolution-action}` on `{date}` — material evidence change: {delta description}».
 
-Suppression applies к ALL scans (A–F) producing surfaced-tier CLARIFICATIONS. Reviewed-tier (apply + validate) CLARIFICATIONS are NOT suppressed — they represent actual changes executed, always reported.
+Suppression applies к ALL scans (A–H) producing surfaced-tier CLARIFICATIONS. Reviewed-tier (apply + validate) CLARIFICATIONS are NOT suppressed — they represent actual changes executed, always reported.
 
 ### Scan A — Consistency & Structural
 
@@ -1282,6 +1282,64 @@ All Scan G output is additive to the existing worklist; Step 4 routes the two ne
 New CLARIFICATION types introduced by Scan G (already registered in `SYSTEM_CONFIG.md → Canonical CLARIFICATION types`):
 - `archive-note-missing` (G.1)
 - `archive-reason-missing` (G.2 / G.3 / G.4)
+
+---
+
+### Scan H — Manifest schema validation
+
+Defence-in-depth gate over `_system/state/batches/*.json`. The producer-side normalisers in `_system/scripts/emit_batch_manifest.py` already conform every manifest at write time per the autonomous-resolution doctrine §3.1 layer-specific exception (concept names, audience tags, privacy trio, empty-section shapes). Scan H re-validates the on-disk artefact against the published JSON Schema, catching: (a) producer bugs that ship malformed manifests despite the normalisers, (b) manual edits / shell scripts writing into `batches/` outside the pipeline, (c) schema drift introduced by a new feature without coordinated bump.
+
+Unlike concept / audience format issues — which are autonomous and never surface — **manifest contract violations always surface as CLARIFICATIONS**. The contract with downstream consumers is non-negotiable; an unroutable manifest is never silently corrected at lint time. Owner sees the violation, root-causes producer or schema.
+
+#### H.1 — Validate recent batches against schema
+
+Pipeline:
+
+1. Read schemas from `_system/docs/manifest-schema/v{N}.json` (highest minor per major; per `manifest-schema/README.md` evolution rules, future v3.json sits next to v2.json — both kept).
+2. On first run after deploy, init baseline at `_system/state/batches/.validator-baseline` to current UTC time. Idempotent: existing baseline is never overwritten. Older batches are excluded retroactively (legitimate pre-validator drift).
+3. Validate every `*.json` in `_system/state/batches/` whose filename-timestamp prefix is ≥ baseline AND ≥ now − 26h (24h coverage + 2h cron / TZ buffer). The 26h window is the rolling daily lint cadence; the baseline is the absolute floor. Both gate.
+4. For each batch: parse JSON → read `format_version` → pick matching major schema → validate.
+
+Implementation: invoke the python helper.
+
+```bash
+python3 _system/scripts/lint_manifest_schema.py \
+    --batches-dir _system/state/batches \
+    --schemas-dir _system/docs/manifest-schema \
+    --init-baseline
+```
+
+Stdout is JSONL — one event per validated batch. Skill ingests the stream, routes each `kind`:
+
+| Event `kind` | CLARIFICATION emitted | Notes |
+|---|---|---|
+| `ok` | none | log to `log_lint.md` Hidden (verbose audit) only |
+| `skipped-pre-baseline` | none | log to Hidden — confirms baseline is doing its job |
+| `violation` | `manifest-schema-violation: {batch_id}` | Subject = batch filename. Context lists each error path + message + schema-path; `errors_truncated: true` shown when error count > 50 |
+| `unknown-version` | `manifest-schema-unknown-version: {batch_id}` | Subject = batch filename + reported `format_version`. Context lists `available_majors` from the schemas dir. To resolve: ship the missing schema file (`v{N}.json`) or roll back the producer's `format_version` |
+| `internal-error` | `validator-internal-error: {batch_id}` | Validator-side fault (json parse, validator exception). Lint never crashes — error becomes a CLARIFICATION; other scans continue |
+
+All three CLARIFICATION classes are **surfaced tier** — never auto-resolve. Floor: `weak`. The owner reviews and either fixes the producer (e.g. /ztn:process emission shape) or commits a schema migration shim.
+
+#### H.2 — Validator helper missing
+
+If `lint_manifest_schema.py` exits non-zero (jsonschema not installed, schemas-dir missing, batches-dir missing), wrap the failure as a single CLARIFICATION `validator-helper-failed` with the stderr content. Do NOT crash subsequent scans — fail-open per ENGINE_DOCTRINE §3.1 wider doctrine ("never block; surface, don't decide silently"). The contract is: lint always completes; any subsystem failure becomes a clarification.
+
+#### Scan H output contract
+
+All Scan H output is additive to the existing worklist; Step 4 routes via the standard confidence-tier table. All H CLARIFICATION classes are surfaced tier (never auto-resolve), `weak` floor.
+
+New CLARIFICATION types introduced by Scan H:
+- `manifest-schema-violation` (H.1)
+- `manifest-schema-unknown-version` (H.1)
+- `validator-internal-error` (H.1)
+- `validator-helper-failed` (H.2)
+
+These types must be added to `SYSTEM_CONFIG.md → Canonical CLARIFICATION types` if not present.
+
+#### Why a separate scan, not a sub-check inside Scan A
+
+Scan A (Consistency & Structural) operates on owner-authored markdown and applies autonomous fix-ids to records / notes / hubs / profiles. Scan H operates on engine-emitted JSON manifests and never auto-fixes — surfacing only. Different territory, different rules, different audit trail. Coupling them would conflate "owner content drift autofix" with "engine output contract surveillance" and lose the per-skill traceability of the manifest contract.
 
 ---
 

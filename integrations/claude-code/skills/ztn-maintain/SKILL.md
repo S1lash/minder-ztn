@@ -14,7 +14,7 @@ disable-model-invocation: false
 
 # /ztn:maintain — After-Batch Integrator
 
-Consumes `_system/state/batches/{batch-id}.md` produced by `/ztn:process`. Integrates
+Consumes `_system/state/batches/{batch-id}-process.md` produced by `/ztn:process` (legacy batches under `{batch-id}.md` accepted as fallback for the pre-2026-05-04 naming). Integrates
 each unprocessed batch into live state.
 
 **Philosophy:**
@@ -44,7 +44,7 @@ Awareness, principle 4 Cross-Domain Permeability, principle 7 People).
 `$ARGUMENTS` supports:
 - `--dry-run` — scan unprocessed batches, report planned actions without writes
 - `--batch <id>` — process only a specific batch-id. Must exist as
-  `_system/state/batches/{id}.md` (validated in Early Exit). Raises a warning if the
+  `_system/state/batches/{id}-process.md` (validated in Early Exit). Raises a warning if the
   batch is already recorded in log_maintenance.md and requires `--force` to
   proceed (re-run creates duplicate CLARIFICATIONS and may create duplicate
   thread entries, back-refs are idempotent)
@@ -104,7 +104,7 @@ All three skills mutually exclusive. Stale lock (>2 hours) → warn, offer manua
 3. Compute **unprocessed set** = BATCH_LOG batches \ log_maintenance.md maintain
    batches. Sort oldest-first by `batch_id` (monotonic timestamp string sort).
 4. If `--batch <id>` given:
-   - Validate `_system/state/batches/{id}.md` file exists — if not, abort with
+   - Validate `_system/state/batches/{id}-process.md` file exists — if not, abort with
      `"Error: batch {id} not found in _system/state/batches/"` and exit immediately.
    - Check if `{id}` appears in log_maintenance.md as already processed. If yes:
      - Without `--force`: abort with warning
@@ -167,9 +167,9 @@ after Step 7 completes.
 
 ## Step 1: Load & Parse Batch
 
-1. Load `_system/state/batches/{batch_id}.md`. Read entire file.
+1. Load `_system/state/batches/{batch_id}-process.md`. If absent, fall back to legacy `_system/state/batches/{batch_id}.md` (pre-2026-05-04 naming). Read entire file.
 2. Parse YAML frontmatter. Required keys: `batch_id`, `timestamp`, `processor`,
-   `batch_format_version`, `sources`, `records`, `notes`, `tasks`, `events`,
+   `format_version`, `sources`, `records`, `notes`, `tasks`, `events`,
    `threads_opened`, `threads_resolved`, `clarifications_raised`,
    `people_candidates_appended` (added 2026-04-24; batches produced before
    that date do not carry this key — treat missing as 0, no warning, no
@@ -184,7 +184,7 @@ reason code below, continue processing.
 | Anomaly | Workaround | Reason code |
 |---|---|---|
 | Missing / invalid frontmatter | Extract what parses; use section bodies as fallback metadata (batch_id from filename) | `batch-malformed-frontmatter` |
-| Unknown `batch_format_version` | Assume current spec semantics per `_system/docs/batch-format.md` | `batch-version-unknown` |
+| Unknown `format_version` | Assume current spec semantics per `_system/docs/batch-format.md` | `batch-version-unknown` |
 | Required section missing entirely | Treat as empty | `batch-missing-section` |
 | Header count ≠ actual list length | Use actual list count; flag header | `batch-counts-inconsistent` |
 | Count negative / non-numeric | Use list-based count | `batch-counts-anomaly` |

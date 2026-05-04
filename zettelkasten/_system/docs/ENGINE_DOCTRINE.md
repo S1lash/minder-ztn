@@ -313,8 +313,10 @@ by top-level `processor` field. It carries:
 - `section_extras: jsonb` per section for forward-compat new fields
 - Idempotency via `batch_id` (top-level) + checksums per file
 
-**Manifest is the contract** between the ZTN engine and downstream
-consumers (currently Minder Java backend). Downstream:
+**Manifest is the contract** between the ZTN engine and any downstream
+consumer (Minder backend is one specific example; other potential
+consumers are forks, custom backends, experimental tooling).
+Downstream:
 - Reads manifests chronologically
 - Idempotent by `batch_id` + checksums
 - Routes per `processor` field semantics
@@ -337,8 +339,14 @@ change to integrate. The contract is engine-level, not skill-level.
 - Derived/regenerable views (`CURRENT_CONTEXT.md`,
   `lint-context/{daily,monthly}/*`)
 
-> Full manifest schema spec: `strategy/ARCHITECTURE.md` §4.5 in the
-> minder-project repo. ZTN skills emit; Minder consumes.
+> **Canonical schema:** `_system/docs/manifest-schema/v{N}.json` (this
+> repo). Reference doc + consumer integration patterns:
+> `_system/docs/manifest-schema/README.md`. Defence-in-depth lint:
+> `/ztn:lint` Scan H validates every recent batch against the schema
+> and surfaces violations as CLARIFICATIONs (never silently rewrites
+> — manifests are append-only). For one specific downstream consumer's
+> design, see `strategy/ARCHITECTURE.md` §5+ in the minder-project
+> repo; the manifest contract itself is consumer-agnostic.
 
 ---
 

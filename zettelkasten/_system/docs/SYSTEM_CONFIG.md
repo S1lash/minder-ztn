@@ -65,6 +65,10 @@ migrating existing open items.
 | `concept-drift-on-reprocess` | `/ztn:process --reprocess-corpus` (Step 3.5) | Matcher's new `concepts:` set differs from prior set by > 50 % of the union (symmetric-difference / union ratio) | Apply the new (matcher-canonical) set; surface for owner audit, do not gate the write |
 | `archive-note-missing` | `/ztn:lint` | File-based entity in archived state without `## Archive Note` block (per Archive Contract Form A); forward-only — pre-contract archives ignored | Surface for owner to fill `reason` / `triggered_by`; do not auto-write |
 | `archive-reason-missing` | `/ztn:lint` | Registry-row in archived section with empty `Reason` cell, OR queue-archival action without required reason field (per Archive Contract Forms B and C) | Surface for owner to populate; do not auto-write |
+| `manifest-schema-violation` | `/ztn:lint` Scan H | A batch JSON manifest under `_system/state/batches/` fails validation against `_system/docs/manifest-schema/v{N}.json` for its declared `format_version` major | Do not rewrite the manifest (append-only); surface so owner can fix the producer or the schema |
+| `manifest-schema-unknown-version` | `/ztn:lint` Scan H | Manifest's `format_version` major has no matching schema file in `manifest-schema/` | Surface; resolve by shipping the missing schema file or rolling back the producer |
+| `validator-internal-error` | `/ztn:lint` Scan H | The schema validator raised an unexpected exception on a specific batch (json parse error, validator bug) | Lint continues other scans; owner reviews stack trace |
+| `validator-helper-failed` | `/ztn:lint` Scan H | The `lint_manifest_schema.py` helper itself exited non-zero (jsonschema not installed, schemas-dir or batches-dir missing) | Lint continues other scans; owner restores the helper environment |
 
 Per-skill SKILL.md may add narrower types for skill-internal flows;
 this table covers the cross-skill canonical set referenced in

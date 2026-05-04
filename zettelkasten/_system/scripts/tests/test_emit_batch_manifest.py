@@ -431,6 +431,102 @@ class IdempotenceTests(unittest.TestCase):
         clear_ztn_env()
 
 
+class EmptySectionShapeTests(unittest.TestCase):
+    """Producer-side coercion of legacy empty-shorthand `[]` to canonical
+    empty-envelope shapes. Ensures schema-strict consumers never see the
+    drift form even if the Claude-driven accumulator emits it.
+    """
+
+    def test_tier1_empty_lists_become_envelopes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["tier1_objects"] = {
+                "tasks": [],
+                "ideas": [],
+                "events": [],
+                "decisions": [],
+                "content": [],
+                "people": [],
+                "projects": [],
+            }
+            output = tmp / "out.json"
+            rc, _, err = _run(data, output, audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads(output.read_text(encoding="utf-8"))
+            for key in ("tasks", "ideas", "events", "decisions", "content"):
+                self.assertEqual(written["tier1_objects"][key],
+                                 {"created": [], "updated": []})
+            for key in ("people", "projects"):
+                self.assertEqual(written["tier1_objects"][key],
+                                 {"upserts": []})
+            # Each coercion emits a fix event on stderr
+            self.assertGreaterEqual(err.count("tier1-empty-shape-autofix"), 7)
+        clear_ztn_env()
+
+    def test_tier2_empty_list_becomes_object(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["tier2_objects"] = []
+            output = tmp / "out.json"
+            rc, _, err = _run(data, output, audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(written["tier2_objects"], {})
+            self.assertIn("tier2-empty-shape-autofix", err)
+        clear_ztn_env()
+
+    def test_tier2_inner_empty_list_becomes_upserts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["tier2_objects"] = {"inventory": [], "wardrobe": []}
+            output = tmp / "out.json"
+            rc, _, err = _run(data, output, audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(written["tier2_objects"]["inventory"], {"upserts": []})
+            self.assertEqual(written["tier2_objects"]["wardrobe"], {"upserts": []})
+        clear_ztn_env()
+
+    def test_constitution_principles_empty_list_becomes_envelope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["constitution"] = {"principles": []}
+            output = tmp / "out.json"
+            rc, _, err = _run(data, output, audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(
+                written["constitution"]["principles"],
+                {"upserts": [], "archived": [], "superseded": []},
+            )
+            self.assertIn("constitution-principles-empty-shape-autofix", err)
+        clear_ztn_env()
+
+    def test_clean_envelopes_pass_through(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            # already canonical — no coercion fix events
+            data["tier1_objects"] = {
+                "tasks": {"created": [], "updated": []},
+                "people": {"upserts": []},
+            }
+            output = tmp / "out.json"
+            rc, _, err = _run(data, output, audiences)
+            self.assertEqual(rc, 0)
+            self.assertNotIn("empty-shape-autofix", err)
+        clear_ztn_env()
+
+
 class DomainNormalisationTests(unittest.TestCase):
     """`walk_and_normalise` handling of `domains:` (plural) and `domain:`
     (singular). Deterministic substrate — silent autofix or silent drop."""

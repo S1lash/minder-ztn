@@ -594,6 +594,104 @@ notes.
 
 ---
 
+## Step 5.95 — Emit batch manifest (universal contract)
+
+Per ENGINE_DOCTRINE §3.8 and ARCHITECTURE.md §8.11.1, every ZTN engine
+skill that produces persistent state changes emits a JSON manifest at
+`_system/state/batches/{batch_id}-{skill}.json`. The
+`agent-lens-runs.jsonl` log stays as audit trail, but downstream
+consumers receive lens-observation upserts via the same universal
+manifest path as the other three skills — uniform parsing, uniform
+idempotency.
+
+**When to emit:** at the END of the tick (after Step 5 across all due
+lenses, before Step 6 Log Summary). One manifest per tick — covers
+ALL lenses run in this tick, not one per lens. This matches the
+"batch" semantic of the contract (a lens-tick is a batch of lens
+observations).
+
+**When to SKIP emission:** dry-run mode, or zero lenses with
+`status: ok` in the tick (every lens was empty / rejected /
+auto-paused). The manifest is opt-in evidence of state change; an
+empty tick has nothing to write.
+
+**Where to emit:**
+- `batch_id` = UTC timestamp `YYYYMMDD-HHMMSS` of tick start (the
+  same `run_at` used for the runs.jsonl entries).
+- File path: `_system/state/batches/{batch_id}-agent-lens.json`.
+
+**Schema:** `manifest-schema/v2.json`. Required top-level keys:
+`batch_id`, `timestamp`, `format_version: "2.0"`,
+`processor: "ztn:agent-lens"`, `stats`. Substantive payload lives in
+`tier2_objects.lens_observation.upserts[]` — one entry per lens that
+emitted an observation this tick (status `ok`, including hits>0; skip
+`empty` and `rejected`).
+
+**Per-observation entry:**
+
+```json
+{
+  "id": "lens-obs-{lens-id}-{YYYYMMDD}",
+  "lens_name": "{lens-id}",
+  "observed_on": "{YYYY-MM-DD}",
+  "observation_period": "{free-form: e.g. 'last 4 weeks'}",
+  "body_markdown": "{full content of {date}.md, minus frontmatter}",
+  "is_hypothesis": true,
+  "generated_by_lens_run": "{runs.jsonl entry id or run_at iso}",
+  "related_concepts": ["{snake_case names referenced in observation}"],
+  "related_entity_refs": {"decisions_referenced": [...], "threads_referenced": [...]},
+  "prompt_version": "{lens-id}@{version from registry frontmatter, default 'unversioned'}",
+  "path": "_system/agent-lens/{lens-id}/{date}.md",
+  "checksum_sha256": "{sha256 of the .md file bytes}",
+  "origin": "personal",
+  "audience_tags": [],
+  "is_sensitive": "{from Step 5.9: false default; true if lens registry output_sensitivity=true}"
+}
+```
+
+**`stats` shape:**
+
+```json
+{
+  "lenses_considered": N,
+  "lenses_run": N,
+  "lenses_skipped_not_due": N,
+  "lenses_skipped_registry_error": N,
+  "lenses_failed": N,
+  "observations_emitted": N,
+  "candidates_appended": N,
+  "clarifications_raised": N,
+  "duration_seconds": N
+}
+```
+
+**Emission via the helper:**
+
+```bash
+python3 _system/scripts/emit_batch_manifest.py \
+    --input <path-to-temp-json> \
+    --output _system/state/batches/{batch_id}-agent-lens.json
+```
+
+The helper applies the same producer-side normalisations as for
+`/ztn:process`: concept-name conformance, audience-tag whitelist
+filtering, privacy-trio coercion, empty-section shape coercion. Exit
+codes per `emit_batch_manifest.py` docstring; treat exit 3 the same
+way `/ztn:process` does — surface as a `process-compatibility`
+CLARIFICATION ONLY if root cause cannot be auto-corrected in the
+accumulator assembly.
+
+**Failure semantics:** if the JSON write fails, KEEP the
+`agent-lens-runs.jsonl` entries already written and the
+`_system/agent-lens/{lens-id}/{date}.md` files already on disk
+(observation files ARE the authoritative artefact; the manifest is
+downstream-routing). Surface as «agent-lens manifest write failed —
+{cause}» CLARIFICATION; the next tick will re-attempt. Do not add a
+BATCH_LOG.md row (`/ztn:agent-lens` does not write to BATCH_LOG —
+that index is `/ztn:process` only).
+
+---
+
 ## Step 6 — Log Summary
 
 Append to `_system/state/log_agent_lens.md` a single block:
@@ -660,6 +758,7 @@ Full descriptions in `_system/docs/SYSTEM_CONFIG.md` Files Reference.
 Per-run write surface:
 
 - `_system/agent-lens/{lens-id}/{date}.md` — overwrite if same date
+- `_system/state/batches/{batch_id}-agent-lens.json` — once per tick (Step 5.95), only when ≥1 lens emitted with `status: ok`
 - `_system/state/agent-lens-runs.jsonl` — append-only
 - `_system/state/log_agent_lens.md` — append-only
 - `_system/state/agent-lens-rejected/{lens-id}/{run_at}.md` — append

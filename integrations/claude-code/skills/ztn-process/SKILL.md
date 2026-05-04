@@ -2052,7 +2052,7 @@ Accumulate:
 - **`batch_id`** = UTC timestamp of run start, format `YYYYMMDD-HHmmss`. Fixed at the moment the concurrency lock was acquired and stable for the rest of the run. On collision (theoretical, due to concurrency lock this should not happen) — append suffix `-1`, `-2`.
 - **`timestamp`** = ISO 8601 UTC with trailing `Z` (run start).
 - **`processor`** = `ztn:process`.
-- **`batch_format_version`** = per `_system/docs/batch-format.md` current spec version (currently `2.1`).
+- **`format_version`** = per `_system/docs/batch-format.md` current spec version (currently `2.1`).
 - **Counts:** `sources`, `records`, `notes`, `tasks`, `events`, `threads_opened = 0`, `threads_resolved = 0`, `clarifications_raised`, `people_candidates_appended`, `concepts_upserted`, `sensitive_entities`, `concept_type_conflicts`, `concept_translations_dropped` (see counter mechanics below).
 - **Lists for each section of the batch report:** Sources Processed (with source type ID), Records Created (id + title + people + projects), Knowledge Notes Created (id + title + types + domains + Evidence Trail status), Tasks Extracted (task-id + description + deadline + priority + from-note), Events Extracted (datetime + description + participants + from-note), People Updates (id + change type + mentions delta + tier note), Hubs Updated (id list), CLARIFICATIONS Raised (type + summary per item), Concepts Upserted (name + type + subtype + related_concepts), Sensitive Entities (path + kind + audience_tags).
 
@@ -2070,7 +2070,7 @@ Accumulate:
   surfaces a translation-quality regression worth investigating.
 
 Both counters land in two places:
-- per-batch frontmatter at `_system/state/batches/{batch_id}.md` (one
+- per-batch frontmatter at `_system/state/batches/{batch_id}-process.md` (one
   row per batch — high-fidelity)
 - per-run summary at `_system/state/log_process.md` (one entry per
   /ztn:process invocation — easy-to-eyeball aggregate)
@@ -2178,7 +2178,7 @@ If any item is incomplete, go back and complete it. No deferring as "follow-up."
 - [ ] **`sensitive_entities[]` aggregation passed (§4.7).** Every entity with `is_sensitive: true` listed once in `sensitive_entities[]` with `{path, kind, audience_tags}`. `sensitive_entities` counter matches `len(...)`.
 - [ ] **Hub privacy auto-derivation passed.** Every hub touched in this run had `origin` / `audience_tags` / `is_sensitive` re-derived from current members (dominant origin / audience-intersection / any-sensitive) before manifest emission.
 
-**Note on batch artifacts:** the files `_system/state/batches/{batch-id}.md` and the new row in
+**Note on batch artifacts:** the files `_system/state/batches/{batch-id}-process.md` and the new row in
 `_system/state/BATCH_LOG.md` are NOT yet on disk at this point, and therefore are NOT checked in
 this gate. Their write happens at Step 5.5 — strictly POST-Gate. If this gate fails, Step 5.5
 does not run and no batch file appears on disk. Absence of batch = absence of contract.
@@ -2195,7 +2195,7 @@ If context window is tight, use subagents for parallel work
 **Runs ONLY if Step 5 Completion Gate passed fully.** If the gate failed, stop here —
 no batch artifacts on disk.
 
-### 5.5.1 Write `_system/state/batches/{batch-id}.md`
+### 5.5.1 Write `_system/state/batches/{batch-id}-process.md`
 
 Create the per-batch report file according to the contract in
 `_system/docs/batch-format.md`.
@@ -2207,7 +2207,7 @@ Create the per-batch report file according to the contract in
 batch_id: {YYYYMMDD-HHmmss}
 timestamp: {ISO 8601 UTC with trailing Z}
 processor: ztn:process
-batch_format_version: {current spec version from batch-format.md}
+format_version: {current spec version from batch-format.md}
 sources: N
 records: N
 notes: N
@@ -2239,7 +2239,7 @@ concept_translations_dropped: N
 11. `## Concepts Upserted` — per concept upsert from §4.7 aggregation: `- {name} | {type} | {subtype or —} | {related_concepts comma-list or —}` — count MUST equal `concepts_upserted` in frontmatter. Use `(none)` if empty. Mirrors the JSON manifest's `concepts.upserts[]`.
 12. `## Sensitive Entities` — per entity emitted in this run with `is_sensitive: true`: `- {path-or-id} | {kind: record|note|hub|task|...} | audience_tags: [{tags or "[]"}]` — count MUST equal `sensitive_entities` in frontmatter. Use `(none)` if empty.
 
-### 5.5.1.5 Write `_system/state/batches/{batch-id}.json`
+### 5.5.1.5 Write `_system/state/batches/{batch-id}-process.json`
 
 > **Reprocess-corpus mode:** identical schema, identical
 > `processor: "ztn:process"`, identical `format_version`. The
@@ -2268,7 +2268,7 @@ Then invoke the autonomous emitter:
 ```bash
 python3 _system/scripts/emit_batch_manifest.py \
     --input <path-to-temp-json> \
-    --output _system/state/batches/{batch_id}.json
+    --output _system/state/batches/{batch_id}-process.json
 ```
 
 The helper:
@@ -2315,8 +2315,8 @@ in `_system/docs/batch-format.md` (9 columns):
 ### 5.5.3 Failure semantics
 
 The three artifacts of Step 5.5 (markdown, JSON manifest, BATCH_LOG row)
-are atomic-ish: BATCH_LOG row appends only after BOTH `batches/{id}.md`
-AND `batches/{id}.json` wrote successfully.
+are atomic-ish: BATCH_LOG row appends only after BOTH `batches/{id}-process.md`
+AND `batches/{id}-process.json` wrote successfully.
 
 - If markdown write fails (filesystem error) → best-effort delete the
   partial file; do NOT proceed to JSON write or BATCH_LOG append.
@@ -2397,12 +2397,12 @@ Output to user:
 - [x] Batch verification passed
 - [x] Evidence Trail present in every new knowledge note
 - [x] PEOPLE.md 8-column schema preserved
-- [x] Batch artifacts written (batches/{id}.md + batches/{id}.json + BATCH_LOG row)
+- [x] Batch artifacts written (batches/{id}-process.md + batches/{id}-process.json + BATCH_LOG row)
 
 ### Batch Artifact
 - **batch_id:** {YYYYMMDD-HHmmss}
-- **Markdown report:** `_system/state/batches/{batch-id}.md`
-- **JSON manifest:** `_system/state/batches/{batch-id}.json` (downstream Minder contract per ARCHITECTURE.md §4.5)
+- **Markdown report:** `_system/state/batches/{batch-id}-process.md`
+- **JSON manifest:** `_system/state/batches/{batch-id}-process.json` (canonical contract — schema in `_system/docs/manifest-schema/v2.json`, reference doc in `_system/docs/manifest-schema/README.md`; one specific consumer (Minder) documented in `minder-project/strategy/ARCHITECTURE.md` §5+)
 - **BATCH_LOG:** +1 row (threads_open/close = 0)
 - **clarifications_raised:** {N}
 - **concepts_upserted:** {N}
