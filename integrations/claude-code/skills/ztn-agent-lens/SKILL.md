@@ -443,7 +443,7 @@ corrupt by construction. Tradeoffs:
   non-meta lenses to complete (otherwise they read partial state)
 
 Default: **sequential, in registry order**. Parallelism is opt-in via
-a future runner flag (not implemented in v1). Spec it here so the
+a future runner flag (not implemented today). Spec it here so the
 isolation contract is unambiguous when the flag lands: parallel
 batching applies only to non-meta lenses, never crosses the meta
 barrier, and each call still satisfies §§4.5.1-4.5.5.

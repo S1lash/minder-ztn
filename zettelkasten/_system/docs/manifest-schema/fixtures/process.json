@@ -83,7 +83,7 @@
           "roadmap_alignment",
           "scope_management"
         ],
-        "people_ids": [
+        "people": [
           "alex-rivers",
           "carol-yates"
         ],
@@ -111,7 +111,7 @@
           "deep_work",
           "energy_cycle"
         ],
-        "people_ids": [],
+        "people": [],
         "origin": "personal",
         "audience_tags": [],
         "is_sensitive": false
@@ -212,7 +212,7 @@
           "concept_ids": [
             "roadmap_alignment"
           ],
-          "people_ids": [
+          "people": [
             "alex-rivers"
           ],
           "source_record_path": "_records/meetings/20260601-meeting-team-roadmap-review.md",

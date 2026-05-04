@@ -145,7 +145,7 @@ class AliasPreservationTests(unittest.TestCase):
             registry = fx.base / "_system/registries/CONCEPTS.md"
             registry.parent.mkdir(parents=True)
             registry.write_text(
-                "---\nschema_version: 1.0\n---\n\n"
+                "---\nlast_updated: 2026-05-04\n---\n\n"
                 "## Concepts (sorted by mentions)\n\n"
                 "| name | type | subtype | first_seen | last_seen | mentions | aliases |\n"
                 "|---|---|---|---|---|---|---|\n"

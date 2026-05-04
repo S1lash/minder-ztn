@@ -41,7 +41,8 @@ All four skills emit into one shape distinguished by the top-level
 ## Schema location and version evolution
 
 - **Active schema:** `v2.json` in this directory. `$id` =
-  `https://minder.host/schemas/ztn-manifest/v2.json`. Draft 2020-12.
+  `urn:ztn:manifest-schema:v2` (URN — no URL resolution, no domain
+  commitment, consumer-agnostic). Draft 2020-12.
 - **Past schemas** stay in this directory unchanged
   (`v2.json` → `v2.1.json` → `v3.json` …). Old batches keep
   validating against the version they were emitted with.

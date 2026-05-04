@@ -562,7 +562,7 @@ def _write_concepts_registry(root: Path, rows: list[tuple[str, str]]) -> None:
         for name, aliases in rows
     )
     (root / "_system" / "registries" / "CONCEPTS.md").write_text(
-        "---\nschema_version: 1.0\n---\n\n"
+        "---\nlast_updated: 2026-05-04\n---\n\n"
         "## Concepts (sorted by mentions)\n\n"
         "| name | type | subtype | first_seen | last_seen | mentions | aliases |\n"
         "|---|---|---|---|---|---|---|\n"

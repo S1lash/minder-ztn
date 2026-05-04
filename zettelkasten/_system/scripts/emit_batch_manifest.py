@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -654,10 +655,19 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write("\n")
     else:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        tmp_path = args.output.with_suffix(args.output.suffix + ".tmp")
+        try:
+            tmp_path.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            os.replace(tmp_path, args.output)
+        except BaseException:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
+            raise
 
     # Emit fix events on stderr so the caller can ingest them into
     # the batch's audit log without contaminating the JSON output.

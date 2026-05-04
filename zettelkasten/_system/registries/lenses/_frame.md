@@ -1,7 +1,6 @@
 # Agent-Lens Frame
 
 **Last Updated:** 2026-05-01
-**Status:** v1 (consumed by `/ztn:agent-lens`)
 
 The frame is the contract every lens runs inside. Two stages, deliberately
 decoupled:

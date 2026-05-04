@@ -1,5 +1,4 @@
 ---
-schema_version: 1.0
 last_updated: 2026-05-02
 mirror_of: minder/minder-app/src/main/java/.../domain/graph/ConceptType.java
 ---

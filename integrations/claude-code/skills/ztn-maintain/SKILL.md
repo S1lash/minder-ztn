@@ -14,7 +14,7 @@ disable-model-invocation: false
 
 # /ztn:maintain — After-Batch Integrator
 
-Consumes `_system/state/batches/{batch-id}-process.md` produced by `/ztn:process` (legacy batches under `{batch-id}.md` accepted as fallback for the pre-2026-05-04 naming). Integrates
+Consumes `_system/state/batches/{batch-id}-process.md` produced by `/ztn:process`. Integrates
 each unprocessed batch into live state.
 
 **Philosophy:**
@@ -167,7 +167,7 @@ after Step 7 completes.
 
 ## Step 1: Load & Parse Batch
 
-1. Load `_system/state/batches/{batch_id}-process.md`. If absent, fall back to legacy `_system/state/batches/{batch_id}.md` (pre-2026-05-04 naming). Read entire file.
+1. Load `_system/state/batches/{batch_id}-process.md`. Read entire file.
 2. Parse YAML frontmatter. Required keys: `batch_id`, `timestamp`, `processor`,
    `format_version`, `sources`, `records`, `notes`, `tasks`, `events`,
    `threads_opened`, `threads_resolved`, `clarifications_raised`,

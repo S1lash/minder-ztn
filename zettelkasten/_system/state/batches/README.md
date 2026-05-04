@@ -42,28 +42,11 @@ review of what a batch produced.
   Matches the manifest's top-level `processor` field with the
   `ztn:` prefix stripped.
 
-### Legacy form
-
-Pre-2026-05-04 `/ztn:process` emissions used `{ts}.json` (and the
-paired `{ts}.md`) without a skill suffix. After Wave 1's filename
-realignment (`A0-1.2`) `/ztn:process` writes `{ts}-process.json`
-like the other three skills.
-
-**Append-only — legacy filenames are never renamed retroactively.**
-Consumers reading historic batches must match both patterns:
-
-```
-^[0-9]{8}-[0-9]{6}\.json$            # legacy /process
-^[0-9]{8}-[0-9]{6}-[a-z-]+\.json$    # current contract
-```
-
-`/ztn:maintain` already implements this dual-match for `.md` files
-per its `SKILL.md`; analogous fallback applies to JSON consumers.
-
-**Footprint at time of writing:** 3 legacy `{ts}.json` files (all
-`/ztn:process`) plus 8 even-older `{ts}.md`-only emissions that
-predate JSON manifests entirely. The legacy footprint is small and
-finite — it does not grow.
+Active state contains only `{ts}-{skill}.{json,md}` per the
+naming above. Pre-JSON-manifest markdown summaries
+(2026-04-17 → 2026-04-30) are archived under
+`archive/v1-pre-manifest/` for historical reference; consumers
+ignore that subdirectory.
 
 ---
 
@@ -125,25 +108,16 @@ ZTN never deletes batches. There is no automated cleanup, no
 retention cron, no time-based pruning. The directory grows
 monotonically; archival is an owner-driven move (§7), not a delete.
 
-### Write semantics — current behaviour
+### Write semantics
 
-`_system/scripts/emit_batch_manifest.py` writes manifests directly
-to the output path via `Path.write_text(...)`. **This is not
-`.tmp` + atomic-rename today.** A crash mid-write would leave a
-partial JSON file. Two practical mitigations are in play:
-
-1. The dominant emission path is short — manifests are small (a few
-   kB to a few hundred kB) and Python's `write_text` issues a
-   single `write(2)` on most filesystems. The crash window is
-   narrow, but it is non-zero.
-2. `/ztn:lint` Scan H runs nightly and would surface a corrupt JSON
-   as a validation failure rather than letting it propagate
-   silently to a consumer.
-
-**Tracked as a follow-up improvement, not part of A0-ZTN scope.**
-Migrating to `.tmp` + `os.replace()` is a small fix that would
-remove the residual risk; the right place for it is a separate
-hardening pass on the emitter, not folded into the docs wave.
+`_system/scripts/emit_batch_manifest.py` writes manifests atomically
+via `.tmp` + `os.replace()`: payload lands at
+`{output}.tmp`, then a single `os.replace(tmp, output)` swaps it
+into place. On POSIX `os.replace` is atomic, so any consumer
+observing `{ts}-{skill}.json` sees the complete manifest or nothing.
+On crash mid-write the `.tmp` artifact is unlinked best-effort and
+the exception is re-raised; no partial JSON ever appears at the
+final path.
 
 ### Validator baseline
 

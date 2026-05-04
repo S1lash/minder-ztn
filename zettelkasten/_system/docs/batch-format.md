@@ -32,9 +32,7 @@ modified: 2026-05-04
 
 - **v2.2**: extracted JSON manifest contract into
   `_system/docs/manifest-schema/v2.json` + `README.md` (consumer-
-  agnostic); renamed frontmatter field `batch_format_version` →
-  `format_version` for parity with the JSON manifest's top-level
-  field; clarified that this file documents only the markdown
+  agnostic); clarified that this file documents only the markdown
   summary, not the JSON manifest. No content change to either
   artefact at runtime.
 - **v2.1**: added ARCH-B hub-state fields per hub entry —
@@ -48,7 +46,6 @@ modified: 2026-05-04
   `audience_tags`, `is_sensitive`) per-entity. Markdown report sections
   unchanged; JSON manifest gains `concepts` top-level section + privacy
   fields on every entity. Format-version flips to `2.0` in frontmatter.
-- **v1.0**: initial markdown format.
 
 ---
 

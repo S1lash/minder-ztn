@@ -43,12 +43,12 @@
 - ❌ `ZTN v4.5`, `ZTN v4.6`, `v4.7 One-Shot Populator` в SKILL headers/descriptions
 - ❌ `**Version:** 4.7` в SYSTEM_CONFIG или других system files
 - ❌ `ztn:process v4.5` как processor identity
-- ❌ `batch-format v2.0` в references (кроме самого `batch-format.md`, где spec version = content)
+- ❌ `batch-format vN` в references (кроме самого `batch-format.md`, где spec version = content)
 
 **Правило:** SKILL describes itself by name, не by version. Если контракт между
 компонентами требует версию — это живёт только в `batch-format.md` frontmatter
 как single-point spec version + Version History section. Per-version narratives
-("в v2.0 добавилось X", "со времён v1.0...") НЕ цитируются в других файлах —
+("в vX добавилось Y", "со времён vY...") НЕ цитируются в других файлах —
 они уйдут в git log при следующем bump.
 
 ### 2. Phase references
@@ -92,9 +92,9 @@ weight — переформулируй как invariant rule, не как histo
 
 ### 5. Supersedes / Draft status on finalized docs
 
-- ❌ `**Status:** Draft v2` на completed SDDs
-- ❌ `**Supersedes:** v1 (initial draft ...)`
-- ❌ `## Изменения по сравнению с v1` delta tables
+- ❌ `**Status:** Draft vN` на completed SDDs
+- ❌ `**Supersedes:** vN-1 (initial draft ...)`
+- ❌ `## Изменения по сравнению с предыдущей версией` delta tables
 
 **Правило:** если файл currently authoritative (описывает current state system),
 никаких «Draft», «Supersedes», «delta from previous version» — это всё git log

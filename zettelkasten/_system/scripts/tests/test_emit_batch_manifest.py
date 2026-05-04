@@ -650,5 +650,46 @@ class DomainNormalisationTests(unittest.TestCase):
             self.assertEqual(written["records"][0]["domains"], ["work"])
 
 
+class AtomicWriteTests(unittest.TestCase):
+    def test_no_tmp_artifact_on_success(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            output = tmp / "out.json"
+            rc, _, _ = _run(_minimal_manifest(), output, audiences)
+            self.assertEqual(rc, 0)
+            self.assertTrue(output.exists())
+            self.assertFalse(output.with_suffix(".json.tmp").exists())
+        clear_ztn_env()
+
+    def test_crash_mid_write_leaves_no_partial_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            domains = _domains_file(tmp)
+            output = tmp / "out.json"
+            in_path = tmp / "in.json"
+            in_path.write_text(json.dumps(_minimal_manifest()))
+            args = [
+                "--input", str(in_path), "--output", str(output),
+                "--audiences", str(audiences), "--domains", str(domains),
+            ]
+            import os as _os
+            real_replace = _os.replace
+
+            def boom(*a, **kw):
+                raise RuntimeError("simulated crash")
+
+            _os.replace = boom
+            try:
+                with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                    self.assertRaises(RuntimeError, e.main, args)
+            finally:
+                _os.replace = real_replace
+            self.assertFalse(output.exists())
+            self.assertFalse(output.with_suffix(".json.tmp").exists())
+        clear_ztn_env()
+
+
 if __name__ == "__main__":
     unittest.main()

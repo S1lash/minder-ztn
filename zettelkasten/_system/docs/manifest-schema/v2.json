@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://minder.host/schemas/ztn-manifest/v2.json",
+  "$id": "urn:ztn:manifest-schema:v2",
   "title": "ZTN engine batch manifest — v2.x",
   "description": "Universal output contract emitted by every ZTN engine skill that produces persistent state changes (/ztn:process, /ztn:maintain, /ztn:lint, /ztn:agent-lens). Single shape, distinguished by the top-level `processor` field. SemVer per ARCHITECTURE.md §8.12.2: MAJOR breaks consumers, MINOR additive (new optional fields, sections, entity types). Forward-compat slot `section_extras: jsonb` lives both top-level and per-section. Audience-tag whitelist enforcement happens at the ZTN registry layer (lint scan A.7 against AUDIENCES.md, owner-extensible per tenant) — this schema enforces type only. Concept-name format conformance is producer-side guarantee (ZTN normalisers in `_system/scripts/_common.py`); this schema does not re-validate the regex. Privacy trio (`origin`, `audience_tags`, `is_sensitive`) is required-slot on every Tier 0/1/2 entity emission with conservative-safe defaults applied at emission time.",
 
@@ -180,8 +180,7 @@
         "id":              { "type": "string" },
         "title":           { "type": "string" },
         "checksum_sha256": { "$ref": "#/$defs/checksum_sha256" },
-        "people":          { "type": "array", "items": { "type": "string" }, "description": "Resolved person IDs (kebab-case slugs from PEOPLE.md). Alias `people_ids` accepted for downstream compatibility." },
-        "people_ids":      { "type": "array", "items": { "type": "string" } },
+        "people":          { "type": "array", "items": { "type": "string" }, "description": "Resolved person IDs (kebab-case slugs from PEOPLE.md)." },
         "projects":        { "type": "array", "items": { "type": "string" } },
         "domains":         { "$ref": "#/$defs/domains_array" },
         "concept_hints":   { "$ref": "#/$defs/concept_name_list" },
@@ -214,8 +213,7 @@
         "primary_type":    { "type": "string" },
         "domains":         { "$ref": "#/$defs/domains_array" },
         "concept_hints":   { "$ref": "#/$defs/concept_name_list" },
-        "people":          { "type": "array", "items": { "type": "string" } },
-        "people_ids":      { "type": "array", "items": { "type": "string" } },
+        "people":          { "type": "array", "items": { "type": "string" }, "description": "Resolved person IDs (kebab-case slugs from PEOPLE.md)." },
         "projects":        { "type": "array", "items": { "type": "string" } },
         "supersedes":      { "type": "array", "items": { "type": "string" }, "description": "Knowledge-note IDs this note supersedes. Edge `SUPERSEDES` in graph (ARCHITECTURE.md §8.11.4)." },
         "superseded_by":   { "type": ["string", "null"] },
@@ -416,7 +414,7 @@
             "deadline":            { "type": ["string", "null"], "description": "YYYY-MM-DD or null." },
             "task_status":         { "type": "string", "description": "OPEN | IN_PROGRESS | DONE | CANCELLED" },
             "concept_ids":         { "$ref": "#/$defs/concept_name_list" },
-            "people_ids":          { "type": "array", "items": { "type": "string" } },
+            "people":              { "type": "array", "items": { "type": "string" }, "description": "Resolved person IDs (kebab-case slugs from PEOPLE.md)." },
             "source_record_path":  { "type": "string" }
           }
         }
@@ -432,7 +430,7 @@
             "id":                  { "type": "string" },
             "title":               { "type": "string" },
             "concept_ids":         { "$ref": "#/$defs/concept_name_list" },
-            "people_ids":          { "type": "array", "items": { "type": "string" } },
+            "people":              { "type": "array", "items": { "type": "string" }, "description": "Resolved person IDs (kebab-case slugs from PEOPLE.md)." },
             "source_record_path":  { "type": "string" }
           }
         }
