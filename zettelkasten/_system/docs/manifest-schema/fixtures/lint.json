@@ -1,0 +1,29 @@
+{
+  "batch_id": "20260502-230016",
+  "timestamp": "2026-05-02T22:58:48Z",
+  "processor": "ztn:lint",
+  "format_version": "2.0",
+  "stats": {
+    "scans_executed": [
+      "A.7"
+    ],
+    "scans_deferred": [
+      "A.1-A.6",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F"
+    ],
+    "events_total": 88,
+    "autofixes_applied": 88,
+    "autofixes_by_fix_id": {
+      "privacy-trio-backfill-autofix": 86,
+      "domain-drop-autofix": 2
+    },
+    "files_modified": 87,
+    "clarifications_raised": 0,
+    "clarifications_pending_in_queue": 5,
+    "idempotency_verified": true
+  }
+}

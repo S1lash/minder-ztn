@@ -1,0 +1,30 @@
+{
+  "batch_id": "20260502-215258",
+  "timestamp": "2026-05-02T22:51:32Z",
+  "processor": "ztn:maintain",
+  "format_version": "2.0",
+  "hubs": {
+    "updated": []
+  },
+  "tier1_objects": {
+    "people": {
+      "upserts": []
+    }
+  },
+  "threads_opened": [],
+  "threads_resolved": [],
+  "stats": {
+    "upstream_batch_id": "20260502-215258",
+    "threads_opened": 0,
+    "threads_merged": 0,
+    "back_refs_written": 0,
+    "hubs_linked": 0,
+    "mention_drifts": 0,
+    "tier_promotes_suggested": 0,
+    "clarifications_raised": 0,
+    "concepts_registry_total": 320,
+    "concepts_registry_total_mentions": 1943,
+    "concepts_files_scanned": 619,
+    "concepts_batches_read": 3
+  }
+}
