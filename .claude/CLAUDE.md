@@ -29,6 +29,7 @@ When you find these in conflict, the higher one wins. When a rule is absent ever
 - `integrations/claude-code/{rules,commands,skills}/` — Claude Code prompts and skills (sources)
 - `integrations/claude-code/{install.sh,uninstall.sh,SETUP_PROMPT.md,scheduler-prompts/}` — installer + scheduler templates
 - `integrations/minder-ztn-mcp/` — MCP integration guide
+- `integrations/obsidian/` — Obsidian vault config seed (`.obsidian/` defaults + `HOME.template.md` dashboard, idempotently seeded by `seed.sh` from `claude-code/install.sh`)
 - `scripts/` — release, sync, lint, migrations
 - `zettelkasten/_system/docs/` — system spec
 - `zettelkasten/_system/scripts/` — python pipeline + tests
@@ -39,7 +40,7 @@ When you find these in conflict, the higher one wins. When a rule is absent ever
 - `zettelkasten/0_constitution/CONSTITUTION.md` — protocol spec (NOT the `axiom/principle/rule/` subdirs)
 - `zettelkasten/{1_projects,2_areas,3_resources,_records}/README.md` — PARA explainers
 - `.claude/CLAUDE.md`, `.claude/settings.json` — project-local engine-development guide and permissive command allowlist (this file and its sibling)
-- Root meta: `.gitignore`, `LICENSE`, `integrations/VERSION`, `CONTRIBUTING.md`, `docs/{onboarding,upstream-sync,scheduling}.md`
+- Root meta: `.gitignore`, `LICENSE`, `integrations/VERSION`, `CONTRIBUTING.md`, `docs/{onboarding,upstream-sync,scheduling,obsidian,privacy,CHANGELOG}.md`
 
 ### Owner-data paths (NEVER edit by hand — route through ZTN skills)
 

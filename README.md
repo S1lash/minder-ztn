@@ -1,108 +1,127 @@
 # minder-ztn
 
-Personal-knowledge engine: voice transcripts → structured Zettelkasten
-+ a Claude Code agent stack that reads, writes, and integrates the
-notes for you.
+> **Your second consciousness.** Voice in, structured memory out.
+> Self-hosted, privacy-first, lives in your git repo.
 
-This is the **public skeleton**. Clone it, run bootstrap, review the
-clarifications queue, drop voice transcripts, run `/ztn:process`, and
-you have a system that:
+A personal knowledge system that thinks alongside you. You speak,
+record, journal — minder-ztn ingests it, files it into structured
+records, distills patterns into knowledge, and surfaces what you'd
+otherwise miss: stalled threads, drift between your stated values
+and actual behaviour, cross-domain connections that re-shape how
+you think.
 
-- Files transcripts into records (meetings/observations) and PARA notes
-- Tracks people, projects, tags, hubs, open threads, calendar, tasks
-- Captures principles and trade-offs into a personal constitution
-- Surfaces outside-view observations via agent-lenses (stalled threads,
-  drift between stated values and actual behaviour, cross-domain
-  connections you didn't notice, system-meta digest)
-- Stays consistent under nightly lint passes
-- Survives context resets — Claude reads `_system/` to rebuild state
+Three things make it different from a notes app:
 
-## What you get
+- **It carries context across months.** Your records, decisions, and
+  open threads stay live and queryable. Past you informs present you.
+- **It has a constitution.** Your axioms, principles, and rules are
+  first-class — and the engine watches whether your decisions actually
+  follow them.
+- **It's yours.** A single git repo. Records, knowledge, and
+  constitution stay where you keep them — on your machine, plus your
+  private remote if you push there. The engine itself never pushes
+  and makes no outbound calls beyond the Claude API (which it uses to
+  process the text you ask it to). See `docs/privacy.md` for the full
+  data flow.
 
-- `integrations/claude-code/` — rules, slash commands, and skills you
-  install into `~/.claude/` with one script.
-- `zettelkasten/_system/` — system docs, registries, runtime state.
-- `zettelkasten/_system/scripts/` — Python pipeline (constitution
-  regen, evidence-trail compactor, candidate buffers, concept and
-  audience format autofix, batch JSON manifest emission, tests).
-- `zettelkasten/{0_constitution,1_projects,…,6_posts}/` — empty PARA
-  layout you populate as you go.
-- `scripts/sync_engine.sh` — pull engine updates from upstream
-  without touching your data.
+## What it looks like
 
-## Quickstart
+**Daily.** Open the Obsidian vault. Your dashboard (`minder-ztn.md`) shows
+focus snapshot, open threads, today's clarifications, recent meetings
+and observations, active projects, people you track. Click into any
+record — local graph reveals who, what, when, and which principles
+were in play.
+
+**Capture.** Speak. Drop a transcript into the inbox. Run
+`/ztn:process` from Claude Code. The engine slots it into records,
+links the right people and projects, captures principle candidates,
+opens follow-up threads — overnight if you want, autonomously.
+
+**Reflect.** Switch to a graph preset — *People web*, *Decision
+lineage*, *Project landscape*. See your week as a network. Run
+`/ztn:lint` (nightly by default) to surface drift. Resolve
+clarifications when convenient.
+
+**Distill.** When a record-level capture matures into knowledge, it
+graduates into PARA notes. When a captured behaviour pattern stabilises
+into a value, it graduates into the constitution. Both transitions
+are owner-gated; the engine never silently elevates.
+
+## Quickstart (10 minutes)
 
 ```bash
-# 1. Create your own ZTN from this template
+# 1. Create your own ZTN repo from this template
 gh repo create my-ztn --template <maintainer>/minder-ztn --private --clone
 cd my-ztn
 
-# 2. Install the Claude Code integration (rules, commands, skills → ~/.claude/)
+# 2. Install the Claude Code integration + Obsidian vault config
 ./integrations/claude-code/install.sh
 
-# 3. Open the repo in Claude Code and run bootstrap:
+# 3. Open Claude Code in the repo and run:
 #    /ztn:bootstrap
-#
-# 4. Review what bootstrap surfaced for your decision:
 #    /ztn:resolve-clarifications
-#
-# 5. From here on — the daily flow:
-#    /ztn:process            (voice transcripts → notes)
-#    /ztn:lint               (consistency sweep — autofix + surface non-obvious)
-#    /ztn:agent-lens         (outside-view observations on cadence)
-#    /ztn:agent-lens-add     (create a new agent-lens via wizard)
-#    /ztn:source-add         (register a new input-source type declaratively)
-#    /ztn:resolve-clarifications  (walk the owner-decision queue)
-#    /ztn:save               (commit + push)
-#    /ztn:sync-data          (pull on a second device)
-#    /ztn:update             (pull engine updates from upstream)
+
+# 4. Open Obsidian → Open folder as vault → zettelkasten/
+#    Install three community plugins (Dataview, Tasks, Front Matter
+#    Title) — instructions print on first run.
 ```
 
-`install.sh` is the only manual shell step. After it, every operation
-lives inside Claude Code.
+That's the whole setup. From here, the daily flow is:
 
-`/ztn:bootstrap` populates SOUL.md / PEOPLE / PROJECTS and seeds the
-clarifications queue with anything ambiguous it found in your inputs;
-`/ztn:resolve-clarifications` is the canonical owner-facing path to
-walk that queue (skill clusters items by theme, pre-forms hypotheses,
-applies confirmed resolutions in place).
+- `/ztn:process` — voice transcripts in `_sources/inbox/` → records
+- `/ztn:lint` — nightly drift detection (auto-scheduled)
+- `/ztn:agent-lens` — outside-view observations (auto-scheduled)
+- Open the Obsidian vault for orientation, review, and reading
 
-Full walkthrough with optional steps (drop an existing backlog, write
-an identity profile, set up scheduled processing) —
-`docs/onboarding.md`.
+Full walkthrough: `docs/onboarding.md`.
+Daily use manual (hotkeys, graph presets, recipes):
+`integrations/obsidian/guide.md`.
+
+## What you get
+
+- **Engine** (`integrations/claude-code/`) — rules, slash commands,
+  skills that read and write your vault.
+- **Obsidian UI** (`integrations/obsidian/`) — vault config, dashboard,
+  graph presets, bookmarks, visual cues per note type.
+- **Vault layout** (`zettelkasten/`) — three layers (records, knowledge,
+  hubs) plus constitution, registries, and runtime state.
+- **Pipeline scripts** (`zettelkasten/_system/scripts/`) — Python
+  workers behind the skills (constitution regen, evidence-trail
+  compactor, candidate buffers, format autofix, manifest emission).
+- **Sync tooling** (`scripts/sync_engine.sh`, `/ztn:update`) — pull
+  engine updates without touching your data.
 
 ## Run it on a schedule
 
-Three engine-shipped scheduler prompts in
-`integrations/claude-code/scheduler-prompts/` cover the autonomous
-surface so you only show up for resolution:
+Three engine-shipped scheduler prompts make ZTN largely autonomous:
 
-- `process-scheduled.md` — ingest new transcripts (≥ 3× per day)
-- `agent-lens-nightly.md` — runs due lenses (skill filters by
-  per-lens cadence; lenses may emit `## Action Hints`); 1× nightly
-  at 03:00
-- `lint-nightly.md` — invariant scans + Step 7.5 dispatches
-  `/ztn:resolve-clarifications --auto-mode` inline (consumes fresh
-  lens hints + new clarifications, auto-applies safe additive
-  proposals, queues residue); 1× nightly at 05:00
+| Prompt | Cadence | What it does |
+|---|---|---|
+| `process-scheduled.md` | ≥ 3× per day | Ingest new transcripts |
+| `agent-lens-nightly.md` | 03:00 daily | Run due outside-view lenses |
+| `lint-nightly.md` | 05:00 daily | Invariant scans + auto-resolve safe clarifications |
 
-Lens production is one scheduler tick, lint+resolve cleanup is
-another — the most quality-sensitive split (agent-lens vs resolve)
-stays at the scheduler level.
+You show up for the human-judgment work; the engine handles the rest.
+Setup: `docs/scheduling.md`.
 
-Paste each body into Claude Code `/schedule` (or any cron-like runner
-that can launch a `claude` session). Full setup, push-credential
-options, and design rationale — `docs/scheduling.md`.
+## Privacy & data ownership
 
-## Sync engine updates
+Your data is your git repo. Where things live, what travels where, and
+what stays local — `docs/privacy.md`.
 
-See `docs/upstream-sync.md`. `git remote add upstream …` once, then
-`scripts/sync_engine.sh` whenever you want to pull engine improvements.
+## Updates
 
-## Contribute back
+Pull engine improvements with `/ztn:update` (interactive Claude
+skill) or `scripts/sync_engine.sh` (CI / power users). Your records,
+constitution, and registries are never touched by updates. Release
+notes: `docs/CHANGELOG.md`.
 
-Engine improvements (skills, scripts, docs) are welcome.
-See `CONTRIBUTING.md`.
+## Hacking on the engine
+
+Improvements to skills, scripts, the engine pipeline, or the Obsidian
+integration are welcome. Read `CONTRIBUTING.md` and
+`.claude/CLAUDE.md` for the engine boundary, conventions, and
+verification commands.
 
 ## License
 

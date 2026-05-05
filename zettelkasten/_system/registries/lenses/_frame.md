@@ -377,6 +377,13 @@ Specific rules:
     with the most relevant short quote or paraphrase the thinker gave.
   - If the thinker named no paths for an observation, write the Evidence
     section with a single bullet `- (no specific paths cited)`.
+  - Each cited file MUST be referenced as `[[basename]]` (wikilink,
+    no extension, no path) so Obsidian indexes a graph edge and
+    Front Matter Title can substitute the human-readable title.
+    Constitution items by canonical id (`[[axiom-ethics-001]]`),
+    records by dated basename (`[[20260313-meeting-andrey-...]]`),
+    people by slug (`[[andrey-kuznetsov]]`), hubs by filename
+    (`[[hub-career-promotion]]`).
   - If the thinker offered a counter-reading or alternative
     interpretation, that goes in `**Alternative reading:**`. If not,
     write `unspecified`.
@@ -390,6 +397,7 @@ Specific rules:
 Canonical schema:
 
 ---
+title: 🔭 {id} — {YYYY-MM-DD from run_at}
 lens_id: {id}
 run_at: {ISO timestamp}
 hits: {N}
@@ -403,8 +411,8 @@ is_sensitive: {false | true}
 **Pattern:** {1-3 sentences from thinker, lightly trimmed if long}
 
 **Evidence:**
-- {path or "(no specific paths cited)"} — "{quote or paraphrase}"
-- {path} — "{...}"
+- [[{basename-without-extension}]] — "{quote or paraphrase}"
+- [[{basename}]] — "{...}"
 
 **Alternative reading:** {what thinker said could be the noise
                          interpretation, or "unspecified"}
@@ -416,6 +424,7 @@ is_sensitive: {false | true}
 For zero-hit runs:
 
 ---
+title: 🔭 {id} — {YYYY-MM-DD from run_at}
 lens_id: {id}
 run_at: {ISO timestamp}
 hits: 0
@@ -490,10 +499,22 @@ Standard pass conditions:
   - Evidence section has at least one bullet (may be `(no specific
     paths cited)`)
   - `**Confidence:**` value ∈ {low, medium, high, unspecified}
-- Cited paths that look like ZTN paths (start with `_records/`,
-  `1_projects/`, etc.) MUST resolve to existing files. Non-ZTN-path
-  citations are allowed (the thinker may quote constitution by name,
-  for example).
+- `title` exists in frontmatter and matches the pattern
+  `🔭 {lens_id} — {YYYY-MM-DD}` where the date matches `run_at`'s
+  date component. The title makes lens output human-readable in
+  Obsidian's file explorer, graph nodes (with Front Matter Title
+  plugin), and tab headers.
+- Cited references in Evidence bullets MUST be wikilinks
+  (`[[basename]]`) — without path prefix, without `.md` extension.
+  Each wikilink basename MUST resolve to an existing file in the
+  vault (the validator searches across `_records/`, `1_projects/`,
+  `2_areas/`, `3_resources/`, `4_archive/`, `5_meta/mocs/`,
+  `0_constitution/{axiom,principle,rule}/`, `_system/`). Non-file
+  citations (e.g. `(no specific paths cited)`) are still allowed.
+  Legacy lens outputs that pre-date this contract — files written
+  before this format landed — keep their original path-in-backticks
+  form on disk per the grandfathering rule below; the validator
+  never rewrites them.
 
 Missing or malformed privacy-trio fields fail the validator with
 `rejection_reason: privacy-trio-{field}-missing-or-malformed`. The

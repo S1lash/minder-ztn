@@ -60,7 +60,11 @@ first, then re-run.
 ## After a sync
 
 - Re-install the Claude Code symlinks (some skills may have been
-  renamed): `./integrations/claude-code/install.sh`.
+  renamed): `./integrations/claude-code/install.sh`. This step also
+  invokes `integrations/obsidian/seed.sh` to seed `<vault>/.obsidian/`
+  and `<vault>/minder-ztn.md` if missing — engine improvements to the
+  Obsidian config never overwrite your live `.obsidian/` (run
+  `seed.sh --force` if you want engine defaults back, with auto-backup).
 - Run the test suite: `pytest zettelkasten/_system/scripts/tests/`.
 - Review the diff: `git status` then `git diff`.
 - Commit the engine update: `git add -A && git commit -m "engine sync"`.

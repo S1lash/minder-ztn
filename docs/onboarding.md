@@ -1,8 +1,21 @@
-# Onboarding — quickstart
+# Onboarding — your first 30 minutes
 
-You only need to do two shell commands by hand: clone, then run
-`install.sh`. After that everything is orchestrated by Claude Code
-skills — `/ztn:bootstrap` first, then the daily flow.
+After this guide you'll have:
+
+- A vault opening cleanly in Obsidian (your daily UI) with a dashboard,
+  graph view, hotkeys, bookmarks, and visual cues per note type.
+- A populated `SOUL.md` (your identity, focus, working style) and
+  registries (people, projects) seeded from your existing context.
+- A clarifications queue you've walked through, resolving anything
+  bootstrap was uncertain about.
+- An autonomous nightly schedule (lint + agent-lens) catching drift
+  while you sleep.
+
+Two shell commands by hand: clone, then `install.sh`. Everything else
+is Claude Code skills — `/ztn:bootstrap` first, then the daily flow.
+
+If you only have 5 minutes: do steps 1–2, then `/ztn:bootstrap`.
+You'll have a working system. The rest is enrichment.
 
 ## 1. Clone
 
@@ -206,6 +219,8 @@ Full design — `docs/scheduling.md`.
   understand exactly what bootstrap does and why.
 - **`docs/upstream-sync.md`** — engine update flow, deeper details
   (`/ztn:update` is the friendly wrapper).
+- **`docs/obsidian.md`** — opening the vault in Obsidian; what the
+  ZTN-shipped `.obsidian/` config does and what to avoid.
 - **`integrations/claude-code/skills/ztn-{save,sync-data,update}/SKILL.md`**
   — git-flow skills.
 - **`zettelkasten/_system/docs/SYSTEM_CONFIG.md`** — full system spec.

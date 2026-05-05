@@ -23,3 +23,21 @@ zettelkasten/_system/state/.*.lock
 
 # Temporary planning / SDD docs (deleted at end of implementation cycle)
 _planning/
+
+# Obsidian — per-device state, never in git. The seeded `.obsidian/`
+# config is owner-data after seed; only volatile per-device files are
+# ignored here. To put the whole `.obsidian/` under version control,
+# remove these lines.
+zettelkasten/.obsidian/workspace.json
+zettelkasten/.obsidian/workspace-mobile.json
+zettelkasten/.obsidian/workspaces.json
+zettelkasten/.obsidian/cache
+zettelkasten/.obsidian/.trash/
+zettelkasten/.obsidian.backup-*/
+zettelkasten/.obsidian/graph.json.bak-*
+# Community plugin source code is installed locally per device — don't
+# commit. Plugin enablement (`community-plugins.json`) and per-plugin
+# config (`plugins/<id>/data.json`) ARE committed so settings sync.
+zettelkasten/.obsidian/plugins/*/main.js
+zettelkasten/.obsidian/plugins/*/manifest.json
+zettelkasten/.obsidian/plugins/*/styles.css

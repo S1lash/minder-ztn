@@ -15,6 +15,9 @@ Engine paths in short:
 - `integrations/claude-code/{rules,commands,skills}/` — Claude Code
   prompts and skills.
 - `integrations/minder-ztn-mcp/` — MCP integration guide.
+- `integrations/obsidian/` — Obsidian vault config seed (`.obsidian/`
+  defaults + `minder-ztn.md` dashboard). Idempotent seeder runs from
+  `claude-code/install.sh`; never overwrites a friend's live `.obsidian/`.
 - `scripts/` — release, sync, lint tooling.
 - `zettelkasten/_system/{docs,scripts,registries/{FOLDERS,CONCEPT_NAMING,AUDIENCES,AGENT_LENSES}.md}` —
   authoritative system spec. CONCEPT_NAMING + AUDIENCES define the

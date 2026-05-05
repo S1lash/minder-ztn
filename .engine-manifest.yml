@@ -34,6 +34,13 @@ engine:
   - integrations/claude-code/SETUP_PROMPT.md
   - integrations/minder-ztn-mcp/
 
+  # Obsidian vault config seed — `vault-config/` ships canonical
+  # `.obsidian/` defaults; `seed.sh` is invoked by Claude install.sh and
+  # idempotently copies them into <vault>/.obsidian/ only when missing.
+  # Engine improvements flow to friends via sync_engine.sh; the live
+  # `.obsidian/` in friend's vault is never overwritten on update.
+  - integrations/obsidian/
+
   # Cross-cutting scripts
   - scripts/
 
@@ -109,6 +116,9 @@ engine:
   - docs/onboarding.md
   - docs/upstream-sync.md
   - docs/scheduling.md
+  - docs/obsidian.md
+  - docs/privacy.md
+  - docs/CHANGELOG.md
 
 template:
   # System layer
@@ -201,6 +211,18 @@ exclude:
   # Runtime state
   - zettelkasten/_system/state/
   - zettelkasten/_system/views/
+
+  # Owner's live Obsidian vault state (seeded once by integrations/obsidian
+  # /seed.sh; friend's customisations live here and must not leak upstream).
+  # `.obsidian.backup-*` directories are created by `seed.sh --force`.
+  - zettelkasten/.obsidian/
+  - zettelkasten/.obsidian.backup-
+  - zettelkasten/minder-ztn.md
+  - zettelkasten/HOME.md
+  # Help docs copied into the vault by integrations/obsidian/seed.sh.
+  # Engine source for these lives in `integrations/obsidian/{guide,views}.md`
+  # and `docs/{privacy,CHANGELOG}.md`; vault copies are owner-data after seed.
+  - zettelkasten/5_meta/help/
 
   # Owner's personal README
   - README.md

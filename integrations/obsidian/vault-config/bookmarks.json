@@ -1,0 +1,165 @@
+{
+  "items": [
+    {
+      "type": "file",
+      "ctime": 1714838400000,
+      "path": "minder-ztn.md",
+      "title": "🏠 minder-ztn"
+    },
+    {
+      "type": "group",
+      "ctime": 1714838400001,
+      "title": "📍 Now",
+      "items": [
+        {
+          "type": "file",
+          "ctime": 1714838400002,
+          "path": "_system/views/CURRENT_CONTEXT.md",
+          "title": "Current Context"
+        },
+        {
+          "type": "file",
+          "ctime": 1714838400003,
+          "path": "_system/state/OPEN_THREADS.md",
+          "title": "Open Threads"
+        },
+        {
+          "type": "file",
+          "ctime": 1714838400004,
+          "path": "_system/state/CLARIFICATIONS.md",
+          "title": "Clarifications"
+        }
+      ]
+    },
+    {
+      "type": "group",
+      "ctime": 1714838400005,
+      "title": "🧭 Identity",
+      "items": [
+        {
+          "type": "file",
+          "ctime": 1714838400006,
+          "path": "_system/SOUL.md",
+          "title": "SOUL"
+        },
+        {
+          "type": "file",
+          "ctime": 1714838400007,
+          "path": "_system/views/constitution-core.md",
+          "title": "Constitution Core"
+        },
+        {
+          "type": "file",
+          "ctime": 1714838400008,
+          "path": "_system/TASKS.md",
+          "title": "Tasks"
+        },
+        {
+          "type": "file",
+          "ctime": 1714838400009,
+          "path": "_system/CALENDAR.md",
+          "title": "Calendar"
+        }
+      ]
+    },
+    {
+      "type": "group",
+      "ctime": 1714838400010,
+      "title": "🗂️ Registries",
+      "items": [
+        {
+          "type": "file",
+          "ctime": 1714838400011,
+          "path": "3_resources/people/PEOPLE.md",
+          "title": "People"
+        },
+        {
+          "type": "file",
+          "ctime": 1714838400012,
+          "path": "1_projects/PROJECTS.md",
+          "title": "Projects"
+        },
+        {
+          "type": "file",
+          "ctime": 1714838400013,
+          "path": "_system/registries/CONCEPTS.md",
+          "title": "Concepts"
+        },
+        {
+          "type": "file",
+          "ctime": 1714838400014,
+          "path": "_system/registries/TAGS.md",
+          "title": "Tags"
+        }
+      ]
+    },
+    {
+      "type": "group",
+      "ctime": 1714838400015,
+      "title": "📊 Browse",
+      "items": [
+        {
+          "type": "file",
+          "ctime": 1714838400016,
+          "path": "_system/views/INDEX.md",
+          "title": "Note Index"
+        },
+        {
+          "type": "file",
+          "ctime": 1714838400017,
+          "path": "_system/views/HUB_INDEX.md",
+          "title": "Hub Index"
+        },
+        {
+          "type": "folder",
+          "ctime": 1714838400018,
+          "path": "5_meta/mocs",
+          "title": "Hubs"
+        },
+        {
+          "type": "folder",
+          "ctime": 1714838400019,
+          "path": "_records/meetings",
+          "title": "Meetings"
+        },
+        {
+          "type": "folder",
+          "ctime": 1714838400020,
+          "path": "_records/observations",
+          "title": "Observations"
+        }
+      ]
+    },
+    {
+      "type": "group",
+      "ctime": 1714838400021,
+      "title": "📖 Help",
+      "items": [
+        {
+          "type": "file",
+          "ctime": 1714838400022,
+          "path": "5_meta/help/guide.md",
+          "title": "Obsidian guide for ZTN"
+        },
+        {
+          "type": "file",
+          "ctime": 1714838400023,
+          "path": "5_meta/help/views.md",
+          "title": "Graph & Search presets"
+        },
+        {
+          "type": "file",
+          "ctime": 1714838400024,
+          "path": "5_meta/help/privacy.md",
+          "title": "Privacy & data ownership"
+        },
+        {
+          "type": "file",
+          "ctime": 1714838400025,
+          "path": "5_meta/help/CHANGELOG.md",
+          "title": "What's new"
+        }
+      ]
+    }
+  ]
+}

@@ -6,16 +6,21 @@ loop. Your contract:
    land on `main` directly — no feature branches, no PRs, no leftover
    branches anywhere.
    - Capture the starting branch: `START_BRANCH=$(git rev-parse --abbrev-ref HEAD)`.
+   - `git fetch origin main`.
    - `git checkout main` (create-or-track if needed:
      `git checkout -B main origin/main`).
-   - `git pull --ff-only origin main`.
-   - If checkout fails (uncommitted changes from runtime scaffolding) or
-     pull is non-fast-forward → STOP. Append a one-line note to
-     `_system/state/CLARIFICATIONS.md` under a `### Scheduler failures`
-     section with timestamp and cause, run `/ztn:save --auto --message
-     "scheduler: cannot reach main, owner action needed"` (this will
-     commit + push on whatever branch we're on so the note still ships),
-     then exit.
+   - `git pull --rebase origin main` — rebase variant on purpose:
+     sandbox-local commits on `main` (e.g. an unpushed commit from a
+     previous failed tick) get replayed on top of `origin/main`
+     instead of blocking on non-fast-forward. Force-push remains
+     forbidden; rebase only re-orders local-only commits.
+   - If checkout fails on a dirty working tree, or rebase encounters
+     conflicts → run `git rebase --abort || true`, append a one-line
+     note to `_system/state/CLARIFICATIONS.md` under a
+     `### Scheduler failures` section with timestamp and cause, run
+     `/ztn:save --auto --message "scheduler: cannot reach main, owner
+     action needed"` (this will commit + push on whatever branch we're
+     on so the note still ships), then exit.
    - From here on, the working branch is `main`. All subsequent steps
      operate on `main` only.
 

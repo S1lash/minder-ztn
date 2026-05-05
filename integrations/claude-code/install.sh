@@ -179,6 +179,13 @@ if [ -d "$BACKUP_DIR" ]; then
   log "previous entries backed up to: $BACKUP_DIR"
 fi
 
+# --- Obsidian vault seed (idempotent; skipped if .obsidian/ already exists) ---
+OBSIDIAN_SEED="$REPO_ROOT/integrations/obsidian/seed.sh"
+if [ -x "$OBSIDIAN_SEED" ]; then
+  log "running Obsidian vault seeder"
+  MINDER_ZTN_BASE="$MINDER_ZTN_BASE" "$OBSIDIAN_SEED" || log "obsidian seed failed (non-fatal)"
+fi
+
 cat <<EOF
 
 [install] done.
@@ -187,6 +194,12 @@ Wired into ~/.claude/CLAUDE.md (managed block):
   - @~/.claude/rules/ztn.md                    (search triggers, decision-check discovery)
   - @~/.claude/rules/constitution-capture.md   (global capture hook)
   - @~/.claude/rules/constitution-core.md      (axioms / principles / rules)
+
+Obsidian vault config:
+  - Seeded into $MINDER_ZTN_BASE/.obsidian/ if not already present.
+  - Open the vault: Obsidian → Open folder as vault → $MINDER_ZTN_BASE
+  - Start at HOME.md (Cmd+O → "HOME").
+  - Reset to engine defaults later: integrations/obsidian/seed.sh --force
 
 Restart Claude Code (open a new session) to pick up the rules.
 Re-run this installer any time after a 'git pull' on minder-ztn — it is
