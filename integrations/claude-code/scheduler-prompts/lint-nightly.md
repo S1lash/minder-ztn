@@ -46,7 +46,15 @@ human in this loop. Your contract:
      infer skill progress. When `/ztn:lint` returns control to you,
      it is done — proceed to step 4 immediately.
    - Standard flow: skill auto-fixes the obvious, surfaces the
-     non-obvious to CLARIFICATIONS. Do NOT pause for owner input.
+     non-obvious to CLARIFICATIONS. Step 7.5 dispatches
+     `/ztn:resolve-clarifications --auto-mode` inline; that sweep
+     reads fresh `## Action Hints` from agent-lens outputs (written
+     by the earlier nightly agent-lens tick), curates against
+     constitution + SOUL + recent insights + history, and either
+     auto-applies safe additive proposals or queues for owner review
+     with rich smart_resolve reasoning. Per-session log lands at
+     `_system/state/resolve-sessions/{date}-{sid}.md`. Do NOT pause
+     for owner input.
    - Queue size is irrelevant to whether the run continues — owner
      reviews the queue tomorrow via `/ztn:resolve-clarifications`.
    - If `/ztn:lint` aborts on lock / repo state — append failure note
@@ -75,10 +83,12 @@ human in this loop. Your contract:
 6. Forbidden in this run:
    - `/ztn:process` (its own daytime schedule handles this)
    - `/ztn:maintain` (runs inline inside process; not relevant here)
-   - `/ztn:agent-lens` (separate scheduler tick at 03:30)
-   - `/ztn:resolve-clarifications` (separate scheduler tick at 04:00 —
-     auto-mode is dispatched there, not here, so each LLM-judgment
-     skill gets a fresh scheduler-agent context)
+   - `/ztn:agent-lens` (separate scheduler tick earlier in the
+     night — its lens hints are READ here via lint Step 7.5
+     dispatch, not produced here)
+   - `/ztn:resolve-clarifications` interactive (owner-only — note
+     that `--auto-mode` IS run, but only as lint's internal dispatch
+     in step 3; you do not invoke it directly)
    - `/ztn:update` (engine sync is owner-only)
    - any interactive prompt to the human
    - `--include-engine` on save

@@ -11,19 +11,17 @@ Three scheduled jobs. No more.
 | Job | Cadence | Skill chain | Prompt source |
 |---|---|---|---|
 | `ztn-process` | ≥ 3× per day | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/process-scheduled.md` |
-| `ztn-lint` | 1× nightly (03:00) | `/ztn:sync-data` → `/ztn:lint` → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/lint-nightly.md` |
-| `ztn-agent-lens` | 1× nightly (03:30) | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/agent-lens-nightly.md` |
-| `ztn-resolve-auto` | 1× nightly (04:00) | `/ztn:sync-data` → `/ztn:resolve-clarifications --auto-mode` → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/resolve-auto.md` |
+| `ztn-agent-lens` | 1× nightly (03:00) | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/agent-lens-nightly.md` |
+| `ztn-lint` | 1× nightly (05:00) | `/ztn:sync-data` → `/ztn:lint` (Step 7.5 dispatches `/ztn:resolve-clarifications --auto-mode` inline) → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/lint-nightly.md` |
 
-The three nightly ticks run back-to-back at 03:00 / 03:30 / 04:00 in
-order so that lint cleans up invariant violations first, agent-lens
-runs against a tidy base, and resolve-auto consumes fresh lens hints
-~30 min after they land. Each tick uses its own scheduler-agent
-context — separate sessions, no accumulated reasoning across the
-three quality-critical LLM-judgement skills. The agent-lens step
-fires nightly but the skill itself filters lenses by per-lens
-cadence; most nights agent-lens runs zero or one lens; on
-weekly/biweekly anchors it runs the due ones.
+Two nightly ticks. Agent-lens runs first (03:00) in its own scheduler-
+agent context — lens production isolated from resolve consumption,
+prevents the agent that produces lens bodies from also voting on its
+own proposals (confirmation bias). Lint runs later (05:00), invokes
+its invariant scans, then Step 7.5 dispatches resolve --auto-mode
+inline so the same tick consumes fresh lens hints + CLARIFICATIONS
+that lint just emitted. The agent-lens skill filters lenses by per-
+lens cadence — nightly fire ≠ nightly lens runs.
 
 There is no `ztn-maintain` schedule — maintain runs inline as the tail
 of `/ztn:process`. There is no `ztn-resolve-clarifications` schedule —
@@ -80,23 +78,16 @@ The recommended path. Three routines:
 
 ```
 /schedule
-  name: ztn-lint
-  cron: 0 3 * * *
-  prompt: <paste body of integrations/claude-code/scheduler-prompts/lint-nightly.md>
-```
-
-```
-/schedule
   name: ztn-agent-lens
-  cron: 30 3 * * *
+  cron: 0 3 * * *
   prompt: <paste body of integrations/claude-code/scheduler-prompts/agent-lens-nightly.md>
 ```
 
 ```
 /schedule
-  name: ztn-resolve-auto
-  cron: 0 4 * * *
-  prompt: <paste body of integrations/claude-code/scheduler-prompts/resolve-auto.md>
+  name: ztn-lint
+  cron: 0 5 * * *
+  prompt: <paste body of integrations/claude-code/scheduler-prompts/lint-nightly.md>
 ```
 
 The prompt bodies are self-contained — fresh agent per run, no extra

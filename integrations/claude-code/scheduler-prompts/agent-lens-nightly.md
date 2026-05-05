@@ -61,10 +61,13 @@ is no human in this loop. Your contract:
    - If `/ztn:agent-lens` aborts on lock / repo state — append failure
      note to CLARIFICATIONS, then continue to step 4 so the note
      still ships.
-   - Action Hints written by lenses here will be consumed by the
-     `/ztn:resolve-clarifications --auto-mode` tick (separate
-     scheduler entry, fires ~30 min after this one). Fresh agent
-     context for that step is the whole reason these are split.
+   - Action Hints written by lenses here will be consumed by
+     `/ztn:resolve-clarifications --auto-mode` later in the night
+     (lint nightly tick dispatches it inline via Step 7.5). Lens
+     production and resolve consumption sit in separate scheduler-
+     agent contexts on purpose: the agent that judges proposals in
+     Step A.2/A.3 has not just produced lens body output, which
+     prevents confirmation bias on its own emissions.
    - Do NOT exclude or reorder lenses; the registry IS the policy.
      Do NOT pass `--include-draft` or `--lens <id>` (manual single-
      lens and draft runs are owner-driven).
@@ -103,9 +106,10 @@ is no human in this loop. Your contract:
    - `/ztn:process` (its own daytime schedule handles this)
    - `/ztn:maintain` (runs inline inside process; not relevant here)
    - `/ztn:lint` (separate scheduler tick at 03:00)
-   - `/ztn:resolve-clarifications` (separate scheduler tick at 04:00 —
-     auto-mode is dispatched there, not here, so each LLM-judgment
-     skill gets a fresh scheduler-agent context)
+   - `/ztn:resolve-clarifications` (auto-mode is dispatched by the
+     later lint nightly tick via lint Step 7.5; not here — lens
+     emission and resolve consumption are kept in separate
+     scheduler-agent contexts on purpose)
    - `/ztn:update` (engine sync is owner-only)
    - `--include-draft` on agent-lens (drafts are owner-driven dry-runs)
    - `--lens <id>` on agent-lens (manual single-lens runs are

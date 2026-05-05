@@ -161,22 +161,20 @@ Three ready-made scheduler prompts ship in
 
 - `process-scheduled.md` — pre-sync → `/ztn:process` → `/ztn:save --auto`.
   Recommended cadence: 3× per day (e.g. cron `0 9,14,19 * * *`).
-- `lint-nightly.md` — pre-sync → `/ztn:lint` → `/ztn:save --auto`.
-  Recommended cadence: 1× per night (e.g. cron `0 3 * * *`).
 - `agent-lens-nightly.md` — pre-sync → `/ztn:agent-lens --all-due` →
-  `/ztn:save --auto`. Recommended cadence: 30 min after lint
-  (e.g. cron `30 3 * * *`). The skill filters lenses by per-lens
+  `/ztn:save --auto`. Recommended cadence: 1× per night
+  (e.g. cron `0 3 * * *`). The skill filters lenses by per-lens
   cadence — nightly tick ≠ nightly lens runs.
-- `resolve-auto.md` — pre-sync → `/ztn:resolve-clarifications
-  --auto-mode` → `/ztn:save --auto`. Recommended cadence: 30 min
-  after agent-lens (e.g. cron `0 4 * * *`), so fresh `## Action Hints`
-  emitted by lenses get consumed promptly.
+- `lint-nightly.md` — pre-sync → `/ztn:lint` (which dispatches
+  `/ztn:resolve-clarifications --auto-mode` inline via Step 7.5)
+  → `/ztn:save --auto`. Recommended cadence: ~2 h after agent-lens
+  (e.g. cron `0 5 * * *`), so fresh `## Action Hints` emitted by
+  lenses get consumed in the same tick that runs invariant cleanup.
 
-The three nightly ticks run as separate scheduler entries on purpose:
-each LLM-judgement skill (lint scans, agent-lens stages, resolve
-A.2/A.3 sweep) gets a fresh scheduler-agent context, avoiding
-contextual bleed across reasoning steps. To create new lenses, use
-the wizard: `/ztn:agent-lens-add` (owner-driven, not scheduled).
+Two nightly ticks (lens production isolated from lint+resolve
+consumption — prevents the agent that produced lens bodies from
+voting on its own proposals). To create new lenses, use the
+wizard: `/ztn:agent-lens-add` (owner-driven, not scheduled).
 
 Paste each body into your scheduler of choice (Claude Code `/schedule`,
 GitHub Actions cron, host crontab calling `claude` headless — any

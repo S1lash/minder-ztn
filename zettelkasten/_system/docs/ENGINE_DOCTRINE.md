@@ -234,21 +234,27 @@ invoking it. `/ztn:capture-candidate` is fire-and-forget, no lock.
 concurrent-edit detection (snapshot + re-validate) to defend against
 parallel owner-driven invocations of itself.
 `/ztn:resolve-clarifications` runs in two modes — owner-driven
-interactive and `--auto-mode` dispatched by the standalone
-`resolve-auto.md` scheduler tick (~04:00 nightly). Both modes take
-`.resolve.lock` and read all four pipeline locks (process / maintain /
-lint / agent-lens) at start. Auto-mode skips Step 0 pre-sync (the
-scheduler tick already synced) and never writes
-`lens-resolution-history.jsonl` (engine never trains on engine).
-Interactive mode pre-syncs via `/ztn:sync-data` (Step 0) so multi-
-device queues stay current. The lock matrix is fully symmetric — the
-three nightly skills (`lint`, `agent-lens`, `resolve --auto-mode`)
-each run in their own scheduler-agent context (separate ticks at
-03:00 / 03:30 / 04:00) precisely so the LLM judgements stay clean
-of cross-skill contextual bleed; if any two acquire conflicting
-locks, the later one aborts and the next nightly cycle retries. All
-four pipeline skills read `.resolve.lock` at start and abort on it.
-`/ztn:sync-data` and `/ztn:save` read `.resolve.lock` and refuse
+interactive and `--auto-mode` dispatched by `/ztn:lint` Step 7.5
+inline (the lint nightly tick at 05:00 is the timer; resolve is the
+engine). Both modes take `.resolve.lock`. Interactive mode reads all
+four pipeline locks (process / maintain / lint / agent-lens) at start
+and pre-syncs via `/ztn:sync-data` (Step 0) so multi-device queues
+stay current. **`--auto-mode` exception for `.lint.lock`:** lint holds
+its own lock during dispatch; treating that as competitor would
+deadlock the nightly chain. Auto-mode therefore proceeds when
+`.lint.lock` exists (proof of dispatcher), aborts silently on any
+other pipeline lock, and skips Step 0 pre-sync (the dispatcher
+already synced; lint's autofixes leave the working tree dirty so re-
+syncing would abort). Auto-mode also never writes
+`lens-resolution-history.jsonl` (engine never trains on engine —
+precedent only accretes from owner clicks in interactive mode).
+**Agent-lens runs as a separate nightly scheduler tick at 03:00**,
+not inside the lint tick — agent-lens production and resolve
+consumption stay in different scheduler-agent contexts on purpose,
+so the agent judging proposals in Step A.2/A.3 has not just produced
+lens body output (would be confirmation bias on its own emissions).
+All four pipeline skills read `.resolve.lock` at start and abort on
+it. `/ztn:sync-data` and `/ztn:save` read `.resolve.lock` and refuse
 while a resolve session is in progress; the resolve skill's Step 9.1
 releases the lock before reminding the owner to run save. Stale locks
 > 2 h are surfaced as warnings, never silently deleted.

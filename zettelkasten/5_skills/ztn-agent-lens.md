@@ -25,8 +25,10 @@ Pointer card. The full pipeline lives in the installed skill, not here.
 - **Per-lens definitions:** `_system/registries/lenses/{id}/prompt.md`.
 - **Scheduler-prompt body:**
   `integrations/claude-code/scheduler-prompts/agent-lens-nightly.md`
-  (standalone nightly tick at ~03:30; runs in its own scheduler-agent
-  context for clean per-lens reasoning).
+  (standalone nightly tick at ~03:00; lint+resolve runs separately
+  ~2 h later, so lens production stays isolated from resolve
+  consumption — prevents confirmation bias on the lens's own
+  Action Hints).
 - **Full orientation card:** [[CLAUDE_ZETTELKASTEN]] — three layers,
   routing, all ZTN skills, conventions.
 

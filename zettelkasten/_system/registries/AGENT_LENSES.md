@@ -1,6 +1,6 @@
 # Agent Lenses Registry
 
-**Last Updated:** 2026-05-05 (Action Hints optional trailer added to `_frame.md` and 5 lens prompts; consumed by the standalone `resolve-auto.md` scheduler tick at 04:00 nightly via `/ztn:resolve-clarifications --auto-mode`)
+**Last Updated:** 2026-05-05 (Action Hints optional trailer added to `_frame.md` and 5 lens prompts; consumed by `/ztn:resolve-clarifications --auto-mode` dispatched inline by lint's nightly tick at 05:00, ~2 h after agent-lens runs at 03:00 — split keeps lens production isolated from resolve consumption)
 
 Registry of agent-lens definitions. Each row points to a folder under
 `_system/registries/lenses/{id}/` containing the lens prompt and any
@@ -173,9 +173,9 @@ Lenses with `status: paused` or `status: archived`. Per Archive Contract Form B 
   `## Action Hints` section after the canonical body proposing
   structural changes (`wikilink_add`, `hub_stub_create`,
   `open_thread_add`, `decision_update_section`). The trailer is
-  consumed by `/ztn:resolve-clarifications --auto-mode` (standalone
-  scheduler tick `resolve-auto.md` at 04:00 nightly, ~30 min after
-  this skill writes its outputs): the resolver judges every hint against full owner
+  consumed by `/ztn:resolve-clarifications --auto-mode` (dispatched
+  inline by lint Step 7.5 at the nightly lint tick, ~2 h after
+  agent-lens writes its outputs): the resolver judges every hint against full owner
   context and either auto-applies safe additive proposals or queues
   for owner review with rich smart_resolve reasoning. Schema +
   per-lens emission stance: `lenses/_frame.md → Action Hints

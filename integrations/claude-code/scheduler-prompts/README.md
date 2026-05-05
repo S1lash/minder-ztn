@@ -12,35 +12,35 @@ For full design rationale, cadence, and plug-in instructions see
 | File | What it runs | Recommended cadence |
 |---|---|---|
 | `process-scheduled.md` | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `/ztn:save --auto` | ≥ 3× per day, e.g. cron `0 9,14,19 * * *` |
-| `lint-nightly.md` | `/ztn:sync-data` → `/ztn:lint` → `/ztn:save --auto` | 1× nightly, e.g. cron `0 3 * * *` |
-| `agent-lens-nightly.md` | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `/ztn:save --auto` | 1× nightly, e.g. cron `30 3 * * *` |
-| `resolve-auto.md` | `/ztn:sync-data` → `/ztn:resolve-clarifications --auto-mode` → `/ztn:save --auto` | 1× nightly, e.g. cron `0 4 * * *` |
+| `agent-lens-nightly.md` | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `/ztn:save --auto` | 1× nightly, e.g. cron `0 3 * * *` |
+| `lint-nightly.md` | `/ztn:sync-data` → `/ztn:lint` (Step 7.5 dispatches `/ztn:resolve-clarifications --auto-mode` inline) → `/ztn:save --auto` | 1× nightly, e.g. cron `0 5 * * *` |
 
 There is no `maintain` prompt — maintain runs inline at the tail of
-`/ztn:process`. There is no interactive `resolve-clarifications`
-prompt — that flow is owner-only by design.
+`/ztn:process`. There is no separate `resolve-clarifications` prompt
+— `--auto-mode` is dispatched by lint Step 7.5 inline; interactive
+mode is owner-only by design.
 
-**Why three nightly entries instead of one chained tick.** The three
-nightly skills (`lint`, `agent-lens`, `resolve-clarifications
---auto-mode`) each perform LLM-driven judgement work: lint over
-invariant scans, agent-lens over per-lens thinker/structurer pairs,
-and resolve over Step A.2 curation + A.3 sweep. Chaining them in one
-scheduler tick would accumulate context across all three, with
-later steps reading their inputs through whatever reasoning the
-earlier steps already laid down — anchoring bias, contextual bleed,
-sub-optimal cache utilisation. Splitting into three back-to-back
-ticks gives each LLM-judgement step a fresh scheduler-agent context.
-The 30-minute spacing is enough for one tick to commit and push
-before the next pulls; lens hints written at 03:30 are still fresh
-at 04:00 (vs 21h gap if separated by full days). The cost is three
-cron entries instead of one — accepted in exchange for materially
-better judgement quality on the system's most context-sensitive
-LLM calls.
+**Why two nightly entries (lens separate from lint+resolve).** The
+most quality-sensitive isolation is between agent-lens and resolve:
+agent-lens stages produce `## Action Hints`, and resolve A.2/A.3
+judges them. If both ran in the same scheduler-agent context, the
+agent that produced lens bodies would also vote on its own proposals
+— maximum confirmation bias. So agent-lens is its own tick.
 
-Order matters: lint at 03:00 (cleans up invariant violations first
-so agent-lens sees a tidy base), agent-lens at 03:30 (runs due
-lenses, may emit `## Action Hints`), resolve-auto at 04:00 (consumes
-fresh hints + clarifications, judges against full owner context).
+Lint and resolve, by contrast, do ortogonal reasoning: lint pattern-
+matches invariant violations (people-bare-name, archive-note-missing,
+manifest-schema), resolve judges «would the experienced owner
+approve this NOW». Chaining them in one tick accumulates context
+but the bleed is small. The operational simplicity of one tick (lint
+runs invariant cleanup → immediately consumes the resulting
+CLARIFICATIONS + fresh lens hints in resolve A.2/A.3) outweighs the
+marginal quality dip.
+
+Order matters: agent-lens at 03:00 (runs due lenses, may emit
+`## Action Hints`); lint at 05:00 — lint cleans invariants, then
+Step 7.5 dispatches resolve to consume hints + new CLARIFICATIONS
++ existing queue, and either auto-applies safe additive proposals
+or queues residue for owner.
 
 **Manifest emission per tick.** `/ztn:process` Step 5.5 writes both
 `{batch_id}.md` (markdown report) and `{batch_id}.json` (machine-
@@ -70,23 +70,16 @@ The path of least friction. Two routines:
 
 ```
 /schedule
-  name: ztn-lint
-  cron: 0 3 * * *
-  prompt: <paste body of lint-nightly.md>
-```
-
-```
-/schedule
   name: ztn-agent-lens
-  cron: 30 3 * * *
+  cron: 0 3 * * *
   prompt: <paste body of agent-lens-nightly.md>
 ```
 
 ```
 /schedule
-  name: ztn-resolve-auto
-  cron: 0 4 * * *
-  prompt: <paste body of resolve-auto.md>
+  name: ztn-lint
+  cron: 0 5 * * *
+  prompt: <paste body of lint-nightly.md>
 ```
 
 Each routine runs in a fresh agent — the prompt body is fully
@@ -140,9 +133,11 @@ Recommended:
   frequency is fine; `/ztn:process` is a no-op when
   `_sources/inbox/` is empty. Back-to-back ticks <5 min apart are
   wasteful (Claude Code rate / token budget).
-- `ztn-lint` (03:00 local), `ztn-agent-lens` (03:30 local),
-  `ztn-resolve-auto` (04:00 local) — three back-to-back nightly ticks
-  in this order. Each ~5-15 min, each in its own scheduler-agent
-  context for clean LLM judgement. Owner sits down to a fresh queue +
-  fresh lens outputs + fresh resolve session log all committed before
-  morning routine.
+- `ztn-agent-lens` (03:00 local) and `ztn-lint` (05:00 local) —
+  two nightly ticks. Agent-lens runs first in its own scheduler-
+  agent context (lens production isolated from resolve consumption,
+  no confirmation bias). Lint runs ~2 h later, dispatches
+  `/ztn:resolve-clarifications --auto-mode` via Step 7.5 inline so
+  the same tick that cleans invariants also consumes fresh hints +
+  CLARIFICATIONS. Owner wakes up to fully committed queue + lens
+  outputs + resolve session log.
