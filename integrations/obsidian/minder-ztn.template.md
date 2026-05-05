@@ -13,6 +13,25 @@ title: minder-ztn
 
 📖 [Obsidian guide](5_meta/help/guide.md) · 🌐 [Graph & Search presets](5_meta/help/views.md) · 🔒 [Privacy](5_meta/help/privacy.md) · 🆕 [What's new](5_meta/help/CHANGELOG.md)
 
+> [!warning]+ ✏️ Editing rules — what's yours to edit, what the engine owns
+> **Edit freely (your hand-curated layer):**
+> - Knowledge notes you wrote (`1_projects/`, `2_areas/`, `3_resources/ideas`, `3_resources/tech`, `4_archive/`)
+> - Constitution principles you authored (`0_constitution/{axiom,principle,rule}/`)
+> - Hubs (`5_meta/mocs/`)
+> - Identity files: [[SOUL]], [[TASKS]], [[CALENDAR]], [[POSTS]]
+> - This dashboard
+>
+> **Don't hand-edit (engine-managed — edits get overwritten or surface as clarifications):**
+> - Records (`_records/meetings/`, `_records/observations/`) — `/ztn:process` writes them
+> - Lens output (`_system/agent-lens/`) — `/ztn:agent-lens` writes them
+> - Registries (`PEOPLE.md`, `PROJECTS.md`, `TAGS.md`, `CONCEPTS.md`, `AUDIENCES.md`, `DOMAINS.md`) — `/ztn:maintain` and `/ztn:lint` maintain them
+> - Auto-generated views ([[INDEX]], [[HUB_INDEX]], [[CONSTITUTION_INDEX]], [[CURRENT_CONTEXT]], [[constitution-core]])
+> - Runtime state (`_system/state/` logs, queues, batches)
+>
+> **Don't bulk-edit frontmatter via Properties UI** on engine-managed files — Obsidian normalises keys/quotes and surfaces as `process-compatibility` clarifications. Use Source mode (`Cmd+E`) for hand edits.
+>
+> Need to change something engine-owned? Use the matching skill (`/ztn:process`, `/ztn:resolve-clarifications`, `/ztn:capture-candidate`, `/ztn:maintain`).
+
 ## 📍 Now
 
 - Focus snapshot: [[CURRENT_CONTEXT]]
