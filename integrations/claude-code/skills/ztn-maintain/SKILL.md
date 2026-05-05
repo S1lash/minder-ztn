@@ -90,13 +90,14 @@ fi
 
 **FIRST action — before lock, before context loading.**
 
-**0. Cross-skill lock check.** Read all four lock files:
+**0. Cross-skill lock check.** Read all five lock files:
 - `_sources/.processing.lock` — exists → abort «`/ztn:process` running, try again later»
 - `_sources/.lint.lock` — exists → abort «`/ztn:lint` running, try again later»
+- `_sources/.agent-lens.lock` — exists → abort «`/ztn:agent-lens` running, try again later»
 - `_sources/.resolve.lock` — exists → abort «`/ztn:resolve-clarifications` running, try again later»
 - `_sources/.maintain.lock` — exists → abort «another `/ztn:maintain` run in progress»
 
-All four skills mutually exclusive. Stale lock (>2 hours) → warn, offer manual removal, do NOT auto-delete.
+All five skills mutually exclusive. Stale lock (>2 hours) → warn, offer manual removal, do NOT auto-delete.
 
 1. Read `_system/state/BATCH_LOG.md` — all rows.
 2. Read `_system/state/log_maintenance.md` — grep for entries matching

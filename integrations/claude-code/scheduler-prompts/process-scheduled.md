@@ -30,9 +30,10 @@ loop. Your contract:
 2. Process.
    - **2a. Lock sanity (BEFORE invoking the skill).** Check
      `_sources/.processing.lock`, `_sources/.maintain.lock`,
-     `_sources/.lint.lock`. Since this contract bans sub-agents and
-     skills delete their lock in finally, any lock present at tick
-     start is by definition orphaned by a crashed prior run.
+     `_sources/.lint.lock`, `_sources/.agent-lens.lock`,
+     `_sources/.resolve.lock`. Since this contract bans sub-agents
+     and skills delete their lock in finally, any lock present at
+     tick start is by definition orphaned by a crashed prior run.
      - mtime older than 2h → delete the lock(s) and proceed.
      - mtime younger than 2h → assume a concurrent owner session
        may be active. Append CLARIFICATION «recent lock at tick
@@ -96,7 +97,10 @@ loop. Your contract:
 
 5. Forbidden in this run:
    - `/ztn:lint` (has its own nightly schedule)
-   - `/ztn:resolve-clarifications` (owner-only)
+   - `/ztn:agent-lens` (has its own nightly schedule; lens runs are
+     not part of the daytime processing flow)
+   - `/ztn:resolve-clarifications` (owner-only interactive; auto-mode
+     is dispatched by lint Step 7.5 nightly, not from process)
    - `/ztn:update` (engine sync is owner-only)
    - any interactive prompt to the human
    - `--include-engine` on save
