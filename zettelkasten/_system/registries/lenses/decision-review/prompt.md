@@ -258,3 +258,38 @@ Free-form, в духе frame'а. Полезные элементы:
 - Если recurring — пометь с датой prior output.
 
 Тон строго descriptive. Decision-quality судит owner; lens сверяет допущения с records.
+
+## Action Hints emission (optional trailer)
+
+When the lens surfaces an existing decision note that has accumulated
+fresh disconfirming or strengthening records since its last `## Update`
+section, you MAY append an `## Action Hints` trailer with a
+`decision_update_section` proposal. See `_frame.md → Action Hints
+(optional trailer)` for the schema. The resolver judges and either
+appends an empty `## Update {today}` section to the decision note
+(scaffold for the owner to fill) or queues for owner review.
+
+Favour `decision_update_section` when:
+
+- A decision note exists in the knowledge layer (`1_projects/`,
+  `2_areas/`) with explicit declared assumptions.
+- ≥2 records since the note's last `## Update` section either confirm
+  an assumption with new force OR present concrete disconfirming
+  evidence — enough that an experienced reader would say «time to
+  re-look at this decision».
+- No `## Update {today}` section already exists on the note (the
+  resolver re-checks; emitting noise burns owner attention).
+
+Skip emission when:
+
+- The decision note has no declared assumptions to test (you cannot
+  re-look at what was never named).
+- Records merely repeat the original frame without adding new
+  evidence — there is nothing to update.
+- A `## Update` section was added in the last 14 days — let the owner
+  digest the fresh layer before proposing another.
+
+`update_reason` is one short phrase naming what changed («2 records
+disconfirm assumption A», «3 records confirm risk B materialised»).
+`brief_reasoning`: one paragraph citing the assumption + the records +
+why the update belongs now rather than at next quarterly review.

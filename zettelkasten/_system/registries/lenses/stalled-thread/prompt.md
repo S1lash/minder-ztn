@@ -161,3 +161,40 @@ For each hit, in free form:
 - **Confidence** — high / medium / low.
 
 If 0 hits — say so plainly: "Over the window I examined, no threads met the criteria. Topics I considered and dismissed: …" That is also a signal.
+
+## Action Hints emission (optional trailer)
+
+When at least one hit shows a genuinely brooding-shape thread (repeated
+abstract framing across multiple records, no movement on sub-questions,
+not already tracked in `OPEN_THREADS.md`), you MAY append an `## Action
+Hints` trailer with an `open_thread_add` proposal. See `_frame.md →
+Action Hints (optional trailer)` for the schema. The resolver weighs
+your hint against owner context and either appends a row to
+`OPEN_THREADS.md` (with cited records + provenance) or queues for owner
+review.
+
+Favour `open_thread_add` when:
+
+- The brooding shape is unambiguous — same framing recurs across ≥2
+  records and at least one record sits 14+ days apart from the most
+  recent surfacing (the gap is what makes it «stalled»).
+- A short, specific `thread_title` can be stated (≤80 chars). If the
+  title would be «owner is thinking about X», the thread isn't ready
+  for a row.
+- The thread is absent from `OPEN_THREADS.md` (verify before emitting —
+  resolver re-checks, but emitting noise burns owner attention).
+
+Skip emission when:
+
+- Confidence is `low` (surface in body, do not propose).
+- The thread looks like reference / pondering / external-blocker (the
+  «alternative reading» you wrote in the body is plausible).
+- A substantively-similar thread is already in `OPEN_THREADS.md`.
+- The hit shape suggests fading echo of a prior surfacing rather than
+  fresh brooding (you are seeing your own past output recur).
+
+`priority` field in `params` is optional; default `medium`. Use `high`
+sparingly — only when the brooding has visibly hardened (same framing
+unchanged across 3+ records over 4+ weeks). `brief_reasoning`: one
+paragraph naming the brooding shape + the gap evidence + what would
+falsify it as a real stall.

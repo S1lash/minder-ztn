@@ -73,15 +73,15 @@ an identity profile, set up scheduled processing) —
 
 ## Run it on a schedule
 
-Three engine-shipped scheduler prompts in
+Two engine-shipped scheduler prompts in
 `integrations/claude-code/scheduler-prompts/` cover the autonomous
 surface so you only show up for resolution:
 
 - `process-scheduled.md` — ingest new transcripts (≥ 3× per day)
-- `lint-nightly.md` — consistency sweep, autofix obvious / surface rest
-  to CLARIFICATIONS (1× nightly)
-- `agent-lens-scheduled.md` — fire daily; the skill filters lenses by
-  per-lens cadence
+- `nightly-combined.md` — agent-lens (fires nightly, skill filters by
+  per-lens cadence) → lint (consistency sweep, autofix obvious /
+  surface rest) → resolve `--auto-mode` (lint dispatches inline; auto-
+  applies safe lens proposals, queues residue) → save (1× nightly)
 
 Paste each body into Claude Code `/schedule` (or any cron-like runner
 that can launch a `claude` session). Full setup, push-credential

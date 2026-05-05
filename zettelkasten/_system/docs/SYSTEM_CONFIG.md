@@ -69,6 +69,9 @@ migrating existing open items.
 | `manifest-schema-unknown-version` | `/ztn:lint` Scan H | Manifest's `format_version` major has no matching schema file in `manifest-schema/` | Surface; resolve by shipping the missing schema file or rolling back the producer |
 | `validator-internal-error` | `/ztn:lint` Scan H | The schema validator raised an unexpected exception on a specific batch (json parse error, validator bug) | Lint continues other scans; owner reviews stack trace |
 | `validator-helper-failed` | `/ztn:lint` Scan H | The `lint_manifest_schema.py` helper itself exited non-zero (jsonschema not installed, schemas-dir or batches-dir missing) | Lint continues other scans; owner restores the helper environment |
+| `lens-action-proposed` | `/ztn:resolve-clarifications` (`--auto-mode` Step A.3) | Smart-resolve sweep judged a lens-emitted Action Hint as `queue` (not safe to auto-apply, not constitution-vetoed); the row carries `**Smart_resolve reasoning:**` + `**Action type:**` + `**Action params:**` for owner Class C review (apply / reject / modify / defer) | Queue stays as-is; auto-apply requires owner click |
+| `lens-action-veto` | `/ztn:resolve-clarifications` (`--auto-mode` Step A.3) | Smart-resolve judged a lens-emitted Action Hint as `block-veto` against constitution / SOUL focus; row carries `**Smart_resolve reasoning:**` + `**Veto reason:**` naming the principle / SOUL element triggered | Owner reviews; can override per-class via `_system/state/insights-config.yaml::classes` |
+| `lens-action-apply-failed` | `/ztn:resolve-clarifications` (`--auto-mode` Step A.3) | Handler validation failed inside apply (TOCTOU drift between Step A.1 stale-check and apply — e.g. another process created the hub target, or a cited note was renamed mid-tick) | Action is queued instead; owner reviews proposal + handler error reason |
 
 Per-skill SKILL.md may add narrower types for skill-internal flows;
 this table covers the cross-skill canonical set referenced in
@@ -160,6 +163,10 @@ Order mandatory: frontmatter → `# Name` → `**Role:**` → `## Контекс
 - `log_process.md` — written ONLY by `/ztn:process`
 - `log_agent_lens.md` — written ONLY by `/ztn:agent-lens`
 - `agent-lens-runs.jsonl` — written ONLY by `/ztn:agent-lens` (append-only machine index)
+- `resolve-sessions/{date}-{sid}.md` — written ONLY by `/ztn:resolve-clarifications` (one file per session, owner-readable narrative; `is_sensitive: true` by default)
+- `lens-resolution-history.jsonl` — written ONLY by `/ztn:resolve-clarifications` interactive owner clicks (append-only precedent index; auto-mode applies do NOT write here — engine never trains on engine)
+- `last-resolve-tick.txt` — written ONLY by `/ztn:resolve-clarifications` (high-water marker for «modified since» lens-output scan)
+- `insights-config.yaml` — owner-mutable; engine creates from `.template` on first resolve run when missing, never rewrites
 - Cross-reads OK (activity detection, context sourcing)
 
 ### Skill Write Territory (HARD RULES)
@@ -175,6 +182,10 @@ a schema violation — audits check this via git diff scope.
 | Append `threads:` back-ref to record/note frontmatter | `/ztn:maintain` only | Structural metadata — body never touched |
 | Tier change in PEOPLE.md (promote or demote) | **via `/ztn:resolve-clarifications` only** | Never auto-applied — surfaces CLARIFICATION |
 | Thread closure (Active → Resolved in OPEN_THREADS.md) | **via `/ztn:resolve-clarifications` only** | Never auto-applied regardless of signal strength |
+| Append row to OPEN_THREADS.md `## Active` | `/ztn:resolve-clarifications` (auto-mode or owner click on `open_thread_add` lens hint) | Additive — provenance via inline `from_lens` comment |
+| Create new hub stub in `5_meta/mocs/` | `/ztn:resolve-clarifications` (`hub_stub_create` lens hint) OR owner-curated | New hub carries `from_lens:` in frontmatter; lint_hub_integrity passes the stub |
+| Add wikilink to `## Связи (auto)` section in a knowledge note | `/ztn:resolve-clarifications` (`wikilink_add` lens hint) | Distinct section from manually curated `## Связи` so owner edits and auto edits don't collide |
+| Append `## Update {today}` section to a decision note | `/ztn:resolve-clarifications` (`decision_update_section` lens hint) | Scaffold only — owner fills the body |
 | SOUL.md edits (Identity / Focus / Working Style — outside auto-zone) | **manual only** | Identity file; auto-zone is a separate write-lane |
 | SOUL.md auto-zone (Values between markers) | `render_soul_values.py` only | Deterministic render from `0_constitution/` |
 | Write `_system/state/batches/{id}.md` + `BATCH_LOG.md` row | `/ztn:process` only | One run = one batch; maintain reads, doesn't write |
@@ -194,6 +205,12 @@ All CLARIFICATION items MUST include:
 - `**Context:**` field (2-4 sentence paragraph) — self-contained для LLM review session (owner не читает CLARIFICATIONS глазами напрямую, обсуждает с LLM)
 - `**Quote:**` field — verbatim fragment when source = транскрипт
 - Parsable fields: `Type`, `Subject`, `Source`, `Suggested action`, `Confidence tier`
+
+Optional fields (added by specific producers; loose-parsed by `/ztn:resolve-clarifications`):
+- `**Smart_resolve reasoning:**` — written by `/ztn:resolve-clarifications --auto-mode` when an item passes through the auto-resolve sweep but lands in the queue (not auto-applied). 1-3 sentences referencing constitution / past sessions / SOUL focus. Renders in resolve interactive Step 5 «Procedural context» block. Append-only — never rewritten on subsequent sweeps (latest sweep adds a new line if reasoning evolves)
+- `**Action type:**` + `**Action params:**` (YAML inline) — written for `lens-action-proposed` items only. Carry the structured proposal that Class C apply / reject / modify operate on
+- `**Veto reason:**` — written for `lens-action-veto` items only. Names the specific axiom / principle / rule ID or SOUL-section that triggered the veto
+- `**Precedent:**` — optional list of `_system/state/resolve-sessions/{date}-{sid}.md` links with one-line summaries of how owner decided substantively-similar past proposals. Resolver renders these in Step 5 to ground owner judgement
 
 Resolved items use structured format with `**Applied:** no|yes` field + `**Context:**` + `**Rationale:**` + canonical `Resolution-action` vocabulary. Single format — `## Open Items` + `## Resolved Items` sections only.
 
@@ -225,6 +242,8 @@ Owner-facing review path: `/ztn:resolve-clarifications` — interactive walker t
 | `update-hub-synthesis` | hub-id | `sections_updated: ["Текущее понимание", "Changelog"], notes_integrated: [ids]` — owner refreshed hub against fresh underlying material (D.4) |
 | `split-hub` | hub-id | `new_hub_ids: [ids], theme_separation: "..."` — owner split a hub into ≥ 2 narrower hubs (D.4 split-mismatch resolution) |
 | `archive-hub` | hub-id | `target_path: "4_archive/...", reason: "..."` — owner archived a hub whose theme is no longer active |
+| `apply-lens-proposal` | `lens-action-proposed` item | `action_type: "wikilink_add | hub_stub_create | open_thread_add | decision_update_section", targets: [paths], from_lens: "{lens-id}/{date}", owner_modified: bool` — owner approved (and optionally modified) a queued lens-action proposal; resolver invokes `lens_action_handlers.APPLIERS[type]` and writes a row to `lens-resolution-history.jsonl` |
+| `dismiss-lens-proposal` | `lens-action-proposed` / `lens-action-veto` item | `reason: "constitution-conflict | not-actionable | wrong-target | low-quality"` — owner rejected the proposal; row in history.jsonl marks the class_key as `reject` for future precedent grounding |
 
 **Vocabulary governance:**
 - Reason codes ending `-suggested` / `-resolved` / `-drift-warn` / `-promote-*` MUST use canonical vocabulary — feed `/ztn:resolve-clarifications` execution
@@ -233,7 +252,9 @@ Owner-facing review path: `/ztn:resolve-clarifications` — interactive walker t
 
 ### Cross-skill exclusion
 
-All four pipeline skills (`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`) mutually exclusive. Each reads all four `.{skill}.lock` files в `_sources/` on start. Any other skill's lock exists → abort.
+All four pipeline skills (`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`) mutually exclusive. Each reads all five `.{skill}.lock` files в `_sources/` (the four pipelines + `.resolve.lock`) on start. Any other skill's lock exists → abort.
+
+`/ztn:resolve-clarifications` acquires `.resolve.lock` for both interactive and `--auto-mode` runs. Interactive mode reads the three pipeline locks and aborts on any. **`--auto-mode` exception for `.lint.lock`:** auto-mode is dispatched by `/ztn:lint` Step 7.5 (lint holds its own lock during dispatch); treating that lock as competitor would deadlock the nightly chain. Auto-mode therefore proceeds when `.lint.lock` exists (it is the dispatcher's signature), aborts silently on `.processing.lock` / `.maintain.lock` (those should have cleared at lint's own Step 0.1; presence here means something genuinely went wrong — let the next nightly tick retry).
 
 `/ztn:agent-lens-add` (lens creation wizard) is owner-driven, not in the lock matrix. It respects `/ztn:agent-lens`'s lock at pre-flight (would race on registry writes) but does not acquire its own — uses concurrent-edit detection (snapshot at Step 0, re-validate at write) to defend against rare parallel owner invocations.
 

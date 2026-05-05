@@ -46,15 +46,30 @@ version/phase/rename-history narratives.
 - `--no-refresh` — skip Step 9 post-resolution refresh (`/ztn:regen-constitution`,
   `/ztn:maintain`); owner promises to run them manually
 - `--no-save` — skip the Step 9.5 save reminder (commit later by hand)
+- `--auto-mode` — non-interactive entry point used by `/ztn:lint`. Runs
+  Step A (lens hint ingestion + smart curation + auto-resolve sweep)
+  and exits silently. Skips Step 0 pre-sync (the caller already
+  syncs), skips theme menu / round / save reminder. Residue
+  clarifications stay queued for owner; auto-applied actions write
+  to the session log under `_system/state/resolve-sessions/`.
 
 ---
 
 ## Step 0: Pre-sync
 
-Before acquiring the lock, invoke `/ztn:sync-data` inline. Owner may be
-working from a multi-device setup (phone captures, server processing,
-laptop A vs laptop B); reviewing a stale CLARIFICATIONS queue wastes the
-owner's attention on items already resolved elsewhere.
+**Skip entirely under `--auto-mode`.** The dispatching nightly chain
+(scheduler → `/ztn:sync-data` → agent-lens → lint → resolve) already
+synced as its first step, AND lint has by now written invariant-scan
+autofixes that leave the working tree dirty — re-running sync inside
+auto-mode would either redundantly walk a clean tree or, more likely,
+abort on the dirty tree and break the nightly chain. The auto-mode
+caller owns sync; resolve trusts it.
+
+Under interactive mode (`/ztn:resolve-clarifications` invoked by
+owner), invoke `/ztn:sync-data` inline. Owner may be working from a
+multi-device setup (phone captures, server processing, laptop A vs
+laptop B); reviewing a stale CLARIFICATIONS queue wastes the owner's
+attention on items already resolved elsewhere.
 
 Behaviour:
 - Up-to-date or no `origin` → continue silently to the lock step.
@@ -82,7 +97,22 @@ the same files. Mutual exclusion required.
 Read all three before starting:
 - `_sources/.processing.lock` — abort «`/ztn:process` running»
 - `_sources/.maintain.lock` — abort «`/ztn:maintain` running»
-- `_sources/.lint.lock` — abort «`/ztn:lint` running»
+- `_sources/.lint.lock` — abort «`/ztn:lint` running» (see auto-mode
+  exception below)
+
+**`--auto-mode` exception for `.lint.lock`.** Auto-mode is dispatched
+by `/ztn:lint` Step 7.5; lint holds `.lint.lock` for the duration of
+the dispatch. Treating that lock as «competitor» would deadlock the
+nightly chain. Under `--auto-mode` only, presence of `.lint.lock` is
+proof the dispatcher is alive — proceed with resolve work, do not
+abort. The `.processing.lock` and `.maintain.lock` checks remain
+absolute (lint already cleared those at its own Step 0.1; if either
+appears here, something has gone genuinely wrong — abort silently
+and let the next nightly tick retry). All other locks (the
+auto-mode check is exclusively for `.lint.lock`) stay competitive.
+
+Interactive mode keeps the original three-lock check; the owner-driven
+session has no dispatcher above it.
 
 1. Create `_sources/.resolve.lock` with `{ISO timestamp} — {session info}`
 2. Delete it on every exit path (normal, error, abort, early exit)
@@ -149,6 +179,262 @@ items). Skipped entirely under `--no-constitution`.
 
 ---
 
+## Step A: Lens Action Hints + Smart-Resolve Sweep
+
+This step is the engine that turns implicit lens proposals into either
+auto-applied additions or queued clarifications with rich reasoning.
+Runs in **both** modes:
+
+- `--auto-mode` (called by `/ztn:lint` Pass 2) — Step A is the entire
+  body of work. Skip directly from here to Step A.4 (session log
+  flush) and the lock-release cleanup.
+- interactive — Step A pre-curates. Steps 2-9 then continue against a
+  queue that has been triaged, deduplicated, and annotated with
+  smart_resolve reasoning.
+
+The intelligence here is LLM-driven «human-with-experience» reasoning,
+not deterministic threshold counting. The whole purpose is approximating
+how the experienced owner would decide, given their values, declared
+focus, and prior reasoning available as precedent.
+
+Insurance during the sweep: if any sub-step fails (LLM error, handler
+crash, file lock), recover gracefully — never abort the whole skill. A
+crashed handler falls back to a clarification («attempted auto-apply,
+validation failed because X — owner review»). A crashed sweep means
+items stay in their pre-sweep state; the next nightly tick retries.
+
+**Per-step failure rules (explicit, not «recover gracefully»):**
+
+| Failure | Recovery |
+|---|---|
+| Step A.0 — both live + template missing | Use built-in defaults (`posture: balanced`, `uncertainty_default: queue`). Log to session skipped-log. Continue. |
+| Step A.1 — `_system/agent-lens/` walk fails (FS error) | Skip ingestion entirely. Set `last-resolve-tick.txt` to current ts (so next tick doesn't reprocess the same window). Log error to session. Continue to A.2 with empty hint set. |
+| Step A.1 — individual hint fails stale-check | Drop that hint with reason; log to «Skipped lens hints». Other hints proceed. |
+| Step A.2 — LLM error / timeout / malformed JSON output | Pass all parsed hints through unchanged (no curation, no coalescing). Log to session. Continue to A.3 with raw + open clarifications. |
+| Step A.3 — LLM error / timeout / malformed JSON output | NO auto-applies this tick. NO queue annotations. All items remain in their pre-sweep state (lens hints stay in their output files; clarifications unchanged). Log error. Update `last-resolve-tick.txt` ANYWAY (avoids reprocessing storm) and exit Step A. |
+| Step A.3 — handler validation failure on apply | Demote to `lens-action-apply-failed` clarification (canonical Type per SYSTEM_CONFIG) with handler's reason text. Other auto-applies in the batch continue independently — apply is per-item atomic, not all-or-nothing. |
+| Step A.4 — session log write fails | Best-effort: write to `_system/state/resolve-sessions/{date}-{sid}.partial.md` with whatever the accumulator holds. Log error. Continue. |
+
+The principle: **never poison the queue with half-done work, never
+rewrite owner-curated state, never silently drop a hint**. The
+session log is the audit trail of choice — every drop / failure /
+recovery has a row.
+
+### Step A.0 — One-shot bootstrap (idempotent)
+
+Two checks before A.1; both noop on subsequent runs.
+
+1. **insights-config seed.** If `_system/state/insights-config.yaml`
+   does NOT exist, copy `_system/state/insights-config.yaml.template`
+   to that path verbatim (no transformation). The live file is owner-
+   mutable thereafter — never rewritten. If the template ALSO is
+   missing (broken clone), proceed with built-in defaults
+   (`posture: balanced`, `uncertainty_default: queue`, no per-class
+   overrides) and log a single warning to the session accumulator's
+   skipped-log; do not block the sweep.
+2. **Sessions dir seed.** Ensure `_system/state/resolve-sessions/`
+   exists (mkdir -p). The session log writer creates it lazily, but
+   doing it here keeps Step A.4's flush path branchless.
+
+### Step A.1 — Ingest fresh Action Hints (deterministic)
+
+Scope:
+
+1. Determine the «since» marker. Read `_system/state/last-resolve-tick.txt`
+   if present; else fall back to «files modified in the last 24h». Update
+   the marker to «now» at the END of Step A (only after the sweep
+   completes; failure leaves the old marker so next run retries).
+2. Walk `_system/agent-lens/{lens-id}/{date}.md` for files modified
+   since the marker. Parse each via
+   `_system/scripts/_common.py::parse_action_hints(body)`. Drops are
+   logged to the session accumulator («Skipped lens hints») not to
+   CLARIFICATIONS — malformed YAML is the lens's problem, surfaced via
+   Stage 3 validator separately.
+3. For every parsed `ActionHint`, run the deterministic stale pre-check
+   via `lens_action_handlers.VALIDATORS[hint.type](hint.params)`. If
+   validation fails (cited path missing, target already exists,
+   wikilink already bidirectional, etc.) — drop the hint with reason in
+   the «Skipped lens hints» section. The lens's body observation still
+   stands; only the hint is dropped.
+4. Carry the surviving hints forward to Step A.2 with provenance label
+   `{lens-id}/{date}` derived from the source file path.
+
+This step is pure plumbing — no LLM call, no judgement. Runs even when
+`--auto-mode` is off (interactive mode benefits from the same triage).
+
+### Step A.2 — Smart Curation (LLM)
+
+A single Opus-grade LLM call. System prompt = curator role, framed as
+«as the owner would triage if sitting down right now to review».
+
+**System inputs to load (read once, cache for Step A.3):**
+
+| File | Why |
+|---|---|
+| `_system/views/constitution-core.md` (always) + `0_constitution/{axiom,principle,rule}/*.md` | Full tree for veto + alignment reasoning |
+| `_system/SOUL.md` | Identity, focus, working style |
+| `3_resources/people/PEOPLE.md` | Relationship map (some hints reference people) |
+| `1_projects/PROJECTS.md` | Active projects |
+| `_system/agent-lens/weekly-insights/*.md` (newest 4 only) | Recent narrative context |
+| `_system/state/CLARIFICATIONS.md` (open + last 30d resolved) | Existing queue + recent resolution context |
+| `_system/state/insights-config.yaml` (or `.template` if missing) | Per-class overrides + posture |
+| Recent git log paths (last 7 days, paths only) | Detect owner-edited areas to prefer / avoid |
+
+**User-message inputs:**
+
+- All surviving lens hints from Step A.1 (structured: lens, type,
+  params, confidence, brief_reasoning).
+- All open clarifications (raw blocks).
+
+**LLM output (structured JSON):**
+
+For each hint: one of
+- `keep` — survive into Step A.3 with extracted `salient_features`
+  (cluster_tightness, time_span_months, cross_para, existing_hub_overlap,
+  domain_axis, cited_count, owner_recent_edits_overlap, ...).
+- `drop` — with brief reason (hint conflicts with constitution, hint
+  duplicates a recently-resolved clarification, hint touches an
+  area the owner edited yesterday in a way that contradicts).
+- `coalesce-with-{ids}` — merge with one or more other hints / open
+  clarifications into a single combined entry with multiple options.
+
+For each open clarification: pass-through unchanged unless the LLM
+detects it should coalesce with a fresh hint.
+
+**After the LLM:**
+
+- Coalesced groups become single rows. The combined item carries an
+  `options:` payload listing each branch.
+- Dropped hints log to «Skipped lens hints (curator)» in the session
+  accumulator.
+- Kept hints proceed to Step A.3 carrying their `salient_features`.
+
+**Posture awareness.** `insights-config.yaml::reasoning.posture`
+(`conservative` / `balanced` / `aggressive`) tunes the curator's drop
+aggressiveness. `balanced` is default. Owner overrides in the config
+file directly; this skill never edits it.
+
+### Step A.3 — Auto-resolve Sweep (LLM)
+
+A single Opus-grade LLM call. System prompt = experienced-owner role:
+«given full context, would I — knowing what I know about my values,
+focus, and prior reasoning — approve this NOW?»
+
+**System inputs (in addition to A.2's set):**
+
+- Last 10 session logs from `_system/state/resolve-sessions/` newest-
+  first — full reasoning narratives, not just counts.
+- All entries in `_system/state/lens-resolution-history.jsonl` (or the
+  most recent 200 if the file ever grows past that). The LLM uses
+  history as PRECEDENT CORPUS: «when I approved a similar proposal
+  before, what reasoning did I give? Does the current case fit?» —
+  not as deterministic threshold counting.
+
+**User-message inputs:**
+
+- All clarifications surviving Step A.2 (existing + curated).
+
+**LLM output per item (structured):**
+
+```json
+{
+  "item_ref": "<id or anchor>",
+  "decision": "auto-apply" | "queue" | "block-veto",
+  "reasoning": "<1-3 sentences referencing specific principle / past
+                session / SOUL focus when relevant>",
+  "action": { "type": "wikilink_add", "params": {...} }  // when auto-apply
+  "veto_reason": "<which principle or SOUL element triggered>"  // when block-veto
+}
+```
+
+**Decision rules the LLM is told to follow:**
+
+1. **Constitution / SOUL veto is absolute.** Any axiom or principle
+   conflict → `block-veto`. Any SOUL-declared «currently being
+   processed, no formalisation» topic → `block-veto`. Owner's
+   override path is editing `insights-config.yaml`, not the sweep.
+2. **Auto-apply is earned, not assumed.** Cold-start (no precedent in
+   history.jsonl) → default `queue` for additive hints; `block-veto`
+   for anything that even smells like mutation (split-hub,
+   rewrite-hub, etc.) — though those types are not currently
+   whitelisted, so this is a forward-compatibility guard.
+3. **Insights-config overrides win.** If `classes::{class_key}` is
+   `auto`, force auto-apply (still subject to veto). If `never_auto`,
+   force queue. Class-key format: `{lens-id}__{action-type}__{confidence}`.
+4. **Anti-flip-flop guard.** If history.jsonl shows the owner
+   `reject`-ed a substantively-similar proposal in the last 30 days,
+   default to `queue` with a note linking the prior rejection.
+5. **Additive-only restriction.** Currently whitelisted types
+   (`wikilink_add`, `hub_stub_create`, `open_thread_add`,
+   `decision_update_section`) are all additive — no auto type can
+   mutate or delete owner content. Resolver enforces by allowing
+   only `ACTION_HINT_TYPES` in `action.type` for auto-apply.
+6. **Uncertainty default = queue.** When the LLM is unsure between
+   auto and queue, route to queue. Owner reviews; precedent grows.
+
+**After the LLM, deterministic execution:**
+
+For each `auto-apply` decision:
+
+- Validate `action.type ∈ ACTION_HINT_TYPES`. If not, demote to
+  `queue` with reason «type not whitelisted for auto» — defends
+  against LLM proposing types it shouldn't.
+- Invoke `lens_action_handlers.APPLIERS[action.type](action.params,
+  source_lens, base)`. The handler re-validates (TOCTOU) and either
+  applies or returns `success=False`.
+- On `success=True`: append to session accumulator's `auto_applied`
+  list. Targets and provenance label come from the handler return.
+- On `success=False`: handler validation failed inside apply (e.g.
+  another process created the target between Step A.1 stale-check and
+  here). Demote to `queue` with reason «attempted auto-apply,
+  validation failed because {handler.reason} — owner review».
+
+For each `queue` decision: rewrite the corresponding clarification (or
+synthesise a new one for hints that didn't yet exist as clarifications)
+to attach the LLM's `reasoning` text under a `**Smart_resolve
+reasoning:**` field. Owner sees this in interactive Step 5.
+
+For each `block-veto` decision: queue with prefix
+`**Constitution-veto:**` and the veto_reason. Append to session's
+`constitution_vetoed` list.
+
+### Step A.4 — Session log flush + early exit branch
+
+1. Build a `SessionState` via `resolve_session.new_session(mode,
+   trigger)` at Step A's entry. Mode is `auto` or `interactive`;
+   trigger is `lint` (when `--auto-mode`) or `owner` (otherwise).
+2. Throughout Steps A.1-A.3, accumulate auto-applied / vetoed entries
+   on the state object.
+3. After A.3 completes, call `resolve_session.write_session_log(state)`.
+4. Update `_system/state/last-resolve-tick.txt` with current ISO-Z
+   timestamp.
+5. Branch on mode:
+   - `--auto-mode` → release lock, exit silently. Owner sees the
+     session log next time they open `_system/state/resolve-sessions/`
+     or run interactive resolve. No console output beyond a one-line
+     summary («auto-resolve: applied N, queued M, vetoed K»).
+   - interactive → continue to Step 2 with the queue now containing
+     curated + smart_resolve-annotated items. The remaining flow
+     (theme menu, rounds, owner clicks) operates against this richer
+     queue. Each owner decision in Step 5/6 calls
+     `resolve_session.append_history` with structured precedent fields,
+     and updates the same session log via `state.owner_decisions`.
+
+**No history.jsonl writes in `--auto-mode`.** This is deliberate: the
+engine never trains on engine. Only owner clicks accrete precedent.
+Auto-mode applies are visible in the session log + target file
+provenance, but they do not influence the next sweep's reasoning beyond
+the «what's in the codebase right now» layer.
+
+**Failure handling.** Any unhandled exception inside Step A logs to
+the session accumulator's `auto_applied` list with `success=False`
+shape, flushes the partial session log, and continues to the
+appropriate branch (auto-mode exits; interactive continues with
+remaining queue items unchanged). The next nightly tick retries —
+state is forward-compatible.
+
+---
+
 ## Step 2: Load and Parse Queue
 
 Read `_system/state/CLARIFICATIONS.md`. Parse all entries under
@@ -198,6 +484,9 @@ weight. Standard Types (extend as new ones appear in producer skills):
 | `org-structure-tension` | heavy | 3 |
 | `principle-candidate-batch` | heavy | 3 |
 | `decision-*` | heavy | 3 |
+| `lens-action-proposed` | heavy | 3 |
+| `lens-action-veto` | heavy | 3 |
+| `lens-action-apply-failed` | medium | 4 |
 | unknown / new | medium | 4 |
 
 `--max N` overrides. Light = quick approve/dismiss; heavy = each item
@@ -235,6 +524,63 @@ archived (Step 7 already ran for them).
 Take the chosen cluster. Slice to batch size (heavy 3 / light 5 / `--max N`).
 If cluster larger than batch → first N items by recency (oldest first —
 fresh items fade later); subsequent rounds will pick up the rest.
+
+**Smart_resolve enrichment.** Items that came through Step A's
+auto-resolve sweep carry an attached `**Smart_resolve reasoning:**`
+field. When rendering, surface that reasoning in the «Procedural
+context» block so the owner sees why this item was queued instead of
+auto-applied. If the item has matching precedents in
+`_system/state/lens-resolution-history.jsonl`, list 1-3 most-similar
+prior session links with a one-line summary («2026-04-15 — approved
+similar hub for cross-PARA cluster, owner reasoning: tight cluster +
+no overlap»). The smart_resolve LLM has already produced this; render
+verbatim — do not re-reason.
+
+**Class L items (`lens-action-proposed` / `lens-action-veto` /
+`lens-action-apply-failed`) — adapted seven-block render.** Same top-
+down order (essence first, then files, then context, then options),
+but the blocks pivot on the proposal shape instead of a free-form
+question:
+
+```
+── Q{n} ── {date} — {action_type}: {one-line proposal summary}
+
+🧩 Суть:
+{1-2 sentences: what the lens proposes, what it would change, what
+the resolver concluded. For lens-action-veto, lead with the veto
+reason. For lens-action-apply-failed, lead with the handler error.}
+
+📂 Files:
+{Cited paths from action params — note_a/note_b for wikilink_add,
+cited_notes for hub_stub_create, cited_records for open_thread_add,
+decision_note_path for decision_update_section. Owner can open them
+directly.}
+
+🧠 Procedural context:
+**Source lens:** {lens-id}/{date}
+**Confidence (lens self-report):** {low|medium|high}
+**Smart_resolve reasoning:** {verbatim from item}
+**Veto reason:** {only on lens-action-veto}
+**Handler error:** {only on lens-action-apply-failed}
+**Action type:** {wikilink_add|hub_stub_create|...}
+**Action params:** {YAML inline rendering of params dict}
+
+🔗 Precedent:
+{0-3 lines from lens-resolution-history.jsonl on similar past
+proposals + how owner decided. Empty section is OK.}
+
+❓ Options:
+  [apply]  — invoke handler now; commits the targets listed above
+  [reject] — archive with `dismiss-lens-proposal` + reason
+  [modify] — edit params inline (typically slug rename or alternative
+             cited list), then apply
+  [defer]  — push to next session
+```
+
+Class A/B items keep their original `a/b/c/d/e` options. Step 6
+dispatches per item Type. (Class L is distinct from the existing
+Step 9 Class C — auto-invoked-refresh classes; different letter to
+avoid confusion.)
 
 For each item in the batch, render with the **mandatory seven blocks**.
 Order matters — owner reads top-down without prior session context, so
@@ -371,6 +717,70 @@ For Class B: render unified diff or new-file body, ask `[y/N]` per file.
 On `y` → write. On `N` → re-prompt with the original options (a/b/c/d/e)
 for that question. The diff gate is friction — but it's the only gate
 where the owner can catch the skill misreading their answer.
+
+**Class L — lens-proposal apply (Step A residue, owner-driven):**
+
+Lens-action items routed to queue by Step A's smart_resolve sweep
+(Type ∈ {`lens-action-proposed`, `lens-action-veto`,
+`lens-action-apply-failed`}; underlying `**Action type:**` ∈
+`ACTION_HINT_TYPES`) render with options `[apply] / [reject] /
+[modify] / [defer]`.
+
+- `apply` → invoke
+  `lens_action_handlers.APPLIERS[action_type](action_params,
+  source_lens, base)` directly — the same code path Step A.3 uses for
+  auto-apply. On `success=True`, archive the clarification with
+  `Resolution-action: apply-lens-proposal`, payload
+  `{action_type, targets: handler.targets, from_lens, owner_modified: false}`.
+  On handler failure inside apply, demote to deferred (do NOT archive).
+- `reject` → archive with `Resolution-action: dismiss-lens-proposal`,
+  payload `{reason: "constitution-conflict | not-actionable |
+  wrong-target | low-quality | <free-form>"}`. The reason text feeds
+  the next sweep's precedent grounding via history.jsonl.
+- `modify` → render the proposed params, ask owner for an inline
+  edit (typically slug rename, alternative cited_notes set), then
+  call the applier with the modified params. Archive with
+  `apply-lens-proposal` payload `{owner_modified: true}` so future
+  precedent matching knows the LLM's params were not exactly what
+  the owner approved.
+- `defer` → same as Class A defer (append `**Last reviewed:** {today}
+   — deferred` line, item stays in queue).
+
+For `lens-action-veto` items the default option is `reject` (resolver
+already concluded constitution conflict), but `apply` remains
+available — owner override path is editing
+`_system/state/insights-config.yaml::classes` to `auto` for the
+class_key, then re-running auto-mode. Direct interactive `apply` of
+a veto'd item is also valid (owner judgement supersedes resolver).
+
+**On every owner click for a Class L item (apply / reject / modify):**
+
+1. Append a row to `_system/state/lens-resolution-history.jsonl` via
+   `resolve_session.append_history()` with the canonical schema:
+   `ts`, `session_ref` (current session log path), `class_key` (via
+   `resolve_session.class_key(lens_id, action_type, confidence)`),
+   `decision`, `proposal_summary` (1-line), `applied_target` (when
+   applicable), `salient_features` (carried forward from Step A.2),
+   `owner_comment` (free text), `inferred_pattern` (LLM post-decision
+   call — see below).
+2. Append the human-readable narrative to the in-memory session state
+   `state.owner_decisions` for the session log flush.
+3. **Inferred-pattern post-call.** A small Haiku-grade LLM call takes
+   the proposal + salient_features + decision + (optional)
+   owner_comment and produces a 1-2 sentence reasoning hypothesis:
+   *«Owner approves hub creation when cluster has tight thematic
+   overlap, span >2 months, no existing hub overlap.»* This becomes
+   input for future smart_resolve precedent matching. Stored in the
+   history row's `inferred_pattern` field. ~5s, ~50 tokens output.
+4. **Auto-apply traces (Step A.3) do NOT write here.** The history
+   layer accretes precedent only from owner clicks, never from engine-
+   approved actions. This keeps the precedent corpus owner-grounded.
+
+When the session ends (Step 9.5), `resolve_session.write_session_log`
+overwrites the markdown session file with the final accumulated state
+(auto-applied + vetoed + owner_decisions). The file is sensitive
+(captures conversational reasoning) — `is_sensitive: true` by default,
+`audience_tags: []`, `origin: personal`.
 
 **Archive Contract enforcement (cross-cutting, applies to any Class A or Class B action whose effect is archival):**
 
@@ -585,6 +995,25 @@ Direct writes by this skill (Steps 1–8):
 - `5_meta/mocs/{hub}.md` — open questions / current understanding edits when thread-closure
 - `_system/state/OPEN_THREADS.md` — thread state moves
 - `0_constitution/{type}/{domain}/{slug}.md` — principle accepts (creates only)
+
+Step A direct writes (lens-action handlers + session log):
+- `_system/state/resolve-sessions/{date}-{sid}.md` — per-session log
+  (auto + interactive). `is_sensitive: true`, `origin: personal`.
+- `_system/state/lens-resolution-history.jsonl` — append-only precedent
+  index. **Interactive mode owner clicks only**; auto-mode does not
+  write here.
+- `_system/state/last-resolve-tick.txt` — high-water marker for the
+  «modified since» scan.
+- `_system/state/insights-config.yaml` — created from
+  `insights-config.yaml.template` on first run when missing; never
+  rewritten thereafter (owner-mutable).
+- Lens-action handler targets (additive only):
+  - `wikilink_add` → `## Связи (auto)` section in both notes
+  - `hub_stub_create` → `5_meta/mocs/hub-{slug}.md` + back-wikilinks
+    in each cited note's `## Связи (auto)` section
+  - `open_thread_add` → `_system/state/OPEN_THREADS.md` `## Active`
+  - `decision_update_section` → `## Update {today}` section appended
+    to the cited decision note
 
 Indirect writes via Step 9 chained skills:
 - `/ztn:sync-data` (Step 0) — `git fetch` + rebase / fast-forward against `origin`

@@ -161,13 +161,14 @@ Three ready-made scheduler prompts ship in
 
 - `process-scheduled.md` — pre-sync → `/ztn:process` → `/ztn:save --auto`.
   Recommended cadence: 3× per day (e.g. cron `0 9,14,19 * * *`).
-- `lint-nightly.md` — pre-sync → `/ztn:lint` → `/ztn:save --auto`.
-  Recommended cadence: 1× per night (e.g. cron `0 3 * * *`).
-- `agent-lens-scheduled.md` — pre-sync → `/ztn:agent-lens --all-due` →
-  `/ztn:save --auto`. Recommended cadence: 1× per day (e.g. cron
-  `0 6 * * *`). The skill filters lenses by per-lens cadence — daily
-  tick ≠ daily lens runs. To create new lenses, use the wizard:
-  `/ztn:agent-lens-add` (owner-driven, not scheduled).
+- `nightly-combined.md` — pre-sync → `/ztn:agent-lens --all-due` →
+  `/ztn:lint` (which dispatches `/ztn:resolve-clarifications --auto-mode`
+  inline) → `/ztn:save --auto`. Recommended cadence: 1× per night
+  (e.g. cron `0 3 * * *`). Agent-lens is bundled with lint so any
+  fresh lens Action Hints are consumed in the same tick (no 24h
+  staleness gap). The skill filters lenses by per-lens cadence —
+  nightly tick ≠ nightly lens runs. To create new lenses, use the
+  wizard: `/ztn:agent-lens-add` (owner-driven, not scheduled).
 
 Paste each body into your scheduler of choice (Claude Code `/schedule`,
 GitHub Actions cron, host crontab calling `claude` headless — any

@@ -208,13 +208,14 @@ since most lenses have weekly+ cadence).
 
 ### 0.2 Cross-skill lock check (HARD contract — symmetric mutual exclusion)
 
-Read all four lock files in order:
+Read all five lock files in order:
 1. `_sources/.processing.lock` — exists → abort с `"/ztn:process running, try again later"`
 2. `_sources/.maintain.lock` — exists → abort с `"/ztn:maintain running, try again later"`
 3. `_sources/.lint.lock` — exists → abort с `"/ztn:lint running, try again later"`
-4. `_sources/.agent-lens.lock` — exists → abort с `"another /ztn:agent-lens run in progress"`
+4. `_sources/.resolve.lock` — exists → abort с `"/ztn:resolve-clarifications running, try again later"`
+5. `_sources/.agent-lens.lock` — exists → abort с `"another /ztn:agent-lens run in progress"`
 
-All four skills mutually exclusive (matches doctrine §3.4).
+All five skills mutually exclusive (matches doctrine §3.4).
 
 Stale lock (>2h old, parse ISO timestamp from file content) → warn,
 report PID if present, **offer manual removal, do NOT auto-delete.**
@@ -401,7 +402,7 @@ Two reasons:
     diluting the frame's instructions. The whole point of the frame
     is that thinker sees ONLY the frame, nothing else.
 
-(b) The scheduler tick contract (`agent-lens-scheduled.md`) bans
+(b) The scheduler tick contract (`nightly-combined.md`) bans
     sub-agent spawn for lock-deadlock reasons: the parent holds
     `_sources/.agent-lens.lock`, the child polls for it, deadlock.
 

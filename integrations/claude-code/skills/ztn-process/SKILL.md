@@ -185,12 +185,13 @@ This saves ~10 file reads and all pre-scan work on empty runs.
 
 Runs only when Early Exit Check found files to process.
 
-**Cross-skill lock check — read all three lock files first:**
+**Cross-skill lock check — read all four lock files first:**
 - `_sources/.maintain.lock` — exists → abort «`/ztn:maintain` running, try again later»
 - `_sources/.lint.lock` — exists → abort «`/ztn:lint` running, try again later»
+- `_sources/.resolve.lock` — exists → abort «`/ztn:resolve-clarifications` running, try again later»
 - `_sources/.processing.lock` — exists → abort «another `/ztn:process` run in progress»
 
-All three skills mutually exclusive.
+All four skills mutually exclusive.
 
 1. After cross-skill checks pass, create `_sources/.processing.lock` with content: `{ISO timestamp} — {session info}`
 2. On completion (success or failure): **DELETE** `_sources/.processing.lock`

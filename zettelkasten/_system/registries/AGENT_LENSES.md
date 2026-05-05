@@ -1,6 +1,6 @@
 # Agent Lenses Registry
 
-**Last Updated:** 2026-05-04 (weekly-insights synthesis lens added as draft, weekly Monday; multi-source input_type and synthesis-custom output_schema introduced in `_frame.md`)
+**Last Updated:** 2026-05-05 (Action Hints optional trailer added to `_frame.md` and 5 lens prompts; consumed by `/ztn:resolve-clarifications --auto-mode` dispatched by lint nightly)
 
 Registry of agent-lens definitions. Each row points to a folder under
 `_system/registries/lenses/{id}/` containing the lens prompt and any
@@ -169,6 +169,22 @@ Lenses with `status: paused` or `status: archived`. Per Archive Contract Form B 
     section structure and analytical guards (default-silence per
     section, anti-eye-roll constraints, etc.)
   See `lenses/_frame.md` for both stages and the validator branches
+- **Action Hints (optional trailer).** Lenses MAY append an
+  `## Action Hints` section after the canonical body proposing
+  structural changes (`wikilink_add`, `hub_stub_create`,
+  `open_thread_add`, `decision_update_section`). The trailer is
+  consumed by `/ztn:resolve-clarifications --auto-mode` (dispatched
+  by lint nightly): the resolver judges every hint against full owner
+  context and either auto-applies safe additive proposals or queues
+  for owner review with rich smart_resolve reasoning. Schema +
+  per-lens emission stance: `lenses/_frame.md → Action Hints
+  (optional trailer)`. The Stage 3 validator does NOT parse the
+  trailer; the resolver's deterministic parser handles malformed
+  entries with drop-and-log. **Lenses that emit hints:**
+  cross-domain-bridge, knowledge-emergence, stalled-thread,
+  decision-review, global-navigator. **Lenses that never emit
+  hints** (informational / identity-only by design):
+  weekly-insights, energy-pattern, stated-vs-lived
 
 ## `agent-lens-runs.jsonl` schema
 

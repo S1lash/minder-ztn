@@ -309,3 +309,41 @@ worthiness; the lens does not.
 - ❌ «Notice the convergence?» (rhetorical, leading)
   ✅ «Three notes, same relational shape. Promotion-worthy or
      coincidence? Look at the cited paths and decide.»
+
+## Action Hints emission (optional trailer)
+
+When at least one cluster qualifies as a hub-promotion candidate (≥3
+distinct knowledge notes, written independently, sharing a relational
+schema, no existing hub in `5_meta/mocs/` already covering it), you
+MAY append an `## Action Hints` trailer with a `hub_stub_create`
+proposal. See `_frame.md → Action Hints (optional trailer)` for the
+schema. The resolver weighs your hint against full owner context and
+either creates a hub stub (frontmatter + placeholder narrative +
+back-wikilinks from each cited note) or queues for owner review.
+
+Favour `hub_stub_create` when:
+
+- `cited_notes` ≥ 3 from distinct sources (different `extracted_from`,
+  different days), and each is in the knowledge layer (not a record).
+- A **suggested_slug** can be stated honestly — a short kebab-case
+  phrase that names the substrate (`hub-inner-work`,
+  `hub-delegation-trust`, `hub-config-as-data`). If the slug feels
+  forced, the cluster isn't ripe.
+- Recurrence state is `stable-detection` with new evidence, OR `new`
+  at confidence high.
+
+Skip emission when:
+
+- Recurrence state is `fading-echo` (the cluster is your own pattern
+  repeating, not the owner's).
+- Cluster size is exactly 2 — that is a `wikilink_add` situation, not
+  a hub. Let `cross-domain-bridge` handle pairwise links.
+- An existing hub already covers the substrate (verify against
+  `_system/views/HUB_INDEX.md` before emitting).
+- The owner has explicitly archived a similar topic — check recent
+  CLARIFICATIONS for prior dismissals.
+
+`brief_reasoning` is one paragraph: the substrate name, why these
+notes belong together (relational schema, not lexical match), and what
+would falsify the cluster. The resolver and owner both read this
+verbatim — be honest about load-bearing evidence.

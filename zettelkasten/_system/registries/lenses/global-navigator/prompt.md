@@ -252,3 +252,48 @@ This is the only place where surfacing «possible causes» is permitted — and 
 
 - The system does not track «owner reviewed observation X». Outstanding-by-age inventories all observations >14 days old, regardless of whether the owner has read and judged them noise. This is by design (navigator ≠ owner-state-tracker). On weeks where the same observations re-appear at increasing ages, the owner either acts on them (resolve / promote / let-go) or accepts the inventory as a long-tail signal.
 - Counts in BATCH_LOG and the candidates buffers are append-only sums. The navigator does not check whether a candidate was later resolved or rejected — that is `/ztn:lint` F.5 territory. Navigator reports the append count for the window, period.
+
+## Action Hints emission (optional trailer)
+
+The navigator MAY append an `## Action Hints` trailer with any
+whitelisted hint type (`wikilink_add`, `hub_stub_create`,
+`open_thread_add`, `decision_update_section`) when an engine-level
+synthesis warrants a structural proposal. See `_frame.md → Action
+Hints (optional trailer)` for the schema. Duplicates with other
+lenses' hints from the same week are EXPECTED and OK — the resolver
+deduplicates and coalesces.
+
+**Body-citation rule relaxation — trailer-only.** The hard rule against
+quoting second-order content (observation bodies, candidate bodies,
+clarification quotes) applies to the digest body, not to the Action
+Hints trailer. Inside the trailer's `params` (paths, slugs, titles)
+and `brief_reasoning` field, you MAY name specific paths, quote
+verbatim phrases needed to make the proposal actionable, and reference
+the bodies of other lenses' observations as the source of the synthesis.
+This relaxation exists because the trailer is a structurally separate
+artefact consumed by a downstream resolver, not a claim about the
+owner. The body of the digest stays under the original constraint.
+
+Favour emission when:
+
+- Multiple lenses converged on the same proposal in the past week (the
+  navigator's vantage point is uniquely positioned to coalesce).
+- A long-outstanding observation (>14 days) has now accumulated enough
+  cross-lens corroboration that an owner-with-experience would act.
+- A clarification has been queued for >30 days on a structural matter
+  the navigator can propose a concrete next step for.
+
+Skip emission when:
+
+- The synthesis is speculative — the trailer is for proposals an
+  experienced reader would consider acting on, not for navigator
+  hypotheses.
+- The proposal is identical to a fresh hint from another lens this
+  week — leave it to that lens; resolver will dedup either way.
+- No structural action is appropriate — the digest's role as status
+  page is independent of action emission.
+
+`brief_reasoning` is one paragraph naming the cross-lens / cross-engine
+synthesis that justifies the proposal. Resolver and owner both read
+it; be specific about which lens outputs converged and over what
+timeframe.

@@ -1,0 +1,40 @@
+# Per-clone overrides for the smart-resolve engine driven by
+# `/ztn:resolve-clarifications`. The defaults below match a fresh clone;
+# uncomment and edit any line to override. Engine reads this file at
+# the start of every resolve session — no restart needed.
+#
+# Path: `_system/state/insights-config.yaml` (this template ships under
+# `.template` and is copied into place at first resolve run when the
+# live file is missing).
+#
+# This file is OWNER DATA. After installation it stops syncing from
+# upstream — your edits survive `/ztn:update`.
+
+# Per-class auto-apply overrides. Keys take the form
+# `{lens-id}__{action-type}__{confidence}` with `*` accepted as a
+# wildcard for the confidence segment. Values: `auto` (force apply
+# regardless of pattern history), `never_auto` (always queue), or
+# omit the entry to use the engine default (LLM-judged from history).
+classes:
+  # cross-domain-bridge__wikilink_add__high: auto
+  # knowledge-emergence__hub_stub_create__*: never_auto
+
+# Reasoning posture. Hint to the resolver LLM, not a hard threshold.
+reasoning:
+  # `conservative` — require strong precedent + clean constitution
+  # `balanced`     — default; weighted reasoning over precedent + context
+  # `aggressive`   — willing to auto on weaker precedent (not recommended
+  #                  for early adoption)
+  posture: balanced
+
+  # Default when the LLM is uncertain whether to auto-apply or queue.
+  # Owner-friendly default is `queue` — auto-apply is earned, not assumed.
+  uncertainty_default: queue
+
+# Coalescing rules — when multiple lenses propose substantively the same
+# action, the resolver merges them into a single clarification with options.
+coalescing:
+  enabled: true
+  # LLM-judged similarity hint. The resolver does NOT use this as a
+  # deterministic threshold — it is signal to the curator prompt.
+  similarity_threshold: 0.6

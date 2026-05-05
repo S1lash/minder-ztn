@@ -233,13 +233,23 @@ invoking it. `/ztn:capture-candidate` is fire-and-forget, no lock.
 `/ztn:agent-lens`'s lock at pre-flight (registry would race) and uses
 concurrent-edit detection (snapshot + re-validate) to defend against
 parallel owner-driven invocations of itself.
-`/ztn:resolve-clarifications` is owner-driven, takes its own
-`.resolve.lock`, reads the four pipeline locks at start, and pre-syncs
-via `/ztn:sync-data` (Step 0) so multi-device queues stay current.
-`/ztn:sync-data` and `/ztn:save` read `.resolve.lock` and refuse while
-a resolve session is in progress; the resolve skill's Step 9.1 releases
-the lock before reminding the owner to run save. Stale locks > 2 h are
-surfaced as warnings, never silently deleted.
+`/ztn:resolve-clarifications` runs in two modes — owner-driven
+interactive and `--auto-mode` dispatched by `/ztn:lint` Step 7.5 —
+and takes `.resolve.lock` in both. Interactive mode reads the four
+pipeline locks at start and pre-syncs via `/ztn:sync-data` (Step 0)
+so multi-device queues stay current. **`--auto-mode` exception for
+`.lint.lock`:** the dispatching lint already holds it; treating that
+as competitor would deadlock the nightly chain. Auto-mode therefore
+proceeds when `.lint.lock` exists (proof of dispatcher), aborts
+silently on `.processing.lock` / `.maintain.lock`, and skips Step 0
+pre-sync (the nightly chain already synced; lint's autofixes leave
+the working tree dirty so re-syncing would abort). All four pipeline
+skills (`/ztn:process`, `/ztn:maintain`, `/ztn:lint`,
+`/ztn:agent-lens`) read `.resolve.lock` at start and abort on it.
+`/ztn:sync-data` and `/ztn:save` read `.resolve.lock` and refuse
+while a resolve session is in progress; the resolve skill's Step 9.1
+releases the lock before reminding the owner to run save. Stale locks
+> 2 h are surfaced as warnings, never silently deleted.
 
 ### 3.5 Logs and audit trail
 
@@ -276,6 +286,41 @@ its own operation; never edited retroactively.
 - Never delete files from `_sources/`. The only `_sources/` mutation
   any skill performs is move-to-processed (`/ztn:process`) or
   consume-and-move-describe-me (`/ztn:bootstrap`).
+
+**Interpretation: lens Action Hints + smart_resolve auto-apply.**
+`/ztn:resolve-clarifications --auto-mode` (dispatched by lint nightly)
+applies a narrow class of additive lens proposals — `wikilink_add`,
+`hub_stub_create`, `open_thread_add`, `decision_update_section` —
+without per-action owner CLARIFICATION. This is consistent with §3.6,
+not an exception to it, because:
+
+1. The action set is **additive only** — never mutates, deletes, or
+   rewrites existing owner content. Worst case is a misplaced new
+   bullet / hub / scaffold section that the owner can git revert.
+2. Each apply is **bounded** — handlers re-validate inside apply
+   (TOCTOU), refuse on any drift from the stale-check baseline, and
+   fall back to a clarification on validation failure.
+3. **Constitution + SOUL veto is absolute** — any proposal that the
+   resolver judges in conflict with an axiom / principle / rule /
+   SOUL focus zone is queued, not auto-applied. Owner override path
+   is editing `_system/state/insights-config.yaml`, not the sweep.
+4. Auto-apply is **earned through demonstrated owner approval**.
+   smart_resolve consults `_system/state/lens-resolution-history.jsonl`
+   (interactive owner clicks only — auto-mode applies do NOT accrete
+   precedent) as its precedent corpus. Cold-start (no precedent) →
+   default queue, not apply.
+5. Every auto-apply leaves an inline `<!-- from_lens: ... -->` comment
+   at the inserted line and a row in the per-session log under
+   `_system/state/resolve-sessions/`. Provenance is opaque-by-default
+   on the LLM side but visible-by-default on the filesystem side.
+
+The spirit of «no silent magic» is preserved: the owner sees every
+auto-apply on next interactive resolve session, can rev the
+`insights-config.yaml::classes` overrides per-class, and can revert
+any apply with a single git op. The other §3.6 prohibitions
+(profiles, principle promotion, SOUL/PEOPLE/PROJECTS overwrites,
+tier demotion, thread closure, source deletion) remain absolute and
+unchanged by this interpretation.
 
 ### 3.7 Documentation conventions
 

@@ -24,7 +24,8 @@ Pointer card. The full pipeline lives in the installed skill, not here.
   thinker prompt + structurer prompt + validator rules.
 - **Per-lens definitions:** `_system/registries/lenses/{id}/prompt.md`.
 - **Scheduler-prompt body:**
-  `integrations/claude-code/scheduler-prompts/agent-lens-scheduled.md`.
+  `integrations/claude-code/scheduler-prompts/nightly-combined.md`
+  (agent-lens runs as step 3 of the combined nightly tick).
 - **Full orientation card:** [[CLAUDE_ZETTELKASTEN]] — three layers,
   routing, all ZTN skills, conventions.
 

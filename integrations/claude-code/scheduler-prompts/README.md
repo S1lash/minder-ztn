@@ -12,14 +12,16 @@ For full design rationale, cadence, and plug-in instructions see
 | File | What it runs | Recommended cadence |
 |---|---|---|
 | `process-scheduled.md` | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `/ztn:save --auto` | ≥ 3× per day, e.g. cron `0 9,14,19 * * *` |
-| `lint-nightly.md` | `/ztn:sync-data` → `/ztn:lint` → `/ztn:save --auto` | 1× nightly, e.g. cron `0 3 * * *` |
-| `agent-lens-scheduled.md` | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `/ztn:save --auto` | 1× daily, e.g. cron `0 6 * * *` |
+| `nightly-combined.md` | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `/ztn:lint` → `/ztn:save --auto` | 1× nightly, e.g. cron `0 3 * * *` |
 
 There is no `maintain` prompt — maintain runs inline at the tail of
-`/ztn:process`. There is no `resolve-clarifications` prompt — that step
-is owner-only by design. The `agent-lens` tick runs daily because the
-skill itself filters lenses by per-lens cadence — daily ≠ daily lens
-runs.
+`/ztn:process`. There is no separate `agent-lens` or `lint` prompt —
+they run as steps 3 and 4 of the nightly chain so lens Action Hints
+written by step 3 are consumed immediately by step 4's lint-dispatched
+`/ztn:resolve-clarifications --auto-mode` (no 24h gap). There is no
+interactive `resolve-clarifications` prompt — that flow is owner-only
+by design. The `agent-lens` step runs nightly because the skill itself
+filters lenses by per-lens cadence — nightly ≠ nightly lens runs.
 
 **Manifest emission per tick.** `/ztn:process` Step 5.5 writes both
 `{batch_id}.md` (markdown report) and `{batch_id}.json` (machine-
@@ -49,16 +51,9 @@ The path of least friction. Two routines:
 
 ```
 /schedule
-  name: ztn-lint
+  name: ztn-nightly
   cron: 0 3 * * *
-  prompt: <paste body of lint-nightly.md>
-```
-
-```
-/schedule
-  name: ztn-agent-lens
-  cron: 0 7 * * *
-  prompt: <paste body of agent-lens-scheduled.md>
+  prompt: <paste body of nightly-combined.md>
 ```
 
 Each routine runs in a fresh agent — the prompt body is fully
@@ -112,7 +107,10 @@ Recommended:
   frequency is fine; `/ztn:process` is a no-op when
   `_sources/inbox/` is empty. Back-to-back ticks <5 min apart are
   wasteful (Claude Code rate / token budget).
-- `ztn-lint` — once per night, after the day's last process tick.
+- `ztn-nightly` — once per night, after the day's last process tick.
   03:00 local recommended — far enough from evening processing to
   avoid lock contention, far enough from morning that the
-  CLARIFICATIONS queue is fresh when owner sits down.
+  CLARIFICATIONS queue + lens outputs + resolve session log are
+  fresh when owner sits down. The nightly chain takes ~30-45 min
+  end-to-end (agent-lens 5-15 min + lint Pass 1 ~3 min + resolve
+  --auto-mode dispatch ~30-90s LLM + save ~5s).

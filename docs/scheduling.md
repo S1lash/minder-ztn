@@ -11,13 +11,14 @@ Three scheduled jobs. No more.
 | Job | Cadence | Skill chain | Prompt source |
 |---|---|---|---|
 | `ztn-process` | ≥ 3× per day | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/process-scheduled.md` |
-| `ztn-lint` | 1× nightly | `/ztn:sync-data` → `/ztn:lint` → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/lint-nightly.md` |
-| `ztn-agent-lens` | 1× daily | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/agent-lens-scheduled.md` |
+| `ztn-nightly` | 1× nightly | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `/ztn:lint` → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/nightly-combined.md` |
 
-The agent-lens tick fires daily but the skill itself filters lenses by
-per-lens cadence — daily fire ≠ daily lens runs. Most days agent-lens
-is a no-op sync; on days when at least one lens is due (per its
-weekly/biweekly/monthly anchor) it runs the due lenses.
+The agent-lens step fires nightly but the skill itself filters lenses
+by per-lens cadence — nightly fire ≠ nightly lens runs. Most nights
+agent-lens runs zero or one lens; on weekly/biweekly anchors it runs
+the due ones. Lint and resolve-clarifications --auto-mode follow
+inline so any fresh lens Action Hints are consumed in the same tick
+(no 24h staleness gap).
 
 There is no `ztn-maintain` schedule — maintain runs inline as the tail
 of `/ztn:process`. There is no `ztn-resolve-clarifications` schedule —
@@ -74,16 +75,9 @@ The recommended path. Three routines:
 
 ```
 /schedule
-  name: ztn-lint
+  name: ztn-nightly
   cron: 0 3 * * *
-  prompt: <paste body of integrations/claude-code/scheduler-prompts/lint-nightly.md>
-```
-
-```
-/schedule
-  name: ztn-agent-lens
-  cron: 0 6 * * *
-  prompt: <paste body of integrations/claude-code/scheduler-prompts/agent-lens-scheduled.md>
+  prompt: <paste body of integrations/claude-code/scheduler-prompts/nightly-combined.md>
 ```
 
 The prompt bodies are self-contained — fresh agent per run, no extra

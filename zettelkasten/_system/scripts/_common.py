@@ -975,6 +975,143 @@ REPROCESS_CORPUS_ROOTS: dict[str, tuple[str, ...]] = {
 
 REPROCESS_CORPUS_LAYERS: frozenset[str] = frozenset({"record", "knowledge"})
 
+
+# -----------------------------------------------------------------------------
+# Action Hints — lens emission contract (consumed by /ztn:resolve-clarifications)
+# -----------------------------------------------------------------------------
+#
+# Lenses MAY append an `## Action Hints` trailer to their output file,
+# proposing structural changes (wikilink_add, hub_stub_create, ...). The
+# resolver ingests these hints, judges with full owner context, and either
+# auto-applies (when precedent + constitution + safety align) or queues
+# for owner review. See `integrations/claude-code/skills/
+# ztn-resolve-clarifications/SKILL.md` for the consumer side.
+#
+# Whitelist enforcement happens at resolver Step 2, not at lens emission.
+# Lenses propose freely; non-whitelisted types are routed to clarifications
+# with «type X is not currently auto-applicable; owner review required».
+
+ACTION_HINT_TYPES: frozenset[str] = frozenset({
+    "wikilink_add",
+    "hub_stub_create",
+    "open_thread_add",
+    "decision_update_section",
+})
+
+ACTION_HINT_CONFIDENCES: frozenset[str] = frozenset({"low", "medium", "high"})
+
+# Per-type required `params` fields. Resolver's stale pre-check + handlers
+# rely on these. Missing fields → hint is dropped at parse with a reason.
+ACTION_HINT_REQUIRED_PARAMS: dict[str, frozenset[str]] = {
+    "wikilink_add": frozenset({"note_a", "note_b"}),
+    "hub_stub_create": frozenset({"suggested_slug", "cited_notes"}),
+    "open_thread_add": frozenset({"thread_title", "cited_records"}),
+    "decision_update_section": frozenset({"decision_note_path", "update_reason"}),
+}
+
+
+_ACTION_HINTS_HEADER_RE = re.compile(
+    r"^##\s+Action\s+Hints\s*$", re.MULTILINE | re.IGNORECASE
+)
+
+
+def extract_action_hints_block(body: str) -> str | None:
+    """Return the YAML body inside an `## Action Hints` section, or None.
+
+    The block runs from the line after the header to either the next
+    `## ` heading at column 0 or EOF. Returns the YAML text trimmed of
+    leading/trailing blank lines. None when no `## Action Hints` header
+    is present.
+    """
+    if not body:
+        return None
+    m = _ACTION_HINTS_HEADER_RE.search(body)
+    if m is None:
+        return None
+    start = m.end()
+    rest = body[start:]
+    # Find next top-level `## ` heading (NOT `### ` or deeper).
+    next_heading = re.search(r"\n##\s+(?!#)", rest)
+    block = rest[: next_heading.start()] if next_heading else rest
+    return block.strip("\n")
+
+
+@dataclass(frozen=True)
+class ActionHint:
+    """One parsed Action Hint emitted by a lens.
+
+    `raw_index` is the 0-based position inside the lens file's `## Action
+    Hints` list — used for traceability when a hint is dropped or queued.
+    """
+    type: str
+    params: dict
+    confidence: str
+    brief_reasoning: str
+    raw_index: int
+
+
+def parse_action_hints(body: str) -> tuple[list[ActionHint], list[dict]]:
+    """Parse `## Action Hints` trailer into structured hints.
+
+    Returns `(hints, drops)`:
+      - `hints`: well-formed `ActionHint` instances (type whitelisted,
+        confidence valid, required params present)
+      - `drops`: list of `{raw_index, reason, raw}` for malformed entries
+
+    Deterministic — no LLM. PyYAML strict load. Tolerant of missing
+    section (returns `([], [])`). Caller logs drops.
+    """
+    block = extract_action_hints_block(body)
+    if block is None or not block.strip():
+        return ([], [])
+
+    try:
+        parsed = yaml.safe_load(block)
+    except yaml.YAMLError as exc:
+        return ([], [{"raw_index": -1, "reason": f"yaml-parse-error: {exc}", "raw": block}])
+
+    if not isinstance(parsed, list):
+        return ([], [{"raw_index": -1, "reason": "expected-yaml-list", "raw": block}])
+
+    hints: list[ActionHint] = []
+    drops: list[dict] = []
+    for idx, raw in enumerate(parsed):
+        if not isinstance(raw, dict):
+            drops.append({"raw_index": idx, "reason": "entry-not-mapping", "raw": raw})
+            continue
+        hint_type = raw.get("type")
+        params = raw.get("params")
+        confidence = raw.get("confidence")
+        brief = raw.get("brief_reasoning")
+        if not isinstance(hint_type, str) or not hint_type:
+            drops.append({"raw_index": idx, "reason": "missing-type", "raw": raw})
+            continue
+        if hint_type not in ACTION_HINT_TYPES:
+            drops.append({"raw_index": idx, "reason": f"type-not-whitelisted:{hint_type}", "raw": raw})
+            continue
+        if not isinstance(params, dict):
+            drops.append({"raw_index": idx, "reason": "missing-params-mapping", "raw": raw})
+            continue
+        required = ACTION_HINT_REQUIRED_PARAMS[hint_type]
+        missing = [k for k in required if k not in params]
+        if missing:
+            drops.append({"raw_index": idx, "reason": f"missing-params:{','.join(missing)}", "raw": raw})
+            continue
+        if confidence not in ACTION_HINT_CONFIDENCES:
+            drops.append({"raw_index": idx, "reason": f"bad-confidence:{confidence}", "raw": raw})
+            continue
+        if not isinstance(brief, str) or not brief.strip():
+            drops.append({"raw_index": idx, "reason": "missing-brief-reasoning", "raw": raw})
+            continue
+        hints.append(ActionHint(
+            type=hint_type,
+            params=params,
+            confidence=confidence,
+            brief_reasoning=brief.strip(),
+            raw_index=idx,
+        ))
+    return (hints, drops)
+
 _FILENAME_DATE_PREFIX_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})-")
 
 

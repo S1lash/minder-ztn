@@ -150,6 +150,10 @@ template:
   - zettelkasten/_system/state/log_maintenance.template.md
   - zettelkasten/_system/state/log_process.template.md
   - zettelkasten/_system/state/log_lint.template.md
+  # insights-config seeds the smart-resolve engine driven by
+  # /ztn:resolve-clarifications. Ships under .template; resolver copies
+  # to live path on first run when missing. Owner-mutable thereafter.
+  - zettelkasten/_system/state/insights-config.yaml.template
 
   # Views (auto-generated, but file must exist for skills to write)
   - zettelkasten/_system/views/CURRENT_CONTEXT.template.md

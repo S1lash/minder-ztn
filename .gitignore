@@ -20,3 +20,6 @@ integrations/claude-code/built/
 
 # Advisory flock files for telemetry / append-only buffers
 zettelkasten/_system/state/.*.lock
+
+# Temporary planning / SDD docs (deleted at end of implementation cycle)
+_planning/

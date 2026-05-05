@@ -138,3 +138,40 @@ For each hit, in free form:
 - **Recurrence state** — one of `new` / `stable-detection` / `fading-echo` (per Self-history). For `stable-detection` cite the prior-output date AND name the new structural evidence; for `fading-echo` cite the prior-output date AND state «no new evidence».
 
 If 0 hits — say so plainly: "Over the window I examined, no candidates met multi-signal criteria. Concepts I considered and rejected as ambient / surface / modifier-word: …" That is a healthy output, not a failure.
+
+## Action Hints emission (optional trailer)
+
+When at least one hit qualifies as a real bridge candidate (≥2 of 4
+signals, distinct operational frames, not already linked, recurrence
+state ∈ {`new`, `stable-detection`}), you MAY append an `## Action
+Hints` trailer with a `wikilink_add` proposal for that endpoint pair.
+See `_frame.md → Action Hints (optional trailer)` for the schema. A
+downstream resolver judges and either auto-applies or queues for owner
+review — your role is to propose honestly, not gate on safety.
+
+Favour `wikilink_add` when:
+
+- Both endpoints are in the **knowledge layer** (the connection earns
+  its place by linking mature material). For record-only endpoints the
+  bridge is still worth surfacing in the body, but the wikilink hint is
+  premature — the records will be processed later and may land in
+  different knowledge notes.
+- The nameable claim is one sentence and load-bearing.
+- Recurrence state is `stable-detection` with new structural evidence,
+  OR `new` at confidence high.
+
+Skip emission when:
+
+- Recurrence state is `fading-echo` (low signal, owner already saw it).
+- Confidence is `low` (surface in body as «watching»; do not propose).
+- Either endpoint is a record (let `/ztn:process` distil first).
+- The bridge is between three+ notes — that is a hub candidate, not a
+  pairwise wikilink; let `knowledge-emergence` propose the hub instead
+  of forcing two-of-three wikilinks.
+
+Hint `confidence` mirrors body confidence (`low` / `medium` / `high`).
+Resolver combines it with precedent + constitution; you do not need to
+adjust for safety. `brief_reasoning` is one paragraph stating the
+nameable claim + which signals fire — same content as the body, in
+compressed form. If you cannot compress it without loss, the bridge
+isn't ready for a hint.

@@ -527,3 +527,89 @@ On validator failure:
 The validator does NOT check semantic content. It does not verify the
 observation is "good", "honest", or "well-grounded" — that is the
 owner's review responsibility.
+
+---
+
+## Action Hints (optional trailer)
+
+A lens MAY append an `## Action Hints` section at the end of its output
+when it has specific structural proposals an experienced reader might
+consider acting on. The trailer is OPTIONAL — when there is nothing to
+propose, omit it. Lenses do NOT gate themselves on safety: a downstream
+resolver (`/ztn:resolve-clarifications`) ingests every emitted hint,
+weighs it against full owner context (constitution, SOUL, recent
+INSIGHTS, prior owner approvals on similar proposals), and either
+auto-applies or queues for owner review. The lens role is to PROPOSE
+honestly with self-reported confidence; judgement is downstream.
+
+**Schema** — YAML list inside the section, one entry per proposal:
+
+```markdown
+## Action Hints
+- type: hub_stub_create
+  params:
+    suggested_slug: hub-inner-work
+    cited_notes:
+      - 2_areas/personal/reflection/20260407-...md
+      - 2_areas/personal/reflection/20260414-...md
+  confidence: medium
+  brief_reasoning: |
+    8 notes over 4 months on the same psychological substrate; no
+    existing hub covers this layer; cluster framing is consistent.
+- type: wikilink_add
+  params:
+    note_a: 2_areas/work/reflection/...md
+    note_b: 2_areas/personal/reflection/...md
+  confidence: high
+  brief_reasoning: |
+    Both notes describe the same operating logic in different domains;
+    structural overlap is high.
+```
+
+**Required fields per entry:** `type`, `params`, `confidence`,
+`brief_reasoning`.
+
+**Whitelisted `type` values** (canonical list mirrored in
+`_system/scripts/_common.py::ACTION_HINT_TYPES`):
+
+| Type | Required `params` | Typical lens emitter |
+|---|---|---|
+| `wikilink_add` | `note_a`, `note_b` (paths) | cross-domain-bridge |
+| `hub_stub_create` | `suggested_slug`, `cited_notes` (list of paths) | knowledge-emergence |
+| `open_thread_add` | `thread_title`, `cited_records` (list of paths) | stalled-thread |
+| `decision_update_section` | `decision_note_path`, `update_reason` | decision-review |
+
+A lens MAY emit any whitelisted type regardless of its «typical» role —
+the table above is descriptive, not prescriptive. Non-whitelisted types
+are not silently dropped: the resolver routes them into the
+clarifications queue with a note that owner review is required (the
+system learns about new types through owner approval, not lens fiat).
+
+**`confidence` values:** `low` | `medium` | `high` — lens self-report.
+Used by the resolver as one signal among many, never as a gate.
+
+**`brief_reasoning`:** one paragraph, owner-readable. Explains why the
+lens believes this proposal would be useful. The resolver reads this
+verbatim when deciding; the owner reads it when reviewing. Be honest
+about what is and isn't load-bearing in the cluster.
+
+**Lenses that emit Action Hints:** `cross-domain-bridge`,
+`knowledge-emergence`, `stalled-thread`, `decision-review`,
+`global-navigator`. Each lens prompt carries its own emission guidance
+(when to propose, what types to favour, how aggressive to be).
+
+**Lenses that do NOT emit Action Hints:** `weekly-insights`,
+`energy-pattern`, `stated-vs-lived`. These are informational or
+identity-level by design — auto-apply machinery would cross owner-
+sovereignty lines.
+
+**Validator stance.** The Stage 3 validator does not parse the Action
+Hints body. It accepts the trailer as opaque markdown. The resolver's
+deterministic parser (`_common.parse_action_hints`) handles malformed
+entries with drop-and-log semantics — the lens does not block on
+invalid YAML.
+
+**Self-restraint.** If a lens has nothing high-enough-confidence to
+propose, omit the section. Filling Action Hints with low-confidence
+filler dilutes the resolver's judgement and burns LLM cost on
+guaranteed-queue items. Prefer silence over noise.
