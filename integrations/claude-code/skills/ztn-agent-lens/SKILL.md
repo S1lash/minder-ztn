@@ -402,7 +402,7 @@ Two reasons:
     diluting the frame's instructions. The whole point of the frame
     is that thinker sees ONLY the frame, nothing else.
 
-(b) The scheduler tick contract (`nightly-combined.md`) bans
+(b) The scheduler tick contract (`agent-lens-nightly.md`) bans
     sub-agent spawn for lock-deadlock reasons: the parent holds
     `_sources/.agent-lens.lock`, the child polls for it, deadlock.
 

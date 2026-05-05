@@ -234,18 +234,20 @@ invoking it. `/ztn:capture-candidate` is fire-and-forget, no lock.
 concurrent-edit detection (snapshot + re-validate) to defend against
 parallel owner-driven invocations of itself.
 `/ztn:resolve-clarifications` runs in two modes — owner-driven
-interactive and `--auto-mode` dispatched by `/ztn:lint` Step 7.5 —
-and takes `.resolve.lock` in both. Interactive mode reads the four
-pipeline locks at start and pre-syncs via `/ztn:sync-data` (Step 0)
-so multi-device queues stay current. **`--auto-mode` exception for
-`.lint.lock`:** the dispatching lint already holds it; treating that
-as competitor would deadlock the nightly chain. Auto-mode therefore
-proceeds when `.lint.lock` exists (proof of dispatcher), aborts
-silently on `.processing.lock` / `.maintain.lock`, and skips Step 0
-pre-sync (the nightly chain already synced; lint's autofixes leave
-the working tree dirty so re-syncing would abort). All four pipeline
-skills (`/ztn:process`, `/ztn:maintain`, `/ztn:lint`,
-`/ztn:agent-lens`) read `.resolve.lock` at start and abort on it.
+interactive and `--auto-mode` dispatched by the standalone
+`resolve-auto.md` scheduler tick (~04:00 nightly). Both modes take
+`.resolve.lock` and read all four pipeline locks (process / maintain /
+lint / agent-lens) at start. Auto-mode skips Step 0 pre-sync (the
+scheduler tick already synced) and never writes
+`lens-resolution-history.jsonl` (engine never trains on engine).
+Interactive mode pre-syncs via `/ztn:sync-data` (Step 0) so multi-
+device queues stay current. The lock matrix is fully symmetric — the
+three nightly skills (`lint`, `agent-lens`, `resolve --auto-mode`)
+each run in their own scheduler-agent context (separate ticks at
+03:00 / 03:30 / 04:00) precisely so the LLM judgements stay clean
+of cross-skill contextual bleed; if any two acquire conflicting
+locks, the later one aborts and the next nightly cycle retries. All
+four pipeline skills read `.resolve.lock` at start and abort on it.
 `/ztn:sync-data` and `/ztn:save` read `.resolve.lock` and refuse
 while a resolve session is in progress; the resolve skill's Step 9.1
 releases the lock before reminding the owner to run save. Stale locks

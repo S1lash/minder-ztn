@@ -46,24 +46,25 @@ version/phase/rename-history narratives.
 - `--no-refresh` — skip Step 9 post-resolution refresh (`/ztn:regen-constitution`,
   `/ztn:maintain`); owner promises to run them manually
 - `--no-save` — skip the Step 9.5 save reminder (commit later by hand)
-- `--auto-mode` — non-interactive entry point used by `/ztn:lint`. Runs
-  Step A (lens hint ingestion + smart curation + auto-resolve sweep)
-  and exits silently. Skips Step 0 pre-sync (the caller already
-  syncs), skips theme menu / round / save reminder. Residue
-  clarifications stay queued for owner; auto-applied actions write
-  to the session log under `_system/state/resolve-sessions/`.
+- `--auto-mode` — non-interactive entry point used by the
+  `resolve-auto.md` scheduler tick (~04:00 nightly, ~30 min after the
+  agent-lens tick). Runs Step A (lens hint ingestion + smart curation
+  + auto-resolve sweep) and exits silently. Skips Step 0 pre-sync (the
+  caller already synced), skips theme menu / round / save reminder.
+  Residue clarifications stay queued for owner; auto-applied actions
+  write to the session log under `_system/state/resolve-sessions/`.
+  This mode runs in its own scheduler-agent context — separate from
+  lint's and agent-lens's — so the LLM judgments in Step A.2 (curator)
+  and Step A.3 (sweep) get a fresh context for maximum quality.
 
 ---
 
 ## Step 0: Pre-sync
 
-**Skip entirely under `--auto-mode`.** The dispatching nightly chain
-(scheduler → `/ztn:sync-data` → agent-lens → lint → resolve) already
-synced as its first step, AND lint has by now written invariant-scan
-autofixes that leave the working tree dirty — re-running sync inside
-auto-mode would either redundantly walk a clean tree or, more likely,
-abort on the dirty tree and break the nightly chain. The auto-mode
-caller owns sync; resolve trusts it.
+**Skip entirely under `--auto-mode`.** The dispatching scheduler tick
+(`resolve-auto.md`) already synced in its own step 1; running
+`/ztn:sync-data` again here is redundant. The auto-mode caller owns
+sync; resolve trusts it.
 
 Under interactive mode (`/ztn:resolve-clarifications` invoked by
 owner), invoke `/ztn:sync-data` inline. Owner may be working from a
@@ -94,25 +95,18 @@ This skill writes to CLARIFICATIONS.md and may edit profiles / records.
 Producer skills (`/ztn:process`, `/ztn:lint`, `/ztn:maintain`) write to
 the same files. Mutual exclusion required.
 
-Read all three before starting:
+Read all four before starting (both modes):
 - `_sources/.processing.lock` — abort «`/ztn:process` running»
 - `_sources/.maintain.lock` — abort «`/ztn:maintain` running»
-- `_sources/.lint.lock` — abort «`/ztn:lint` running» (see auto-mode
-  exception below)
+- `_sources/.lint.lock` — abort «`/ztn:lint` running»
+- `_sources/.agent-lens.lock` — abort «`/ztn:agent-lens` running»
 
-**`--auto-mode` exception for `.lint.lock`.** Auto-mode is dispatched
-by `/ztn:lint` Step 7.5; lint holds `.lint.lock` for the duration of
-the dispatch. Treating that lock as «competitor» would deadlock the
-nightly chain. Under `--auto-mode` only, presence of `.lint.lock` is
-proof the dispatcher is alive — proceed with resolve work, do not
-abort. The `.processing.lock` and `.maintain.lock` checks remain
-absolute (lint already cleared those at its own Step 0.1; if either
-appears here, something has gone genuinely wrong — abort silently
-and let the next nightly tick retry). All other locks (the
-auto-mode check is exclusively for `.lint.lock`) stay competitive.
-
-Interactive mode keeps the original three-lock check; the owner-driven
-session has no dispatcher above it.
+Both modes run in their own scheduler-agent / owner-session context
+with no dispatcher above them — the lock check is symmetric. (Earlier
+designs dispatched auto-mode from inside lint; that pattern is gone,
+so the auto-mode `.lint.lock` exception is gone too.) Auto-mode
+abort on any of these locks → exit silently; the next scheduler tick
+retries. Interactive abort → surface the running skill to the owner.
 
 1. Create `_sources/.resolve.lock` with `{ISO timestamp} — {session info}`
 2. Delete it on every exit path (normal, error, abort, early exit)

@@ -73,15 +73,21 @@ an identity profile, set up scheduled processing) —
 
 ## Run it on a schedule
 
-Two engine-shipped scheduler prompts in
+Four engine-shipped scheduler prompts in
 `integrations/claude-code/scheduler-prompts/` cover the autonomous
 surface so you only show up for resolution:
 
 - `process-scheduled.md` — ingest new transcripts (≥ 3× per day)
-- `nightly-combined.md` — agent-lens (fires nightly, skill filters by
-  per-lens cadence) → lint (consistency sweep, autofix obvious /
-  surface rest) → resolve `--auto-mode` (lint dispatches inline; auto-
-  applies safe lens proposals, queues residue) → save (1× nightly)
+- `lint-nightly.md` — consistency sweep, autofix obvious / surface
+  rest to CLARIFICATIONS (1× nightly, 03:00)
+- `agent-lens-nightly.md` — runs due lenses; skill filters by
+  per-lens cadence (1× nightly, 03:30)
+- `resolve-auto.md` — smart-resolve sweep over fresh lens hints +
+  open clarifications; auto-applies safe additive proposals, queues
+  residue (1× nightly, 04:00)
+
+The three nightly skills run as separate ticks (not chained inline)
+so each LLM-judgement step gets a fresh scheduler-agent context.
 
 Paste each body into Claude Code `/schedule` (or any cron-like runner
 that can launch a `claude` session). Full setup, push-credential

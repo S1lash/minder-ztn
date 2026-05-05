@@ -1718,50 +1718,6 @@ Append ONE entry к `_system/state/log_lint.md` (aggregate across all scans + mi
 
 ---
 
-## Step 7.5 — Dispatch /ztn:resolve-clarifications --auto-mode
-
-After invariant scans + log entry land, dispatch the smart-resolve
-sweep. Lint's role re: Action Hints is ZERO plumbing — resolve handles
-ingestion, curation, auto-resolve, history-aware reasoning end-to-end.
-Lint is the timer; resolve is the engine.
-
-Pre-flight short-circuit (deterministic, cheap):
-
-1. Walk `_system/agent-lens/{lens-id}/{date}.md` for files modified
-   since `_system/state/last-resolve-tick.txt` (or last 24h if marker
-   absent). If ZERO files match AND CLARIFICATIONS.md has no items
-   carrying `**Smart_resolve reasoning:**` (i.e. nothing left for
-   smart_resolve to retry stale-checks on) → skip resolve dispatch.
-   Saves the LLM cost on idle nights.
-2. Otherwise → invoke `/ztn:resolve-clarifications --auto-mode` inline.
-
-Failure handling:
-
-- Resolve failure surfaces as a CLARIFICATION (`type:
-  resolve-dispatch-failed`, severity weak) but does NOT fail lint —
-  invariant scans + log entry already landed. Owner sees the
-  CLARIFICATION next interactive resolve session.
-- Resolve writes its own session log under
-  `_system/state/resolve-sessions/`; lint does not need to mirror it
-  in `log_lint.md`. Cross-reference: include a one-line entry in
-  log_lint's «### Auto-Fixes» section if resolve ran («auto-resolve:
-  applied N, queued M, vetoed K» — taken from resolve's session log
-  frontmatter).
-
-Lock interaction:
-
-- Lint holds `_sources/.lint.lock` throughout. Resolve, when invoked
-  with `--auto-mode`, observes lint's lock as «caller is the dispatcher,
-  not a competitor» — it acquires its own `.resolve.lock` for the
-  duration of Step A and releases on exit. Both locks coexist for the
-  ~30-90s of the sweep.
-- If resolve cannot acquire `.resolve.lock` (an owner-driven interactive
-  session somehow started after Step 0.1's cross-skill check) → resolve
-  exits silently without doing work. Lint surfaces this as a
-  CLARIFICATION, continues normally.
-
----
-
 ## Step 8 — Release Lock
 
 Delete `_sources/.lint.lock`. Guaranteed finally path.
