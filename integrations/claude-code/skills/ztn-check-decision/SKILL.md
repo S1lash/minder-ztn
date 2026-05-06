@@ -27,12 +27,27 @@ version/phase/rename-history narratives.
 
 - Before acting on a non-trivial decision that touches identity, ethics,
   work philosophy, tech judgment, or life-domain trade-offs.
-- Inside `/ztn:process` Step 3.x — for every record with `types:
-  [decision]` in the current batch.
+- Inside `/ztn:process` Step 3.7.5 — for every eligible record in the
+  current batch: `types: [decision]` (typed-decision path), or `types:
+  [observation]` with the subagent's `tradeoff_framing` flag set
+  (trade-off-observation path).
 - When the user asks "is this aligned with my principles?" or surfaces
   a dilemma that mentions explicit trade-offs.
-- Retroactively via `/ztn:lint --rescan-drift --days N` on historical
-  records after a principle was edited.
+- Inside `/ztn:lint` Scan F.2 — historical re-check on decision records
+  in the lookback window. Two trigger paths: explicit `--rescan-drift
+  --days N` (owner-driven), or auto path firing on detection of
+  constitution-tree edits since the last F.2 run.
+- Inside `/ztn:resolve-clarifications --auto-mode` Step A.3.5 — escalation
+  on `queue` candidates whose `queue_reason ∈ {uncertainty, no-precedent}`
+  and whose action touches a values-bearing surface. This is the
+  «proxy for the absent owner» role: aligned / no-match verdicts upgrade
+  the candidate to `auto-apply` (don't bother the owner — the constitution
+  approves), `violated ≥ 0.7` upgrades to `block-veto` (don't bother the
+  owner — the constitution refuses), `tradeoff` and low-confidence
+  `violated` keep the candidate in queue (here the owner is genuinely
+  needed). `anti-flip-flop` and `config-never-auto` queue reasons are
+  NOT escalated — owner authority on prior rejections / per-class config
+  remains absolute.
 
 Do **not** invoke for:
 - Pure refactoring / syntax questions with no values-content.
@@ -68,7 +83,7 @@ should ignore them. **Skill never fails for missing self-report fields.**
 
 | Input | Shape | Purpose |
 |---|---|---|
-| `--from-pipeline <name>` | one of `/ztn:process`, `/ztn:lint`, `/ztn:maintain`, `/ztn:agent-lens`, `/ztn:bootstrap` | marks the call as `caller_class: mechanical` — pipelines pass it from their step that invokes check-decision; absence = `caller_class: judgmental` (ad-hoc agent in any repo). Mechanical calls skip the auto-commit step (parent pipeline owns batch-commit). |
+| `--from-pipeline <name>` | one of `/ztn:process`, `/ztn:lint`, `/ztn:maintain`, `/ztn:agent-lens`, `/ztn:bootstrap`, `/ztn:resolve-clarifications` | marks the call as `caller_class: mechanical` — pipelines pass it from their step that invokes check-decision; absence = `caller_class: judgmental` (ad-hoc agent in any repo). Mechanical calls skip the auto-commit step (parent pipeline owns batch-commit). |
 
 ### Followup mode (separate invocation, optional)
 

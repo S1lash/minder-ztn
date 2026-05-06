@@ -347,10 +347,22 @@ focus, and prior reasoning — approve this NOW?»
   "decision": "auto-apply" | "queue" | "block-veto",
   "reasoning": "<1-3 sentences referencing specific principle / past
                 session / SOUL focus when relevant>",
-  "action": { "type": "wikilink_add", "params": {...} }  // when auto-apply
+  "action": { "type": "wikilink_add", "params": {...} }  // present on `queue` AND `auto-apply` (queue carries the would-be action so Step A.3.5 can escalate it)
+  "queue_reason": "uncertainty" | "anti-flip-flop" | "no-precedent" | "config-never-auto" | "other"  // present on `queue` only — drives Step A.3.5 escalation gate
   "veto_reason": "<which principle or SOUL element triggered>"  // when block-veto
 }
 ```
+
+`queue_reason` semantics — what each value means and whether Step A.3.5
+escalates it:
+
+| `queue_reason` | Meaning | Escalates in A.3.5? |
+|---|---|---|
+| `uncertainty` | LLM was on the fence between `auto-apply` and `queue` (rule 6). The proposal IS values-touching and the LLM lacked clarity. | Yes — this is the canonical «would have asked the owner» case |
+| `no-precedent` | Cold-start (rule 2): action class never seen before. | Yes — escalate; aligned/no-match upgrade is exactly the «build precedent without bothering owner» path |
+| `anti-flip-flop` | Owner explicitly rejected a similar proposal in the last 30 days (rule 4). | **No** — owner's prior rejection is the source of truth; do not reroute to constitution. Stays in queue. |
+| `config-never-auto` | `insights-config.yaml::classes::{class_key} = never_auto` (rule 3). | **No** — owner's per-class config is the source of truth. Stays in queue. |
+| `other` | Catch-all for cases the LLM cannot classify into the four above. | **No** — fail-closed default; owner reviews. |
 
 **Decision rules the LLM is told to follow:**
 
@@ -365,17 +377,29 @@ focus, and prior reasoning — approve this NOW?»
    whitelisted, so this is a forward-compatibility guard.
 3. **Insights-config overrides win.** If `classes::{class_key}` is
    `auto`, force auto-apply (still subject to veto). If `never_auto`,
-   force queue. Class-key format: `{lens-id}__{action-type}__{confidence}`.
+   force `queue` with `queue_reason: "config-never-auto"`. Class-key
+   format: `{lens-id}__{action-type}__{confidence}`.
 4. **Anti-flip-flop guard.** If history.jsonl shows the owner
    `reject`-ed a substantively-similar proposal in the last 30 days,
-   default to `queue` with a note linking the prior rejection.
+   default to `queue` with `queue_reason: "anti-flip-flop"` and a
+   note linking the prior rejection.
 5. **Additive-only restriction.** Currently whitelisted types
    (`wikilink_add`, `hub_stub_create`, `open_thread_add`,
    `decision_update_section`) are all additive — no auto type can
    mutate or delete owner content. Resolver enforces by allowing
    only `ACTION_HINT_TYPES` in `action.type` for auto-apply.
-6. **Uncertainty default = queue.** When the LLM is unsure between
-   auto and queue, route to queue. Owner reviews; precedent grows.
+6. **Uncertainty default = queue with `queue_reason: "uncertainty"`.**
+   When the LLM is unsure between auto and queue, route to queue and
+   record `queue_reason: "uncertainty"` so Step A.3.5 can escalate to
+   `/ztn:check-decision` (the constitution-tree proxy for the absent
+   owner). Cold-start with no precedent uses `queue_reason:
+   "no-precedent"` (rule 2). Anything else uses `"other"`.
+7. **Carry the would-be `action` on `queue` decisions too.** Even when
+   routing to queue, populate the `action` field with the proposal's
+   full type + params. Step A.3.5 needs the structured action manifest
+   to invoke check-decision against a real artifact. `action` is only
+   omitted when the item has no structured action (curated CLARIFICATION
+   from Step A.2 with no lens-emitted hint).
 
 **After the LLM, deterministic execution:**
 
@@ -394,22 +418,189 @@ For each `auto-apply` decision:
   here). Demote to `queue` with reason «attempted auto-apply,
   validation failed because {handler.reason} — owner review».
 
-For each `queue` decision: rewrite the corresponding clarification (or
-synthesise a new one for hints that didn't yet exist as clarifications)
-to attach the LLM's `reasoning` text under a `**Smart_resolve
-reasoning:**` field. Owner sees this in interactive Step 5.
-
 For each `block-veto` decision: queue with prefix
 `**Constitution-veto:**` and the veto_reason. Append to session's
 `constitution_vetoed` list.
+
+`queue` decisions are NOT immediately written to the queue — they pass
+into Step A.3.5 first.
+
+### Step A.3.5 — Constitution escalation on queue decisions
+
+Premise: `queue` from Step A.3 means the LLM would have asked the owner
+to break the tie. Doctrine (`ENGINE_DOCTRINE` §3.6) keeps the owner-LLM
+contract intact, but the contract permits a values-bearing tie to be
+resolved by `/ztn:check-decision` — this is exactly the «proxy for the
+owner when the owner is not in the loop» role the skill was built for.
+A.3.5 is the escalation handler that shrinks the queue without lowering
+the bar: it only converts a `queue` to `auto-apply` or `block-veto`
+when the constitution gives an unambiguous verdict, and leaves the
+genuinely-owner-needed cases (tradeoff, anti-flip-flop, config) in the
+queue.
+
+**Eligibility — only escalate when ALL hold:**
+
+1. `decision == "queue"` from Step A.3.
+2. `queue_reason ∈ {uncertainty, no-precedent}` per the table above.
+   Other reasons preserve owner authority unchanged.
+3. `action` is present and `action.type ∈ ACTION_HINT_TYPES`. Items
+   without an `action` (curated CLARIFICATIONS from Step A.2 that lack
+   a structured action manifest) are not eligible — there is nothing
+   for `/ztn:check-decision` to evaluate.
+4. The action touches a values-bearing surface — at least one holds:
+   - `action.type == "decision_update_section"` (always values-bearing
+     by definition — the action targets a decision note).
+   - Any path in the action params (`note_a` / `note_b` for
+     `wikilink_add`; `cited_notes` for `hub_stub_create`;
+     `cited_records` for `open_thread_add`) resolves to a knowledge
+     note or record whose frontmatter `types:` array contains
+     `decision`. Use `_system/scripts/_common.py::read_frontmatter` to
+     read each cited path; treat unparseable / missing frontmatter as
+     «not values-bearing» (fail-closed for inclusion).
+   - SOUL focus match (best-effort, optional layer). When a SOUL
+     focus extractor exists in `_system/scripts/`, additionally check
+     whether the cited title / slug / `update_reason` text matches any
+     active focus identifier (case-insensitive substring). Until that
+     extractor lands, this third condition is a no-op — the first two
+     conditions cover the load-bearing cases (decisions are the
+     primary values-bearing surface).
+
+   Items that fail the values-touch heuristic stay in the queue with no
+   escalation. The heuristic errs toward not-escalating: false negative
+   means owner sees one extra CLARIFICATION; false positive means an
+   Opus call returning `no-match`. The asymmetry favours skipping.
+
+**Invocation — one `/ztn:check-decision` call per eligible item:**
+
+- `situation` — single paragraph distilled from the proposed action:
+  `"Lens {source_lens} proposes {action.type} on {targets}. Reason
+  given: {action.params.update_reason or LLM reasoning}. Should
+  applying this action without owner review align with the
+  constitution?"`. Keep concrete: name the actual targets and the
+  actual proposed bullet / link / hub title.
+- `record_ref` — the most-cited path in the action params (decision
+  note for `decision_update_section`; first entry of cited list for
+  the others). When no single record is dominant, omit and let the
+  skill default.
+- `dry_run: false` — Evidence Trail citations are wanted; this is a
+  real autonomous decision, telemetry must reflect it.
+- `--from-pipeline /ztn:resolve-clarifications` — `caller_class:
+  mechanical` accounting; resolve's session log owns the batch commit.
+- `is_sensitive` — propagate `true` if any cited path resolves to a
+  note / record with `is_sensitive: true` in frontmatter; defaults
+  `false`.
+
+**Verdict mapping — what each verdict does to the candidate:**
+
+| Verdict | Confidence | New decision | Target accumulator |
+|---|---|---|---|
+| `aligned` | any | `auto-apply` | `auto_applied` (with `from_escalation: true`) |
+| `no-match` | any | `auto-apply` | `auto_applied` (with `from_escalation: true`) |
+| `violated` | ≥ 0.7 | `block-veto` (with `veto_reason` from check-decision) | `constitution_vetoed` (with `from_escalation: true`) |
+| `violated` | < 0.7 | stays `queue` (annotate `**Smart_resolve reasoning:**` with the borderline verdict) | normal queue |
+| `tradeoff` | any | stays `queue` (annotate with the two principles in tension) | normal queue |
+| error / empty visible tree | — | stays `queue` (fail-closed) | normal queue |
+
+The `escalations` accumulator captures one row per check-decision
+invocation regardless of outcome (the audit trail). The
+`auto_applied` / `constitution_vetoed` accumulators capture only the
+flipped outcomes (the action trail). Both are written to the session
+log; the cross-reference is `item_ref`.
+
+The asymmetric thresholds — promote on ANY confidence for aligned /
+no-match, demote on confidence ≥ 0.7 for violated — reflect the cost
+asymmetry: a wrongly-promoted aligned-no-match action is bounded
+(additive scaffolding, git-revertable); a wrongly-demoted violated
+action is also bounded (ends up in queue, owner sees one extra item
+they would have seen without escalation anyway). The dangerous case
+would be promoting a violated action on low confidence — that's why
+< 0.7 violated stays in queue.
+
+**Audit:**
+
+- Every escalation (regardless of outcome) appends a row to the
+  session's `escalations` accumulator with `{item_ref, source_lens,
+  action_type, queue_reason_in, verdict, confidence, decision_out}`.
+- The check-decision call itself emits to
+  `_system/state/check-decision-runs.jsonl` per its own contract; the
+  session log cross-references via `record_ref` plus the accumulator
+  rows.
+- An escalation that flipped the decision (queue → auto-apply OR queue
+  → block-veto) appends the verdict reasoning as `**Escalation-resolved
+  by check-decision:**` annotation on the action's provenance comment
+  inside the apply target (auto-apply path) or on the CLARIFICATION row
+  (block-veto path), so the owner sees explicitly «this didn't reach
+  you because the constitution gave a clear verdict; here is which
+  principle it cited».
+
+**After A.3.5, the deterministic execution loop runs again, but only
+on items the escalation just flipped:**
+
+- Promoted items (verdict `aligned` / `no-match`) go through the
+  `auto-apply` block from Step A.3 (`ACTION_HINT_TYPES` validation +
+  handler dispatch + TOCTOU fallback). On TOCTOU `success=False`, the
+  item demotes to queue with the standard «attempted auto-apply,
+  validation failed» reason — the `escalations` row stays in place
+  (the check-decision call still happened) and an `**Escalation
+  resolved-but-toctou-failed:**` annotation is added so the owner sees
+  the full trail.
+- Demoted items (verdict `violated ≥ 0.7`) get the
+  `**Constitution-veto:**` prefix treatment from Step A.3.
+- Items left in the queue (low-confidence violated, tradeoff,
+  heuristic-skipped, not-eligible) go through the queue-write block
+  with `**Smart_resolve reasoning:**` annotation, plus
+  `**Escalation:**` annotation naming the verdict + reason for those
+  that did pass through A.3.5 without flipping.
+
+**For each `queue` decision (post-A.3.5):** rewrite the corresponding
+clarification (or synthesise a new one for hints that didn't yet exist
+as clarifications) to attach the LLM's `reasoning` text under a
+`**Smart_resolve reasoning:**` field. When the item passed through
+A.3.5 without flipping (tradeoff / low-confidence violated /
+heuristic-skipped / not-eligible), additionally attach
+`**Escalation:**` with the result so the owner sees why it stayed.
+Owner sees this in interactive Step 5.
+
+**Cost / latency.** One `/ztn:check-decision` call per eligible queue
+item. Bounded: queue items per nightly tick are typically O(1)–O(10)
+in a healthy steady state; the values-touch heuristic culls further.
+The Opus calls are sequential, not parallel — sequencing keeps Evidence
+Trail writes serialised against the per-record `last_applied` field
+without coordination overhead.
+
+**Evidence Trail growth from autonomous citations.** Every escalation
+call writes a `citation-aligned` / `citation-violated` /
+`citation-tradeoff` entry into the cited principle's `## Evidence
+Trail` section, regardless of whether the candidate flipped. This
+grows the trail at roughly «escalations per night × 1–3 principles
+per call» rate. The bloat is bounded by `/ztn:lint` Scan F.7 (weekly
+Evidence Trail compaction), so steady-state size stays manageable.
+F.4 «Most-cited principles» (monthly health metric) will reflect
+auto-mode citations alongside owner-driven ones — this is desired
+signal, not noise: a principle cited often by the resolver is genuinely
+load-bearing on the system's autonomy. F.1 stale-detection runs on
+`last_reviewed`, not `last_applied`, so auto-mode citations do not
+suppress legitimate staleness signals.
 
 ### Step A.4 — Session log flush + early exit branch
 
 1. Build a `SessionState` via `resolve_session.new_session(mode,
    trigger)` at Step A's entry. Mode is `auto` or `interactive`;
    trigger is `lint` (when `--auto-mode`) or `owner` (otherwise).
-2. Throughout Steps A.1-A.3, accumulate auto-applied / vetoed entries
-   on the state object.
+2. Throughout Steps A.1–A.3.5, accumulate `auto_applied`,
+   `constitution_vetoed`, and `escalations` entries on the state
+   object. The `escalations` list carries one row per
+   `/ztn:check-decision` invocation made in A.3.5: `{item_ref,
+   source_lens, action_type, queue_reason_in, verdict, confidence,
+   decision_out}`. Promoted / demoted items also appear in the
+   `auto_applied` / `constitution_vetoed` lists with provenance
+   `from_escalation: true` so a single read of the session log shows
+   both the verdict trail and the final outcome. The `escalations`
+   accumulator is a new `SessionState` field — implementer adds
+   `escalations: list[dict] = field(default_factory=list)` alongside
+   the existing accumulators in `_system/scripts/resolve_session.py`,
+   plus an `items_escalated` count in `_frontmatter` and a
+   `_render_escalations` section.
 3. After A.3 completes, call `resolve_session.write_session_log(state)`.
 4. Update `_system/state/last-resolve-tick.txt` with current ISO-Z
    timestamp.

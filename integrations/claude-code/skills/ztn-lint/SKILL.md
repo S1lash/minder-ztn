@@ -1044,15 +1044,76 @@ CLARIFICATION `principle-stale` with subject=principle.title,
 Quote=principle.statement, Uncertainty="Last reviewed {date}; > 180 days
 old", To resolve="confirm still applicable / rephrase / deprecate".
 
-#### F.2 — Historical drift re-scan (manual only, `--rescan-drift`)
+#### F.2 — Historical drift re-scan (manual + auto-on-constitution-edit)
 
-Not on daily cadence. Triggered by explicit `/ztn:lint --rescan-drift --days N`
-(default N=30). Purpose: after a retroactive principle edit, walk recent
-decision records and re-check alignment against the updated tree.
+Two trigger paths, identical per-record logic:
 
-Per-record logic mirrors `/ztn:process` Step 3.7.5 but emits CLARIFICATIONS
-of type `principle-drift-retro` (distinct from daily `principle-drift`) so
-the user can tell historical rescans apart from live checks.
+**Manual path** — `/ztn:lint --rescan-drift --days N` (default N=30).
+Owner-driven, used after explicit retroactive principle edits or on
+demand. `--days` is honoured verbatim.
+
+**Auto path** — fires inside the normal nightly tick (no flag needed)
+when the constitution tree has changed since the last lint run that
+fired F.2. Detection:
+
+1. Read `_system/state/log_lint.md` frontmatter for the most recent
+   `f2_last_ran_at` ISO-Z timestamp.
+   - **Absent.** Bootstrap silently: write `f2_last_ran_at:
+     <run-start-ts>` and skip F.2 for this tick. Rationale: a missing
+     marker means no prior tick has populated it; historical commits
+     in `0_constitution/` predate any incremental signal the owner is
+     watching for. A retroactive rescan on bootstrap would surface
+     drift CLARIFICATIONS for changes the owner has already lived with
+     — noise, not signal. Next tick the marker exists and normal
+     incremental detection applies.
+   - **Present.** Use it as the `--since` timestamp.
+2. Run `git log --since="${f2_last_ran_at}" --name-only --pretty=format: -- 0_constitution/{axiom,principle,rule}/`.
+   Filter out paths matching `*/CONSTITUTION.md` (protocol spec, not a
+   principle body) and any path under `0_constitution/_archived/`.
+3. If the filtered set is empty → skip F.2 (no auto-trigger).
+4. Otherwise, derive `days = max(30, ceil((now - oldest_change_ts) / 86400))`
+   so the rescan window covers every decision record written under the
+   pre-edit tree, capped at a per-run ceiling of 90 days to bound cost.
+   Owner can still run the manual path with a larger `--days` after.
+
+The rescan window override **never shrinks** below the user-supplied
+`--days N` when both paths fire in the same invocation: `effective_days
+= max(N, derived_days)`.
+
+Per-record logic — same as `/ztn:process` Step 3.7.5 but emits
+CLARIFICATIONS of type `principle-drift-retro` (distinct from daily
+`principle-drift`) so the user can tell historical rescans apart from
+live checks. Pass `--from-pipeline /ztn:lint` to `/ztn:check-decision`
+for `caller_class: mechanical` accounting (skips per-record auto-commit
+on the telemetry JSONL — lint's own commit at Step 7 picks up the
+batch).
+
+After the per-record loop completes (auto path only), update
+`log_lint.md` frontmatter with `f2_last_ran_at: <run-start-ts>` so the
+next nightly tick sees a fresh marker. Manual `--rescan-drift` runs do
+NOT bump this marker — they are out-of-band and would suppress the
+next legitimate auto-trigger if they did.
+
+**Cost / latency note.** The auto path is silent on weeks where the
+owner did not edit the constitution — no Opus calls beyond F.5's
+existing usage. On weeks with one edit, expected window is 30 days ×
+typical decision density (≤ 5–10 records). Bounded.
+
+**Invariants:**
+
+- Never edit principle bodies. Same L1 write limit as F.5.
+- Best-effort heavy-fixes guard. If the record's originating batch
+  manifest at `_system/state/batches/{batch_id}.json` is reachable
+  AND shows the per-record entry has `fixes_applied >= 3` OR any
+  HALLUCINATED fix → skip (mirrors `/ztn:process` Step 3.7.5
+  exclusion). When the manifest is unreachable (rotated, pre-engine,
+  malformed) → proceed without exclusion. The retroactive nature of
+  F.2 means perfect parity with Step 3.7.5 is not enforceable; the
+  `principle-drift-retro` type itself signals «historical re-check»
+  semantics to the owner.
+- On `/ztn:check-decision` error (empty visible tree, transient
+  failure) → log to `log_lint.md` and continue; never block the lint
+  run.
 
 #### F.3 — Candidate aggregation (weekly — first lint run of UTC week)
 

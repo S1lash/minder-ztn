@@ -496,9 +496,20 @@ subagent context, not summaries).
       project_mentions: [...]
       coverage_manifest: {...}  # per §3.7 — see below
       fixes_applied: [...]      # what self-review caught and fixed
+      tradeoff_framing_records: # per §3.7.5 trade-off-observation path —
+        - "_records/observations/..."  # record paths, NOT note paths
       processing_log: [...]     # key decisions for debug/audit visibility
   errors: [...]                 # empty if all transcripts processed cleanly
   ```
+
+  `tradeoff_framing_records` is a list of `_records/observations/...`
+  paths the subagent flagged for the §3.7.5 trade-off-observation path.
+  The list is empty in the typical case. Subagents apply the strict
+  three-condition check from §3.7.5 («explicit named alternatives» +
+  «values-bearing reason» + «foreground, not parenthetical»). False
+  negatives are recovered by `/ztn:lint --rescan-drift` later; false
+  positives cost one Opus call and produce `no-match`. Bias toward
+  conservative emission.
 - Subagents write produced notes to disk directly (records, knowledge notes,
   hub updates inside their scope). Subagents **do NOT** write to global
   registries (PEOPLE.md, PROJECTS.md, TAGS.md, HUB_INDEX.md,
@@ -1647,19 +1658,66 @@ Subagent attaches per-transcript to its return manifest:
 - `coverage_manifest`: the four scan lists.
 - `fixes_applied`: list of `{type, target_note_id, brief}` for every fix.
 - If no fixes were needed, `fixes_applied: []` — explicit empty, not omitted.
+- `tradeoff_framing_records`: list of `_records/observations/...` paths
+  (created in §3.5) that meet the §3.7.5 trade-off-observation
+  eligibility — explicit named alternatives + values-bearing reason +
+  reasoning-as-foreground. Empty list `[]` is the typical case;
+  populate only when all three conditions hold. Records typed as
+  `decision` are NOT eligible for this list (their constitution check
+  fires through the typed-decision path; double-flagging is harmless
+  but wasteful).
 
 ### 3.7.5 Constitution Alignment Check
 
 > **Reprocess-corpus mode:** skip. No new decisions are extracted; alignment was checked in the original run.
 
-For every record produced in this run with `types:` array containing
-`decision`, run an alignment check against the active constitution tree.
-Records carrying heavy `fixes_applied` from §3.7 self-review (≥ 3 fixes,
-or any HALLUCINATED fix) are deferred — content reliability borderline,
-do not generate drift clarifications until reviewed.
+For every record produced in this run that satisfies the eligibility
+criteria below, run an alignment check against the active constitution
+tree. Records carrying heavy `fixes_applied` from §3.7 self-review
+(≥ 3 fixes, or any HALLUCINATED fix) are deferred — content reliability
+borderline, do not generate drift clarifications until reviewed.
 
 This step runs in the **orchestrator**, after all subagents complete and
 their manifests are aggregated.
+
+**Eligibility — two paths.**
+
+1. **Typed-decision path (load-bearing).** Record's `types:` array
+   contains `decision`. Always eligible.
+
+2. **Trade-off-observation path (per Principle 6 «Action vs Knowledge —
+   Capture Both»).** Record's `types:` array contains `observation` AND
+   the record path appears in the subagent's
+   `tradeoff_framing_records[]` list (§3.0.3 manifest schema). Trade-off
+   framing is detected by the subagent during §3.5 / §3.7 with
+   conservative criteria — emit the path into the list when ALL three
+   hold:
+   - The record contains an explicit choice between two named
+     alternatives (X over Y, A vs B). Implicit preference (one option
+     mentioned, the other absent) does NOT qualify.
+   - A reason for the choice is given that names a value or priority
+     ranking, not just a mechanical constraint («faster» without
+     a values clause is mechanical; «faster matters more here than
+     correctness because rollback is cheap» is values-bearing).
+   - The reasoning is the record's foreground, not a parenthetical —
+     i.e. removing the trade-off would gut the record's point.
+
+   Subagents err toward `false` when uncertain. False negatives surface
+   on the next `/ztn:lint --rescan-drift` (auto path or manual);
+   false positives waste an Opus call but produce a `no-match` verdict
+   with no further side effect. The asymmetric cost favours strict
+   detection.
+
+   **Why not retag as `decision`.** The `types:` taxonomy is owner-
+   facing — `decision` semantically implies a chosen path the owner
+   can later reference («what did we decide about X?»). A trade-off
+   observation in a journal entry («I notice I keep choosing speed
+   over depth») is a values pattern, not a decision artifact. Retagging
+   would corrupt search and registry semantics. The eligibility
+   expansion lives in this step's logic, not in the type taxonomy.
+
+Records that match neither path are skipped — not every record touches
+the constitution.
 
 **How:** invoke `/ztn:check-decision` per decision record. Pass:
 

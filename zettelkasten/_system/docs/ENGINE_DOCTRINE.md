@@ -310,17 +310,38 @@ not an exception to it, because:
    fall back to a clarification on validation failure.
 3. **Constitution + SOUL veto is absolute** — any proposal that the
    resolver judges in conflict with an axiom / principle / rule /
-   SOUL focus zone is queued, not auto-applied. Owner override path
-   is editing `_system/state/insights-config.yaml`, not the sweep.
-4. Auto-apply is **earned through demonstrated owner approval**.
-   smart_resolve consults `_system/state/lens-resolution-history.jsonl`
-   (interactive owner clicks only — auto-mode applies do NOT accrete
-   precedent) as its precedent corpus. Cold-start (no precedent) →
-   default queue, not apply.
-5. Every auto-apply leaves an inline `<!-- from_lens: ... -->` comment
+   SOUL focus zone is queued or vetoed, not auto-applied. Owner
+   override path is editing `_system/state/insights-config.yaml`, not
+   the sweep.
+4. **Queue is the «I would have asked the owner» signal — but
+   `/ztn:check-decision` is the constitution-tree proxy for the
+   absent owner.** Step A.3.5 escalates `queue` candidates whose
+   `queue_reason ∈ {uncertainty, no-precedent}` to
+   `/ztn:check-decision`; aligned / no-match upgrades to auto-apply,
+   `violated ≥ 0.7` upgrades to block-veto, `tradeoff` and low-
+   confidence `violated` stay in queue. Queue reasons that encode
+   prior owner authority — `anti-flip-flop` (owner rejected a similar
+   proposal recently) and `config-never-auto` (owner pinned the class
+   to never-auto in `insights-config.yaml`) — are NOT escalated; the
+   owner's existing signal is the source of truth and the proxy
+   does not override it.
+5. Auto-apply is **earned through demonstrated owner approval OR
+   constitution-tree alignment**. smart_resolve consults
+   `_system/state/lens-resolution-history.jsonl` (interactive owner
+   clicks only — auto-mode applies do NOT accrete precedent) as its
+   precedent corpus. Cold-start (no precedent) → default queue with
+   `queue_reason: "no-precedent"`, then Step A.3.5 escalates as in
+   point 4. Items whose action does not touch a values-bearing
+   surface (per A.3.5 eligibility heuristic) stay in queue without
+   escalation — those need owner judgment for non-constitutional
+   reasons.
+6. Every auto-apply leaves an inline `<!-- from_lens: ... -->` comment
    at the inserted line and a row in the per-session log under
    `_system/state/resolve-sessions/`. Provenance is opaque-by-default
    on the LLM side but visible-by-default on the filesystem side.
+   Escalation-promoted applies additionally carry an
+   `<!-- escalation: check-decision/{verdict}/{pid} -->` comment so the
+   trail back to the proxy decision is explicit.
 
 The spirit of «no silent magic» is preserved: the owner sees every
 auto-apply on next interactive resolve session, can rev the
