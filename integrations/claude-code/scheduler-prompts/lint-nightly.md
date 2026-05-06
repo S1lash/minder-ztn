@@ -8,9 +8,16 @@ Every skill in this contract — `/ztn:sync-data`, `/ztn:lint`,
 once per skill, e.g.:
 
 ```
-Skill(skill="ztn:lint")
-Skill(skill="ztn:save", args="--auto")
+Skill(skill="ztn-lint")
+Skill(skill="ztn-save", args="--auto")
 ```
+
+**Skill-tool name format — DASH, not COLON.** The Skill-tool registry
+keys skills by their installed directory name (`ztn-lint`,
+`ztn-save`, `ztn-sync-data`), not by the slash-command form
+(`/ztn:lint`). Calling `Skill(skill="ztn:lint")` returns «Unknown
+skill» and aborts the tick (failure mode documented
+2026-05-06T19:10Z). Always use `ztn-<name>` with a dash.
 
 That IS what «inline» means in this prompt: the Skill tool runs the
 skill in this same conversation, same context, no sub-agent. NOT
@@ -28,7 +35,7 @@ that you re-implement the skill yourself.
   recurring.
 - Do NOT use the Agent / Task tool as a SUBSTITUTE for invoking the
   skill via the Skill tool. The scheduler tick MUST enter each skill
-  through `Skill(skill="ztn:<name>", ...)`, not by delegating
+  through `Skill(skill="ztn-<name>", ...)`, not by delegating
   «execute /ztn:<name> for me» to a child agent. The deadlock
   prohibition (parent holds `.lint.lock`, child polls for it,
   deadlock) is enforced by entering through Skill, not by banning
@@ -74,16 +81,16 @@ ships, then exit `partial`. Never fall back to manual execution.
      conflicts → run `git rebase --abort || true`, append a one-line
      note to `_system/state/CLARIFICATIONS.md` under
      `### Scheduler failures` with timestamp and cause, invoke
-     `Skill(skill="ztn:save", args='--auto --message "scheduler: cannot reach main, owner action needed"')`,
+     `Skill(skill="ztn-save", args='--auto --message "scheduler: cannot reach main, owner action needed"')`,
      exit.
    - From here on, the working branch is `main`.
 
-1. Pre-flight sync. Invoke `Skill(skill="ztn:sync-data")`.
+1. Pre-flight sync. Invoke `Skill(skill="ztn-sync-data")`.
    - Up-to-date or no `origin` → continue to step 2.
    - Conflict / non-fast-forward (skill returns blocked status) → STOP.
      Append one-line note to `_system/state/CLARIFICATIONS.md` under
      `### Scheduler failures` (timestamp + cause), then invoke
-     `Skill(skill="ztn:save", args='--auto --message "scheduler: sync conflict, owner action needed"')`.
+     `Skill(skill="ztn-save", args='--auto --message "scheduler: sync conflict, owner action needed"')`.
      Exit.
    - Skill-tool error → CLARIFICATION + step 4 + exit `partial`.
 
@@ -100,7 +107,7 @@ ships, then exit `partial`. Never fall back to manual execution.
      jump to step 4 (commit the CLARIFICATION) and exit cleanly. Do
      NOT touch the lock.
 
-3. Lint. Invoke `Skill(skill="ztn:lint")` — exactly ONE Skill-tool
+3. Lint. Invoke `Skill(skill="ztn-lint")` — exactly ONE Skill-tool
    call. The Invocation contract at the top of this file applies in
    full: no SKILL.md reading, no manual scan execution, no
    Agent/Task substitute for the Skill call, no polling, no
@@ -120,7 +127,7 @@ ships, then exit `partial`. Never fall back to manual execution.
      one-line note to CLARIFICATIONS, continue to step 4 unconditionally
      so the note ships.
 
-4. Save. Invoke `Skill(skill="ztn:save", args="--auto")`.
+4. Save. Invoke `Skill(skill="ztn-save", args="--auto")`.
    - This step runs UNCONDITIONALLY after step 3 returns, regardless
      of step 3's outcome. Steps 0 and 2 have their own embedded save
      calls; this is the save call for the normal lint path.
