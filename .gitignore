@@ -35,6 +35,11 @@ zettelkasten/.obsidian/cache
 zettelkasten/.obsidian/.trash/
 zettelkasten/.obsidian.backup-*/
 zettelkasten/.obsidian/graph.json.bak-*
+# graph.json mixes owner config (color groups, filters, forces) with
+# volatile view state (scale, close) that Obsidian rewrites on every
+# pan/zoom. Seed lives in integrations/obsidian/vault-config/graph.json;
+# recover/sync customisations via `integrations/obsidian/seed.sh --reset-graph`.
+zettelkasten/.obsidian/graph.json
 # Community plugin source code is installed locally per device — don't
 # commit. Plugin enablement (`community-plugins.json`) and per-plugin
 # config (`plugins/<id>/data.json`) ARE committed so settings sync.
