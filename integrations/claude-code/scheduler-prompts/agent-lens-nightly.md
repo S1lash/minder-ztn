@@ -6,9 +6,8 @@ is no human in this loop. Your contract:
 Every skill in this contract — `/ztn:sync-data`, `/ztn:agent-lens`,
 `/ztn:save` — is invoked **as a slash command in this same conversation**,
 exactly once per skill. Write the slash command literally as the next
-action, the harness routes it through the appropriate execution
-mechanism (Skill tool, plugin handler, or built-in command — the
-runtime decides):
+action; the harness routes it through whichever execution mechanism
+the runtime supports (Skill tool, plugin handler, built-in command):
 
 ```
 /ztn:sync-data
@@ -24,10 +23,10 @@ its steps with Bash / Read / Edit.
 **Do not invent your own invocation syntax.** Do not write
 `Skill(skill="ztn-agent-lens")` or `Skill(skill="ztn:agent-lens")`
 as a literal call — those are runtime-internal forms that depend on
-the session's skill registry (cloud-runner registries do not always
-include `~/.claude/skills/` entries; this is the documented
-2026-05-06T19:10Z and 2026-05-07T01:06Z failure mode). The slash
-command above is the stable, runner-agnostic surface.
+the session's skill registry, and cloud-runner registries do not
+always include `~/.claude/skills/` entries (documented failure modes
+2026-05-06T19:10Z and 2026-05-07T01:06Z). The slash command above
+is the stable, runner-agnostic surface.
 
 **Hard prohibitions, no exceptions:**
 
@@ -36,7 +35,7 @@ command above is the stable, runner-agnostic surface.
   Write. The skill machinery already exists; your job is to INVOKE
   it via the slash command, not RE-IMPLEMENT it. Manual
   re-implementation exhausts the agent turn budget before the save
-  step (lint-tick failure mode documented 2026-05-06T05:00Z).
+  step (lint-tick failure mode 2026-05-06T05:00Z).
 - Do NOT use the Agent / Task tool as a SUBSTITUTE for the slash
   invocation. The scheduler tick MUST enter each skill through its
   slash form in this same conversation, not by delegating
@@ -53,20 +52,72 @@ command above is the stable, runner-agnostic surface.
   After each skill returns, the next action MUST be the next step's
   skill / Bash call with no intermediate text.
 
-**Bash is permitted only for** the git plumbing in step 0 and
-step 5 (branch capture, fetch, checkout, rebase, branch deletion),
-the lock-mtime check in step 2, and the one-line `printf >>
-CLARIFICATIONS.md` writes that ship scheduler-failure notes ahead
-of save.
+**Bash is permitted only for:**
 
-**If a slash invocation returns an error** (skill not found, abort,
-etc.), append a one-line note to `_system/state/CLARIFICATIONS.md`
-under `### Scheduler failures` (timestamp + skill + error), proceed
-to step 4 save so the note ships, then exit `partial`. If save
-itself errors too, fall back to a direct `git add + commit + push`
-of the CLARIFICATIONS file only — that is the ONLY allowed manual
-fallback, and only for shipping the failure note. Never fall back
-to manual execution of the failed skill itself.
+1. Git plumbing in step 0 and step 5 (branch capture, fetch,
+   checkout, rebase, branch deletion, current-branch verification).
+2. Lock-mtime check in step 2 (`stat`, `find -mmin`, `rm` of stale
+   locks).
+3. The procedures `SHIP_FAILURE_NOTE` and `CLEANUP_SANDBOX_BRANCH`
+   defined below — copy-paste verbatim, including the script
+   invocation. Do NOT improvise alternatives.
+
+Bash for any other purpose is a contract violation.
+
+---
+
+## Procedures (referenced from steps)
+
+### Procedure SHIP_FAILURE_NOTE(cause)
+
+Append a one-line failure note under `### Scheduler failures` in
+CLARIFICATIONS.md (idempotent on the section header), then attempt
+to ship via `/ztn:save`, then fall back to the bash script if save
+itself failed (skill not found / Unknown skill / save errored).
+
+Replace `<CAUSE>` with a one-line cause string (no leading `-`,
+no newlines).
+
+```bash
+CLAR=zettelkasten/_system/state/CLARIFICATIONS.md
+grep -q '^### Scheduler failures$' "$CLAR" \
+  || printf '\n### Scheduler failures\n' >> "$CLAR"
+printf -- '- %s scheduler-agent-lens: %s\n' \
+  "$(date -u +%Y-%m-%dT%H:%MZ)" "<CAUSE>" >> "$CLAR"
+```
+
+Then run:
+
+```
+/ztn:save --auto --message "scheduler: <CAUSE>"
+```
+
+**If `/ztn:save` returns «Unknown skill» / skill-not-found / any
+error**, immediately run the fallback (do not retry the slash):
+
+```bash
+bash scripts/scheduler-fallback-save.sh "scheduler: <CAUSE>"
+```
+
+The fallback script mirrors `/ztn:save --auto`: stages all dirty
+owner-data, refuses engine paths (logs them as additional drift
+note), commits with `[scheduled, save-fallback]` suffix, pushes to
+`origin/main`. Exit 0 = shipped or no-op; exit 2 = git error
+(report to stderr, exit `partial`).
+
+### Procedure CLEANUP_SANDBOX_BRANCH
+
+Always run before exiting the tick (success OR failure path).
+Removes the sandbox branch the runtime started us on, if any.
+
+```bash
+if [ -n "${START_BRANCH:-}" ] && [ "$START_BRANCH" != "main" ]; then
+  git branch -D "$START_BRANCH" 2>/dev/null || true
+  git push origin --delete "$START_BRANCH" 2>/dev/null || true
+fi
+```
+
+Best-effort; failures here are silent.
 
 ---
 
@@ -76,7 +127,8 @@ to manual execution of the failed skill itself.
    sandbox branch (e.g. `claude/<random>`). All work in this tick MUST
    land on `main` directly — no feature branches, no PRs, no leftover
    branches anywhere.
-   - Capture the starting branch: `START_BRANCH=$(git rev-parse --abbrev-ref HEAD)`.
+   - Capture the starting branch:
+     `START_BRANCH=$(git rev-parse --abbrev-ref HEAD)`.
    - `git fetch origin main`.
    - `git checkout main` (create-or-track if needed:
      `git checkout -B main origin/main`).
@@ -85,49 +137,51 @@ to manual execution of the failed skill itself.
      previous failed tick) get replayed on top of `origin/main`
      instead of blocking on non-fast-forward. Force-push remains
      forbidden; rebase only re-orders local-only commits.
-   - If checkout fails on a dirty working tree, or rebase encounters
-     conflicts → run `git rebase --abort || true`, append a one-line
-     note to `_system/state/CLARIFICATIONS.md` under
-     `### Scheduler failures` with timestamp and cause, run
-     `/ztn:save --auto --message "scheduler: cannot reach main, owner action needed"`,
-     exit.
+   - **If checkout fails on a dirty working tree, or rebase encounters
+     conflicts:**
+     - `git rebase --abort 2>/dev/null || true`
+     - Run procedure `SHIP_FAILURE_NOTE("cannot reach main: <short cause>")`.
+     - Run procedure `CLEANUP_SANDBOX_BRANCH`.
+     - Exit `partial`.
    - From here on, the working branch is `main`.
 
 1. Pre-flight sync. Run `/ztn:sync-data`.
-   - Up-to-date or no `origin` → continue to step 2.
-   - Conflict / non-fast-forward (skill returns blocked status) → STOP.
-     Append a one-line note to `_system/state/CLARIFICATIONS.md` under
-     `### Scheduler failures` with timestamp + cause, then run
-     `/ztn:save --auto --message "scheduler: sync conflict, owner action needed"`.
-     Exit.
-   - Skill invocation error → CLARIFICATION + step 4 + exit `partial`.
+   - Up-to-date or no `origin` configured → continue to step 2.
+   - **Conflict / non-fast-forward (skill returns blocked status):**
+     - Run procedure `SHIP_FAILURE_NOTE("sync conflict, owner action needed")`.
+     - Run procedure `CLEANUP_SANDBOX_BRANCH`.
+     - Exit `sync-blocked`.
+   - **Skill invocation error (Unknown skill / abort):**
+     - Run procedure `SHIP_FAILURE_NOTE("ztn:sync-data: <error short form>")`.
+     - Run procedure `CLEANUP_SANDBOX_BRANCH`.
+     - Exit `partial`.
 
 2. Lock sanity (BEFORE invoking the skill). Use Bash to check
    `_sources/.processing.lock`, `_sources/.maintain.lock`,
    `_sources/.lint.lock`, `_sources/.resolve.lock`,
    `_sources/.agent-lens.lock`. Any lock present at tick start is by
-   definition orphaned by a crashed prior run (this contract bans sub-
-   agents; skills delete their lock in finally).
-   - mtime older than 2h → delete the lock(s) and proceed to step 3.
-   - mtime younger than 2h → assume a concurrent owner session may be
-     active. Append CLARIFICATION «recent lock at tick start, possible
-     concurrent owner session» under `### Scheduler failures`, then
-     jump to step 4 (commit the CLARIFICATION) and exit cleanly. Do
-     NOT touch the lock.
+   definition orphaned by a crashed prior run (this contract bans
+   sub-agents; skills delete their lock in finally).
+   - mtime older than 2h → `rm` the lock(s) and proceed to step 3.
+   - mtime younger than 2h → assume a concurrent owner session may
+     be active. Do NOT touch the lock.
+     - Run procedure `SHIP_FAILURE_NOTE("recent lock at tick start, possible concurrent owner session: <which lock>")`.
+     - Run procedure `CLEANUP_SANDBOX_BRANCH`.
+     - Exit `partial`.
 
 3. Agent-lens. Run `/ztn:agent-lens --all-due` — exactly ONE slash
-   invocation. The Invocation contract at the top of this file applies
-   in full: no SKILL.md reading, no manual lens execution, no
-   Agent/Task substitute (the skill itself forbids subagent dispatch
-   by Step 4.5.3 — that's the skill's internal contract, separate
-   from this scheduler one), no polling, no narration between this
-   and step 4.
+   invocation. The Invocation contract at the top of this file
+   applies in full: no SKILL.md reading, no manual lens execution,
+   no Agent/Task substitute (the skill itself forbids subagent
+   dispatch by Step 4.5.3 — that's the skill's internal contract,
+   separate from this scheduler one), no polling, no narration
+   between this and step 4.
    - The skill internally reads `_system/registries/AGENT_LENSES.md`,
      filters lenses with `status: active` and that are due per their
      cadence, runs them sequentially (base-input first, lens-outputs-
      input last), writes outputs to `_system/agent-lens/{id}/{date}.md`
-     — including any optional `## Action Hints` trailers — appends to
-     `_system/state/agent-lens-runs.jsonl`, and logs to
+     — including any optional `## Action Hints` trailers — appends
+     to `_system/state/agent-lens-runs.jsonl`, and logs to
      `_system/state/log_agent_lens.md`. Each observation entity
      carries the privacy trio per SKILL Step 5.9 (`origin: personal`,
      `audience_tags: []`, `is_sensitive: false`). All of that is the
@@ -138,9 +192,10 @@ to manual execution of the failed skill itself.
    - When the skill returns, your IMMEDIATE next action is the
      step-4 invocation. No summary, no analysis, no «let me check
      git status» Bash calls.
-   - If the skill errors / aborts on lock / repo state — append
-     failure note to CLARIFICATIONS, then continue to step 4
-     unconditionally so the note still ships.
+   - **If the skill errors / aborts on lock / repo state:**
+     - Run procedure `SHIP_FAILURE_NOTE("ztn:agent-lens error: <short>")`.
+     - Run procedure `CLEANUP_SANDBOX_BRANCH`.
+     - Exit `partial`.
    - Action Hints written by lenses here will be consumed by
      `/ztn:resolve-clarifications --auto-mode` later in the night
      (lint nightly tick dispatches it inline via Step 7.5). Lens
@@ -149,50 +204,34 @@ to manual execution of the failed skill itself.
      Step A.2/A.3 has not just produced lens body output, which
      prevents confirmation bias on its own emissions.
    - Do NOT pass `--include-draft` or `--lens <id>` (manual single-
-     lens and draft runs are owner-driven). The scheduled tick always
-     runs `--all-due` only.
+     lens and draft runs are owner-driven). The scheduled tick
+     always runs `--all-due` only.
 
 4. Save. Run `/ztn:save --auto`.
-   - This step runs UNCONDITIONALLY after step 3 returns, regardless
-     of step 3's outcome. Steps 0 and 2 have their own embedded save
-     calls; this is the save call for the normal lens path.
+   - This step runs UNCONDITIONALLY after step 3 returns successfully.
+     (Failure paths in steps 0/1/2/3 already shipped via
+     SHIP_FAILURE_NOTE and exited.)
    - Auto-proposed message lands with suffix `[scheduled]`. Engine
      refusal applies. No prompts, no force-push.
+   - **If `/ztn:save` errors with «Unknown skill» / skill-not-found
+     / abort:**
+     - Run `bash scripts/scheduler-fallback-save.sh "scheduler: agent-lens tick auto-save"`.
+     - Exit code 0 from the script → continue to step 5.
+     - Exit code 2 → run procedure `SHIP_FAILURE_NOTE("save fallback failed: git error, owner action needed")`.
+     - Continue to step 5 regardless.
    - If push rejects (someone pushed first) — commit stays local; the
      next scheduled tick pre-syncs and resolves. Do NOT force-push.
-   - **Save-skill unavailable fallback (last resort, only for shipping
-     CLARIFICATIONS).** If `/ztn:save` itself errors with «skill not
-     found» or similar registry failure, AND the only dirty file is
-     `zettelkasten/_system/state/CLARIFICATIONS.md`, you MAY do a
-     direct `git add zettelkasten/_system/state/CLARIFICATIONS.md &&
-     git commit -m "scheduler: <one-line cause> [scheduled]" && git
-     push origin main`. This is the ONLY case where direct git is
-     allowed. Do not extend this fallback to other dirty files.
 
-5. Cleanup. Leave behind ZERO non-`main` branches.
-   - Verify current branch is `main`: `git rev-parse --abbrev-ref HEAD`
-     must print `main`. If not, append CLARIFICATION and exit.
-   - If `START_BRANCH` (captured in step 0) is not `main`:
-     - `git branch -D "$START_BRANCH" || true`
-     - `git push origin --delete "$START_BRANCH" || true`
-     - Both deletions are best-effort; failure is logged to
-       CLARIFICATIONS under `### Scheduler failures` but does not
-       change exit status.
+5. Cleanup.
+   - Verify current branch is still `main`:
+     `[ "$(git rev-parse --abbrev-ref HEAD)" = "main" ]` — if not,
+     run `SHIP_FAILURE_NOTE("post-save not on main, branch=<X>")`
+     and continue to CLEANUP_SANDBOX_BRANCH anyway.
+   - Run procedure `CLEANUP_SANDBOX_BRANCH`.
    - Never leave any `claude/*` or other ad-hoc branch on `origin` or
      locally.
 
-6. Error handling — surface everything, never silent failure. Any
-   unexpected condition NOT covered explicitly in steps 0-5 above MUST
-   be appended to `_system/state/CLARIFICATIONS.md` under
-   `### Scheduler failures` with timestamp + cause BEFORE exit.
-   - Default action on uncovered error: write CLARIFICATION + run
-     `/ztn:save --auto --message "scheduler: agent-lens uncovered error, owner action needed"`
-     to ship the note + exit with `partial` status.
-   - Never silent failure. Never «log and pretend success».
-   - Never pause for owner — the scheduler runs unattended; owner
-     sees CLARIFICATIONS on next morning routine.
-
-7. Forbidden in this run (in addition to the Invocation-contract
+6. Forbidden in this run (in addition to the Invocation-contract
    prohibitions at the top):
    - `/ztn:process` (its own daytime schedule handles this)
    - `/ztn:maintain` (runs inline inside process; not relevant here)
@@ -203,13 +242,13 @@ to manual execution of the failed skill itself.
      scheduler-agent contexts on purpose)
    - `/ztn:update` (engine sync is owner-only)
    - `--include-draft` on agent-lens (drafts are owner-driven dry-runs)
-   - `--lens <id>` on agent-lens (manual single-lens runs are
-     owner-driven; scheduled ticks always run `--all-due`)
+   - `--lens <id>` on agent-lens (manual single-lens runs are owner-
+     driven; scheduled ticks always run `--all-due`)
    - any interactive prompt to the human
    - `--include-engine` on save
    - `git push --force`
    - creating a feature branch, worktree, or PR for the work
    - leaving any non-`main` branch behind on completion
 
-Output: single-line status (success / partial / sync-blocked /
-save-blocked / lens-locked) plus commit SHA if landed. No prose.
+Output: single-line status (success / partial / sync-blocked) plus
+commit SHA if landed. No prose.
