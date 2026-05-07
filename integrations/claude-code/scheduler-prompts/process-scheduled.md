@@ -4,52 +4,58 @@ loop. Your contract:
 ## Invocation contract (read this first, it is load-bearing)
 
 Every skill in this contract — `/ztn:sync-data`, `/ztn:process`,
-`/ztn:save` — is invoked **exclusively via the Skill tool**, exactly
-once per skill, e.g.:
+`/ztn:save` — is invoked **as a slash command in this same conversation**,
+exactly once per skill. Write the slash command literally as the next
+action, the harness routes it through the appropriate execution
+mechanism (Skill tool, plugin handler, or built-in command — the
+runtime decides):
 
 ```
-Skill(skill="ztn-process")
-Skill(skill="ztn-save", args="--auto")
+/ztn:sync-data
+/ztn:process
+/ztn:save --auto
 ```
 
-**Skill-tool name format — DASH, not COLON.** The Skill-tool registry
-keys skills by their installed directory name (`ztn-process`,
-`ztn-save`, `ztn-sync-data`), not by the slash-command form
-(`/ztn:process`). Calling `Skill(skill="ztn:process")` returns
-«Unknown skill» and aborts the tick (failure mode documented
-2026-05-06T19:10Z). Always use `ztn-<name>` with a dash.
+That IS what «inline» means in this prompt: the skill runs in this
+same conversation, same context, no sub-agent. NOT that you
+re-implement the skill yourself by reading SKILL.md and executing
+its steps with Bash / Read / Edit.
 
-That IS what «inline» means in this prompt: the Skill tool runs the
-skill in this same conversation, same context, no sub-agent. NOT
-that you re-implement the skill yourself.
+**Do not invent your own invocation syntax.** Do not write
+`Skill(skill="ztn-process")` or `Skill(skill="ztn:process")` as a
+literal call — those are runtime-internal forms that depend on the
+session's skill registry (cloud-runner registries do not always
+include `~/.claude/skills/` entries; this is the documented
+2026-05-06T19:10Z and 2026-05-07T01:06Z failure mode). The slash
+command above is the stable, runner-agnostic surface.
 
 **Hard prohibitions, no exceptions:**
 
 - Do NOT open `integrations/claude-code/skills/ztn-*/SKILL.md` and
   execute its steps yourself with Bash / Read / Edit / Grep / Glob /
   Write. The skill machinery already exists; your job is to INVOKE
-  it, not RE-IMPLEMENT it. Manual re-implementation exhausts the
-  agent turn budget before the save step (lint-tick failure mode
-  documented 2026-05-06).
-- Do NOT use the Agent / Task tool as a SUBSTITUTE for invoking the
-  skill via the Skill tool. The scheduler tick MUST enter each skill
-  through `Skill(skill="ztn-<name>", ...)`, not by delegating
+  it via the slash command, not RE-IMPLEMENT it. Manual
+  re-implementation exhausts the agent turn budget before the save
+  step (lint-tick failure mode documented 2026-05-06T05:00Z).
+- Do NOT use the Agent / Task tool as a SUBSTITUTE for the slash
+  invocation. The scheduler tick MUST enter each skill through its
+  slash form in this same conversation, not by delegating
   «execute /ztn:<name> for me» to a child agent. The deadlock
   prohibition (parent holds `.processing.lock`, child polls for it,
-  deadlock) is enforced by entering through Skill, not by banning
-  the skill's internal architecture.
+  deadlock) is enforced by entering through the slash command, not
+  by banning the skill's internal architecture.
 - The skill's own internal sub-agent dispatch — specifically
   `/ztn:process` Step 3 per-batch full-pipeline subagents — is
   load-bearing for quality (trust unit = Opus + sufficient context
-  per batch) and IS preserved. That dispatch fires inside the Skill
-  call as the skill's own architecture; this scheduler contract
+  per batch) and IS preserved. That dispatch fires inside the skill
+  invocation as the skill's own architecture; this scheduler contract
   does not govern it.
 - Do NOT poll `_sources/.processing.lock`, `_system/state/`,
   `git status`, or any other file to infer skill progress. Skill
-  calls are synchronous; their return IS the completion signal.
-- Do NOT narrate, summarise, or analyse between Skill calls. After
-  each Skill call returns, the next action MUST be the next step's
-  Skill / Bash call with no intermediate text.
+  invocations are synchronous; their return IS the completion signal.
+- Do NOT narrate, summarise, or analyse between skill invocations.
+  After each skill returns, the next action MUST be the next step's
+  skill / Bash call with no intermediate text.
 
 **Bash is permitted only for** the git plumbing in step 0 and
 step 4 (branch capture, fetch, checkout, rebase, branch deletion),
@@ -57,10 +63,15 @@ the lock-mtime check in step 2a, and the one-line `printf >>
 CLARIFICATIONS.md` writes that ship scheduler-failure notes ahead
 of save.
 
-**If a Skill call returns an error**, append a one-line note to
+**If a slash invocation returns an error** (skill not found,
+abort, etc.), append a one-line note to
 `_system/state/CLARIFICATIONS.md` under `### Scheduler failures`
 (timestamp + skill + error), proceed to step 3 save so the note
-ships, then exit `partial`. Never fall back to manual execution.
+ships, then exit `partial`. If save itself errors too, fall back
+to a direct `git add + commit + push` of the CLARIFICATIONS file
+only — that is the ONLY allowed manual fallback, and only for
+shipping the failure note. Never fall back to manual execution of
+the failed skill itself.
 
 ---
 
@@ -82,21 +93,21 @@ ships, then exit `partial`. Never fall back to manual execution.
    - If checkout fails on a dirty working tree, or rebase encounters
      conflicts → run `git rebase --abort || true`, append a one-line
      note to `_system/state/CLARIFICATIONS.md` under a
-     `### Scheduler failures` section with timestamp and cause, invoke
-     `Skill(skill="ztn-save", args='--auto --message "scheduler: cannot reach main, owner action needed"')`
+     `### Scheduler failures` section with timestamp and cause, run
+     `/ztn:save --auto --message "scheduler: cannot reach main, owner action needed"`
      (this commits + pushes on whatever branch we're on so the note
      still ships), then exit.
    - From here on, the working branch is `main`. All subsequent steps
      operate on `main` only.
 
-1. Pre-flight sync. Invoke `Skill(skill="ztn-sync-data")`.
+1. Pre-flight sync. Run `/ztn:sync-data`.
    - Up-to-date or no `origin` → continue to step 2.
    - Conflict / non-fast-forward (skill returns blocked status) → STOP.
      Append a one-line note to `_system/state/CLARIFICATIONS.md` under
      a `### Scheduler failures` section with timestamp + short cause,
-     then invoke `Skill(skill="ztn-save", args='--auto --message "scheduler: sync conflict, owner action needed"')`
+     then run `/ztn:save --auto --message "scheduler: sync conflict, owner action needed"`
      so the note itself ships to remote. Exit.
-   - Skill-tool error → CLARIFICATION + step 3 + exit `partial`.
+   - Skill invocation error → CLARIFICATION + step 3 + exit `partial`.
 
 2. Process.
    - **2a. Lock sanity (BEFORE invoking the skill).** Use Bash to check
@@ -111,23 +122,22 @@ ships, then exit `partial`. Never fall back to manual execution.
        start, possible concurrent owner session» under
        `### Scheduler failures`, then jump to step 3 (commit the
        CLARIFICATION) and exit cleanly. Do NOT touch the lock.
-   - **2b. Invoke `Skill(skill="ztn-process")`** — exactly ONE
-     Skill-tool call. The Invocation contract at the top of this
-     file applies in full: no SKILL.md reading, no manual step
-     execution, no Agent/Task substitute for the Skill call (the
-     skill's internal Step 3 per-batch subagent dispatch is preserved
-     and fires inside the Skill call), no polling, no narration
-     between this and step 3.
+   - **2b. Run `/ztn:process`** — exactly ONE slash invocation. The
+     Invocation contract at the top of this file applies in full:
+     no SKILL.md reading, no manual step execution, no Agent/Task
+     substitute (the skill's internal Step 3 per-batch subagent
+     dispatch is preserved and fires inside the skill invocation),
+     no polling, no narration between this and step 3.
      - Anything ambiguous, low-confidence, or boundary-case — let
        the skill route it to CLARIFICATIONS as designed. Do NOT
        pause for owner input. CLARIFICATIONS growing is the expected
        steady state.
      - `/ztn:process` finishes maintain inline; do not invoke
        `/ztn:maintain` separately.
-     - When the Skill call returns, your IMMEDIATE next action is
-       the step-3 Skill call. No summary, no analysis, no «let me
+     - When the skill returns, your IMMEDIATE next action is
+       the step-3 invocation. No summary, no analysis, no «let me
        check git status» Bash calls.
-     - If the Skill call errors / aborts on lock / repo state —
+     - If the skill errors / aborts on lock / repo state —
        append failure note to CLARIFICATIONS as in step 1, then
        continue to step 3 unconditionally so the note still gets
        committed.
@@ -147,7 +157,7 @@ ships, then exit `partial`. Never fall back to manual execution.
        does NOT see new owner-facing items from these classes —
        they're producer-resolved.
 
-3. Save. Invoke `Skill(skill="ztn-save", args="--auto")`.
+3. Save. Run `/ztn:save --auto`.
    - This step runs UNCONDITIONALLY after step 2 returns, regardless
      of step 2's outcome. Steps 0 and 2a have their own embedded save
      calls; this is the save call for the normal process path.
@@ -158,6 +168,15 @@ ships, then exit `partial`. Never fall back to manual execution.
      CLARIFICATIONS, not bypass via `--include-engine`.
    - If push rejects (someone pushed first) — commit stays local; the
      next scheduled tick pre-syncs and resolves. Do NOT force-push.
+   - **Save-skill unavailable fallback (last resort, only for shipping
+     CLARIFICATIONS).** If `/ztn:save` itself errors with «skill not
+     found» or similar registry failure, AND the only dirty file is
+     `zettelkasten/_system/state/CLARIFICATIONS.md`, you MAY do a
+     direct `git add zettelkasten/_system/state/CLARIFICATIONS.md &&
+     git commit -m "scheduler: <one-line cause> [scheduled]" && git
+     push origin main`. This is the ONLY case where direct git is
+     allowed. Do not extend this fallback to other dirty files —
+     route those through the next tick.
 
 4. Cleanup. The tick must leave behind ZERO non-`main` branches.
    - Verify current branch is still `main`: `git rev-parse --abbrev-ref HEAD`

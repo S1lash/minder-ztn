@@ -4,48 +4,54 @@ is no human in this loop. Your contract:
 ## Invocation contract (read this first, it is load-bearing)
 
 Every skill in this contract — `/ztn:sync-data`, `/ztn:agent-lens`,
-`/ztn:save` — is invoked **exclusively via the Skill tool**, exactly
-once per skill, e.g.:
+`/ztn:save` — is invoked **as a slash command in this same conversation**,
+exactly once per skill. Write the slash command literally as the next
+action, the harness routes it through the appropriate execution
+mechanism (Skill tool, plugin handler, or built-in command — the
+runtime decides):
 
 ```
-Skill(skill="ztn-agent-lens", args="--all-due")
-Skill(skill="ztn-save", args="--auto")
+/ztn:sync-data
+/ztn:agent-lens --all-due
+/ztn:save --auto
 ```
 
-**Skill-tool name format — DASH, not COLON.** The Skill-tool registry
-keys skills by their installed directory name (`ztn-agent-lens`,
-`ztn-save`, `ztn-sync-data`), not by the slash-command form
-(`/ztn:agent-lens`). Calling `Skill(skill="ztn:agent-lens")` returns
-«Unknown skill» and aborts the tick (failure mode documented
-2026-05-06T19:10Z). Always use `ztn-<name>` with a dash.
+That IS what «inline» means in this prompt: the skill runs in this
+same conversation, same context, no sub-agent. NOT that you
+re-implement the skill yourself by reading SKILL.md and executing
+its steps with Bash / Read / Edit.
 
-That IS what «inline» means in this prompt: the Skill tool runs the
-skill in this same conversation, same context, no sub-agent. NOT
-that you re-implement the skill yourself.
+**Do not invent your own invocation syntax.** Do not write
+`Skill(skill="ztn-agent-lens")` or `Skill(skill="ztn:agent-lens")`
+as a literal call — those are runtime-internal forms that depend on
+the session's skill registry (cloud-runner registries do not always
+include `~/.claude/skills/` entries; this is the documented
+2026-05-06T19:10Z and 2026-05-07T01:06Z failure mode). The slash
+command above is the stable, runner-agnostic surface.
 
 **Hard prohibitions, no exceptions:**
 
 - Do NOT open `integrations/claude-code/skills/ztn-*/SKILL.md` and
   execute its steps yourself with Bash / Read / Edit / Grep / Glob /
   Write. The skill machinery already exists; your job is to INVOKE
-  it, not RE-IMPLEMENT it. Manual re-implementation exhausts the
-  agent turn budget before the save step (lint-tick failure mode
-  documented 2026-05-06).
-- Do NOT use the Agent / Task tool as a SUBSTITUTE for invoking the
-  skill via the Skill tool. The scheduler tick MUST enter each skill
-  through `Skill(skill="ztn-<name>", ...)`, not by delegating
+  it via the slash command, not RE-IMPLEMENT it. Manual
+  re-implementation exhausts the agent turn budget before the save
+  step (lint-tick failure mode documented 2026-05-06T05:00Z).
+- Do NOT use the Agent / Task tool as a SUBSTITUTE for the slash
+  invocation. The scheduler tick MUST enter each skill through its
+  slash form in this same conversation, not by delegating
   «execute /ztn:<name> for me» to a child agent. The deadlock
   prohibition (parent holds `.agent-lens.lock`, child polls for it,
-  deadlock) is enforced by entering through Skill, not by banning
-  the skill's internal architecture. `/ztn:agent-lens` itself
-  forbids subagent dispatch by its own SKILL.md Step 4.5.3 (direct
-  LLM API only); this scheduler contract does not relax that.
+  deadlock) is enforced by entering through the slash command, not
+  by banning the skill's internal architecture. `/ztn:agent-lens`
+  itself forbids subagent dispatch by its own SKILL.md Step 4.5.3
+  (direct LLM API only); this scheduler contract does not relax that.
 - Do NOT poll `_sources/.agent-lens.lock`, `_system/state/`,
   `git status`, or any other file to infer skill progress. Skill
-  calls are synchronous; their return IS the completion signal.
-- Do NOT narrate, summarise, or analyse between Skill calls. After
-  each Skill call returns, the next action MUST be the next step's
-  Skill / Bash call with no intermediate text.
+  invocations are synchronous; their return IS the completion signal.
+- Do NOT narrate, summarise, or analyse between skill invocations.
+  After each skill returns, the next action MUST be the next step's
+  skill / Bash call with no intermediate text.
 
 **Bash is permitted only for** the git plumbing in step 0 and
 step 5 (branch capture, fetch, checkout, rebase, branch deletion),
@@ -53,10 +59,14 @@ the lock-mtime check in step 2, and the one-line `printf >>
 CLARIFICATIONS.md` writes that ship scheduler-failure notes ahead
 of save.
 
-**If a Skill call returns an error**, append a one-line note to
-`_system/state/CLARIFICATIONS.md` under `### Scheduler failures`
-(timestamp + skill + error), proceed to step 4 save so the note
-ships, then exit `partial`. Never fall back to manual execution.
+**If a slash invocation returns an error** (skill not found, abort,
+etc.), append a one-line note to `_system/state/CLARIFICATIONS.md`
+under `### Scheduler failures` (timestamp + skill + error), proceed
+to step 4 save so the note ships, then exit `partial`. If save
+itself errors too, fall back to a direct `git add + commit + push`
+of the CLARIFICATIONS file only — that is the ONLY allowed manual
+fallback, and only for shipping the failure note. Never fall back
+to manual execution of the failed skill itself.
 
 ---
 
@@ -78,19 +88,19 @@ ships, then exit `partial`. Never fall back to manual execution.
    - If checkout fails on a dirty working tree, or rebase encounters
      conflicts → run `git rebase --abort || true`, append a one-line
      note to `_system/state/CLARIFICATIONS.md` under
-     `### Scheduler failures` with timestamp and cause, invoke
-     `Skill(skill="ztn-save", args='--auto --message "scheduler: cannot reach main, owner action needed"')`,
+     `### Scheduler failures` with timestamp and cause, run
+     `/ztn:save --auto --message "scheduler: cannot reach main, owner action needed"`,
      exit.
    - From here on, the working branch is `main`.
 
-1. Pre-flight sync. Invoke `Skill(skill="ztn-sync-data")`.
+1. Pre-flight sync. Run `/ztn:sync-data`.
    - Up-to-date or no `origin` → continue to step 2.
    - Conflict / non-fast-forward (skill returns blocked status) → STOP.
      Append a one-line note to `_system/state/CLARIFICATIONS.md` under
-     `### Scheduler failures` with timestamp + cause, then invoke
-     `Skill(skill="ztn-save", args='--auto --message "scheduler: sync conflict, owner action needed"')`.
+     `### Scheduler failures` with timestamp + cause, then run
+     `/ztn:save --auto --message "scheduler: sync conflict, owner action needed"`.
      Exit.
-   - Skill-tool error → CLARIFICATION + step 4 + exit `partial`.
+   - Skill invocation error → CLARIFICATION + step 4 + exit `partial`.
 
 2. Lock sanity (BEFORE invoking the skill). Use Bash to check
    `_sources/.processing.lock`, `_sources/.maintain.lock`,
@@ -105,13 +115,13 @@ ships, then exit `partial`. Never fall back to manual execution.
      jump to step 4 (commit the CLARIFICATION) and exit cleanly. Do
      NOT touch the lock.
 
-3. Agent-lens. Invoke `Skill(skill="ztn-agent-lens", args="--all-due")`
-   — exactly ONE Skill-tool call. The Invocation contract at the top
-   of this file applies in full: no SKILL.md reading, no manual lens
-   execution, no Agent/Task substitute for the Skill call (the skill
-   itself forbids subagent dispatch by Step 4.5.3 — that's the
-   skill's internal contract, separate from this scheduler one), no
-   polling, no narration between this and step 4.
+3. Agent-lens. Run `/ztn:agent-lens --all-due` — exactly ONE slash
+   invocation. The Invocation contract at the top of this file applies
+   in full: no SKILL.md reading, no manual lens execution, no
+   Agent/Task substitute (the skill itself forbids subagent dispatch
+   by Step 4.5.3 — that's the skill's internal contract, separate
+   from this scheduler one), no polling, no narration between this
+   and step 4.
    - The skill internally reads `_system/registries/AGENT_LENSES.md`,
      filters lenses with `status: active` and that are due per their
      cadence, runs them sequentially (base-input first, lens-outputs-
@@ -125,10 +135,10 @@ ships, then exit `partial`. Never fall back to manual execution.
    - Validator rejections, registry malformations, individual lens
      errors — all surface to `log_agent_lens.md` and CLARIFICATIONS
      as the skill designs. Do NOT pause for owner.
-   - When the Skill call returns, your IMMEDIATE next action is the
-     step-4 Skill call. No summary, no analysis, no «let me check
+   - When the skill returns, your IMMEDIATE next action is the
+     step-4 invocation. No summary, no analysis, no «let me check
      git status» Bash calls.
-   - If the Skill call errors / aborts on lock / repo state — append
+   - If the skill errors / aborts on lock / repo state — append
      failure note to CLARIFICATIONS, then continue to step 4
      unconditionally so the note still ships.
    - Action Hints written by lenses here will be consumed by
@@ -142,7 +152,7 @@ ships, then exit `partial`. Never fall back to manual execution.
      lens and draft runs are owner-driven). The scheduled tick always
      runs `--all-due` only.
 
-4. Save. Invoke `Skill(skill="ztn-save", args="--auto")`.
+4. Save. Run `/ztn:save --auto`.
    - This step runs UNCONDITIONALLY after step 3 returns, regardless
      of step 3's outcome. Steps 0 and 2 have their own embedded save
      calls; this is the save call for the normal lens path.
@@ -150,6 +160,14 @@ ships, then exit `partial`. Never fall back to manual execution.
      refusal applies. No prompts, no force-push.
    - If push rejects (someone pushed first) — commit stays local; the
      next scheduled tick pre-syncs and resolves. Do NOT force-push.
+   - **Save-skill unavailable fallback (last resort, only for shipping
+     CLARIFICATIONS).** If `/ztn:save` itself errors with «skill not
+     found» or similar registry failure, AND the only dirty file is
+     `zettelkasten/_system/state/CLARIFICATIONS.md`, you MAY do a
+     direct `git add zettelkasten/_system/state/CLARIFICATIONS.md &&
+     git commit -m "scheduler: <one-line cause> [scheduled]" && git
+     push origin main`. This is the ONLY case where direct git is
+     allowed. Do not extend this fallback to other dirty files.
 
 5. Cleanup. Leave behind ZERO non-`main` branches.
    - Verify current branch is `main`: `git rev-parse --abbrev-ref HEAD`
@@ -167,8 +185,8 @@ ships, then exit `partial`. Never fall back to manual execution.
    unexpected condition NOT covered explicitly in steps 0-5 above MUST
    be appended to `_system/state/CLARIFICATIONS.md` under
    `### Scheduler failures` with timestamp + cause BEFORE exit.
-   - Default action on uncovered error: write CLARIFICATION + invoke
-     `Skill(skill="ztn-save", args='--auto --message "scheduler: agent-lens uncovered error, owner action needed"')`
+   - Default action on uncovered error: write CLARIFICATION + run
+     `/ztn:save --auto --message "scheduler: agent-lens uncovered error, owner action needed"`
      to ship the note + exit with `partial` status.
    - Never silent failure. Never «log and pretend success».
    - Never pause for owner — the scheduler runs unattended; owner

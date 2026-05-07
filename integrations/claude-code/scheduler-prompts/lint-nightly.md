@@ -4,61 +4,70 @@ human in this loop. Your contract:
 ## Invocation contract (read this first, it is load-bearing)
 
 Every skill in this contract — `/ztn:sync-data`, `/ztn:lint`,
-`/ztn:save` — is invoked **exclusively via the Skill tool**, exactly
-once per skill, e.g.:
+`/ztn:save` — is invoked **as a slash command in this same conversation**,
+exactly once per skill. Write the slash command literally as the next
+action, the harness routes it through the appropriate execution
+mechanism (Skill tool, plugin handler, or built-in command — the
+runtime decides):
 
 ```
-Skill(skill="ztn-lint")
-Skill(skill="ztn-save", args="--auto")
+/ztn:sync-data
+/ztn:lint
+/ztn:save --auto
 ```
 
-**Skill-tool name format — DASH, not COLON.** The Skill-tool registry
-keys skills by their installed directory name (`ztn-lint`,
-`ztn-save`, `ztn-sync-data`), not by the slash-command form
-(`/ztn:lint`). Calling `Skill(skill="ztn:lint")` returns «Unknown
-skill» and aborts the tick (failure mode documented
-2026-05-06T19:10Z). Always use `ztn-<name>` with a dash.
+That IS what «inline» means in this prompt: the skill runs in this
+same conversation, same context, no sub-agent. NOT that you
+re-implement the skill yourself by reading SKILL.md and executing
+its steps with Bash / Read / Edit.
 
-That IS what «inline» means in this prompt: the Skill tool runs the
-skill in this same conversation, same context, no sub-agent. NOT
-that you re-implement the skill yourself.
+**Do not invent your own invocation syntax.** Do not write
+`Skill(skill="ztn-lint")` or `Skill(skill="ztn:lint")` as a literal
+call — those are runtime-internal forms that depend on the session's
+skill registry (cloud-runner registries do not always include
+`~/.claude/skills/` entries; this is the documented 2026-05-06T19:10Z
+and 2026-05-07T01:06Z failure mode). The slash command above is the
+stable, runner-agnostic surface.
 
 **Hard prohibitions, no exceptions:**
 
 - Do NOT open `integrations/claude-code/skills/ztn-*/SKILL.md` and
   execute its steps yourself with Bash / Read / Edit / Grep / Glob /
   Write. The skill machinery already exists; your job is to INVOKE
-  it, not RE-IMPLEMENT it. Manual re-implementation is the
-  documented 2026-05-06 lint-tick failure mode (70+ tool calls,
-  agent budget exhausted before step 4 save, zero commits, zero
-  pushes). This rewrite exists to prevent that failure from
-  recurring.
-- Do NOT use the Agent / Task tool as a SUBSTITUTE for invoking the
-  skill via the Skill tool. The scheduler tick MUST enter each skill
-  through `Skill(skill="ztn-<name>", ...)`, not by delegating
+  it via the slash command, not RE-IMPLEMENT it. Manual
+  re-implementation is the documented 2026-05-06T05:00Z lint-tick
+  failure mode (70+ tool calls, agent budget exhausted before step 4
+  save, zero commits, zero pushes).
+- Do NOT use the Agent / Task tool as a SUBSTITUTE for the slash
+  invocation. The scheduler tick MUST enter each skill through its
+  slash form in this same conversation, not by delegating
   «execute /ztn:<name> for me» to a child agent. The deadlock
   prohibition (parent holds `.lint.lock`, child polls for it,
-  deadlock) is enforced by entering through Skill, not by banning
-  the skill's internal architecture. `/ztn:lint` itself does not
-  dispatch internal subagents; its Step 7.5 invokes
-  `/ztn:resolve-clarifications --auto-mode` via the same Skill tool
-  pattern, not via Agent / Task.
+  deadlock) is enforced by entering through the slash command, not
+  by banning the skill's internal architecture. `/ztn:lint` itself
+  does not dispatch internal subagents; its Step 7.5 invokes
+  `/ztn:resolve-clarifications --auto-mode` via the same slash-
+  invocation pattern, not via Agent / Task.
 - Do NOT poll `_sources/.lint.lock`, `_system/state/`, `git status`,
-  or any other file to infer skill progress. Skill calls are
+  or any other file to infer skill progress. Skill invocations are
   synchronous; their return IS the completion signal.
-- Do NOT narrate, summarise, or analyse between Skill calls. After
-  each Skill call returns, the next action MUST be the next step's
-  Skill / Bash call with no intermediate text.
+- Do NOT narrate, summarise, or analyse between skill invocations.
+  After each skill returns, the next action MUST be the next step's
+  skill / Bash call with no intermediate text.
 
 **Bash is permitted only for** the git plumbing in step 0 and
 step 5 (branch capture, fetch, checkout, rebase, branch deletion),
 and for the one-line `printf >> CLARIFICATIONS.md` writes that
 ship scheduler-failure notes ahead of save.
 
-**If a Skill call returns an error**, append a one-line note to
-`_system/state/CLARIFICATIONS.md` under `### Scheduler failures`
-(timestamp + skill + error), then proceed to step 4 save so the note
-ships, then exit `partial`. Never fall back to manual execution.
+**If a slash invocation returns an error** (skill not found, abort,
+etc.), append a one-line note to `_system/state/CLARIFICATIONS.md`
+under `### Scheduler failures` (timestamp + skill + error), then
+proceed to step 4 save so the note ships, then exit `partial`. If
+save itself errors too, fall back to a direct `git add + commit +
+push` of the CLARIFICATIONS file only — that is the ONLY allowed
+manual fallback, and only for shipping the failure note. Never fall
+back to manual execution of the failed skill itself.
 
 ---
 
@@ -80,19 +89,19 @@ ships, then exit `partial`. Never fall back to manual execution.
    - If checkout fails on a dirty working tree, or rebase encounters
      conflicts → run `git rebase --abort || true`, append a one-line
      note to `_system/state/CLARIFICATIONS.md` under
-     `### Scheduler failures` with timestamp and cause, invoke
-     `Skill(skill="ztn-save", args='--auto --message "scheduler: cannot reach main, owner action needed"')`,
+     `### Scheduler failures` with timestamp and cause, run
+     `/ztn:save --auto --message "scheduler: cannot reach main, owner action needed"`,
      exit.
    - From here on, the working branch is `main`.
 
-1. Pre-flight sync. Invoke `Skill(skill="ztn-sync-data")`.
+1. Pre-flight sync. Run `/ztn:sync-data`.
    - Up-to-date or no `origin` → continue to step 2.
    - Conflict / non-fast-forward (skill returns blocked status) → STOP.
      Append one-line note to `_system/state/CLARIFICATIONS.md` under
-     `### Scheduler failures` (timestamp + cause), then invoke
-     `Skill(skill="ztn-save", args='--auto --message "scheduler: sync conflict, owner action needed"')`.
+     `### Scheduler failures` (timestamp + cause), then run
+     `/ztn:save --auto --message "scheduler: sync conflict, owner action needed"`.
      Exit.
-   - Skill-tool error → CLARIFICATION + step 4 + exit `partial`.
+   - Skill invocation error → CLARIFICATION + step 4 + exit `partial`.
 
 2. Lock sanity (BEFORE invoking the lint skill). Use Bash to check
    `_sources/.processing.lock`, `_sources/.maintain.lock`,
@@ -107,11 +116,10 @@ ships, then exit `partial`. Never fall back to manual execution.
      jump to step 4 (commit the CLARIFICATION) and exit cleanly. Do
      NOT touch the lock.
 
-3. Lint. Invoke `Skill(skill="ztn-lint")` — exactly ONE Skill-tool
-   call. The Invocation contract at the top of this file applies in
-   full: no SKILL.md reading, no manual scan execution, no
-   Agent/Task substitute for the Skill call, no polling, no
-   narration between this and step 4.
+3. Lint. Run `/ztn:lint` — exactly ONE slash invocation. The Invocation
+   contract at the top of this file applies in full: no SKILL.md
+   reading, no manual scan execution, no Agent/Task substitute, no
+   polling, no narration between this and step 4.
    - The skill internally auto-fixes the obvious, surfaces the non-
      obvious to CLARIFICATIONS, runs Step 7.5 dispatch of
      `/ztn:resolve-clarifications --auto-mode` inline, generates Lint
@@ -120,14 +128,14 @@ ships, then exit `partial`. Never fall back to manual execution.
      skill's responsibility, not yours.
    - Queue size is irrelevant to whether this tick continues — owner
      reviews CLARIFICATIONS tomorrow via `/ztn:resolve-clarifications`.
-   - When the Skill call returns, your IMMEDIATE next action is the
-     step-4 Skill call. No summary, no analysis, no «let me check what
+   - When the skill returns, your IMMEDIATE next action is the
+     step-4 invocation. No summary, no analysis, no «let me check what
      happened» Bash calls.
-   - If the Skill call errors / aborts / reports lock-blocked — append
+   - If the skill errors / aborts / reports lock-blocked — append
      one-line note to CLARIFICATIONS, continue to step 4 unconditionally
      so the note ships.
 
-4. Save. Invoke `Skill(skill="ztn-save", args="--auto")`.
+4. Save. Run `/ztn:save --auto`.
    - This step runs UNCONDITIONALLY after step 3 returns, regardless
      of step 3's outcome. Steps 0 and 2 have their own embedded save
      calls; this is the save call for the normal lint path.
@@ -135,6 +143,14 @@ ships, then exit `partial`. Never fall back to manual execution.
      refusal applies. No prompts, no force-push.
    - If push rejects (someone pushed first) — commit stays local; the
      next scheduled tick pre-syncs and resolves. Do NOT force-push.
+   - **Save-skill unavailable fallback (last resort, only for shipping
+     CLARIFICATIONS).** If `/ztn:save` itself errors with «skill not
+     found» or similar registry failure, AND the only dirty file is
+     `zettelkasten/_system/state/CLARIFICATIONS.md`, you MAY do a
+     direct `git add zettelkasten/_system/state/CLARIFICATIONS.md &&
+     git commit -m "scheduler: <one-line cause> [scheduled]" && git
+     push origin main`. This is the ONLY case where direct git is
+     allowed. Do not extend this fallback to other dirty files.
 
 5. Cleanup. Leave behind ZERO non-`main` branches.
    - Verify current branch is `main`: `git rev-parse --abbrev-ref HEAD`
