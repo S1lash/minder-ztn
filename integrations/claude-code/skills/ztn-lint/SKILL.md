@@ -271,7 +271,7 @@ on the corpus regardless of whether it is a "first run" or a
 
 ```bash
 python3 _system/scripts/lint_concept_audit.py \
-    --mode fix --root {{MINDER_ZTN_BASE}}
+    --mode fix --root zettelkasten
 ```
 
 The helper covers all backfill needs:
@@ -475,7 +475,7 @@ autofix, log entry only).
 ```bash
 python3 _system/scripts/lint_concept_audit.py \
     --mode {{scan|fix}} \
-    --root {{MINDER_ZTN_BASE}}
+    --root zettelkasten
 ```
 
 - `--mode scan` (default) — emit JSONL events on stdout without

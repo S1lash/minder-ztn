@@ -131,9 +131,9 @@ accidental, or you want the working tree to match HEAD), run:
 
 ```bash
 git checkout HEAD -- \
-    {{MINDER_ZTN_BASE}}/_system/views/CONSTITUTION_INDEX.md \
-    {{MINDER_ZTN_BASE}}/_system/views/constitution-core.md \
-    {{MINDER_ZTN_BASE}}/_system/SOUL.md
+    zettelkasten/_system/views/CONSTITUTION_INDEX.md \
+    zettelkasten/_system/views/constitution-core.md \
+    zettelkasten/_system/SOUL.md
 ```
 
 Source files under `0_constitution/` are never modified by regen, so

@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
 # minder-ztn — Claude Code integration installer.
 #
-# Renders templated paths in integrations/claude-code/{rules,commands,skills}/
-# (placeholder {{MINDER_ZTN_BASE}}) into integrations/claude-code/built/,
-# then symlinks ~/.claude/{rules,commands,skills}/ entries to the rendered
-# files. Existing entries that would be overwritten are moved to a
-# timestamped backup directory under ~/.claude/.minder-ztn-backup-*.
+# Sets up user-level Claude Code discoverability for ZTN rules / commands /
+# skills under ~/.claude/. Two layers:
+#
+#   - rules + commands carry the {{MINDER_ZTN_BASE}} placeholder. The
+#     installer renders them into integrations/claude-code/built/ with the
+#     placeholder substituted by the absolute path to <repo>/zettelkasten,
+#     then symlinks ~/.claude/{rules,commands}/ entries to the rendered
+#     files. This path keeps the constitution-capture hook + ambient
+#     /ztn:capture-candidate / /ztn:check-decision reachable from any CWD.
+#   - skills use repo-relative `zettelkasten/...` paths in their source
+#     and need no rendering. The installer symlinks ~/.claude/skills/ztn-*
+#     directly to the source under integrations/claude-code/skills/. The
+#     committed `.claude/skills/` symlinks at the repo root handle the
+#     project-level + cloud-Routines discovery layer — see README.md.
+#
+# Existing entries that would be overwritten are moved to a timestamped
+# backup directory under ~/.claude/.minder-ztn-backup-*.
 #
 # Idempotent: re-running the installer refreshes rendered files and
 # replaces stale symlinks. Safe after `git pull` or after moving the repo.
@@ -24,7 +36,6 @@ SRC_SKILLS="$INTEGR_ROOT/skills"
 BUILT="$INTEGR_ROOT/built"
 BUILT_RULES="$BUILT/rules"
 BUILT_COMMANDS="$BUILT/commands"
-BUILT_SKILLS="$BUILT/skills"
 
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 TARGET_RULES="$CLAUDE_HOME/rules"
@@ -71,10 +82,13 @@ link() {
 log "repo root: $REPO_ROOT"
 log "MINDER_ZTN_BASE: $MINDER_ZTN_BASE"
 
-# --- Render templates into built/ ---
+# --- Render templated rules + commands into built/ ---
+# Skills carry no {{MINDER_ZTN_BASE}} placeholder (sources use repo-relative
+# `zettelkasten/...` paths) — they are NOT rendered into built/ and the
+# user-level symlinks below point directly to the source tree.
 log "rendering templates into $BUILT"
 rm -rf "$BUILT"
-mkdir -p "$BUILT_RULES" "$BUILT_COMMANDS" "$BUILT_SKILLS"
+mkdir -p "$BUILT_RULES" "$BUILT_COMMANDS"
 
 for f in "$SRC_RULES"/*.md; do
   [ -f "$f" ] || continue
@@ -84,22 +98,6 @@ done
 for f in "$SRC_COMMANDS"/*.md; do
   [ -f "$f" ] || continue
   render "$f" "$BUILT_COMMANDS/$(basename "$f")"
-done
-
-for skill_dir in "$SRC_SKILLS"/*/; do
-  [ -d "$skill_dir" ] || continue
-  skill_name="$(basename "$skill_dir")"
-  mkdir -p "$BUILT_SKILLS/$skill_name"
-  while IFS= read -r -d '' f; do
-    rel="${f#$skill_dir}"
-    out="$BUILT_SKILLS/$skill_name/$rel"
-    if file --mime "$f" 2>/dev/null | grep -q "charset=binary"; then
-      mkdir -p "$(dirname "$out")"
-      cp "$f" "$out"
-    else
-      render "$f" "$out"
-    fi
-  done < <(find "$skill_dir" -type f -print0)
 done
 
 # --- Symlinks ~/.claude/ -> rendered files ---
@@ -125,8 +123,12 @@ for f in "$BUILT_COMMANDS"/*.md; do
   link "$f" "$TARGET_COMMANDS/$(basename "$f")"
 done
 
-# Skills (entire dir per skill)
-for skill_dir in "$BUILT_SKILLS"/*/; do
+# Skills (entire dir per skill) — symlink directly to source. No render
+# step (sources are placeholder-free), so user-level symlinks resolve to
+# the same content as project-level `.claude/skills/` symlinks at the
+# repo root. Edits to a SKILL.md source are picked up immediately by
+# both layers; install.sh re-run is not required after skill edits.
+for skill_dir in "$SRC_SKILLS"/*/; do
   [ -d "$skill_dir" ] || continue
   skill_name="$(basename "$skill_dir")"
   link "${skill_dir%/}" "$TARGET_SKILLS/$skill_name"

@@ -236,21 +236,21 @@ every judgement made later in the pipeline.
 
 **Doctrine (load FIRST, before any data):**
 
-- `{{MINDER_ZTN_BASE}}/_system/docs/ENGINE_DOCTRINE.md` — engine
+- `zettelkasten/_system/docs/ENGINE_DOCTRINE.md` — engine
   operating philosophy. **Authority is binding** — every Step in this
   skill operates against this frame. If a Step's behaviour appears to
   conflict with doctrine, raise a `process-compatibility` CLARIFICATION
   rather than diverging.
-- `{{MINDER_ZTN_BASE}}/5_meta/PROCESSING_PRINCIPLES.md` — 8 principles
+- `zettelkasten/5_meta/PROCESSING_PRINCIPLES.md` — 8 principles
   + values-profile calibration. Bootstrap is the FIRST run on a fresh
   instance; read full principles even though SOUL.md may not yet
   override the defaults.
-- `{{MINDER_ZTN_BASE}}/_system/docs/SYSTEM_CONFIG.md` — system contract
+- `zettelkasten/_system/docs/SYSTEM_CONFIG.md` — system contract
   (canonical rules; no version check — file IS the contract per
   CONVENTIONS.md).
-- `{{MINDER_ZTN_BASE}}/_system/docs/CONVENTIONS.md` — documentation
+- `zettelkasten/_system/docs/CONVENTIONS.md` — documentation
   style (binding on every edit this skill makes to engine docs / SKILLs).
-- `{{MINDER_ZTN_BASE}}/0_constitution/CONSTITUTION.md` — constitution
+- `zettelkasten/0_constitution/CONSTITUTION.md` — constitution
   protocol (used by Step 1.5 signal 4 + Step 2.5 starter axioms +
   principle-candidates schema).
 

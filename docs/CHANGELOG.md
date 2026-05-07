@@ -2,6 +2,89 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.21.0 — Skills work in cloud Routines + thin scheduler prompts
+
+### Cloud Routines now discover ZTN skills
+
+Cloud Claude Code Routines (the cron-like scheduler that runs an
+autonomous agent against your repo) clone the repo fresh and look for
+skills only at the canonical `.claude/skills/<name>/SKILL.md` path. ZTN
+skills lived only at `integrations/claude-code/skills/`, so slash
+invocations like `/ztn:process` and `/ztn:lint` were inert in
+Routines — they fell back to a fragile pattern of "open the SKILL.md
+yourself and execute its steps", which broke in different ways every
+night.
+
+This release commits `.claude/skills/ztn-*` symlinks at the repo root
+that point into `integrations/claude-code/skills/<name>/`. Routines
+now load all 15 ZTN skills automatically; slash invocations work
+identically in cloud and local sessions. SKILL.md sources were
+de-templatized in the same change (`{{MINDER_ZTN_BASE}}/...` →
+`zettelkasten/...`) so paths resolve from the repo CWD without a
+render step.
+
+### Scheduler prompts shrank by 65%
+
+The three scheduler prompts (`process-scheduled.md`,
+`lint-nightly.md`, `agent-lens-nightly.md`) were rewritten to ~92
+lines each (down from ~250). They now invoke `/ztn:process` /
+`/ztn:lint` / `/ztn:agent-lens --all-due` directly via slash and
+delegate shared plumbing to five new bash helpers under
+`scripts/scheduler/`:
+
+- `pin-main.sh` — fetch + checkout fresh `origin/main` (with safe
+  rebase if local commits exist), capture the sandbox branch
+  for cleanup, and GC any leftover sandbox branches from prior ticks
+- `lock-check.sh` — abort if any cross-skill pipeline lock is recent
+  (<2h); auto-clean stale (>2h) locks
+- `save.sh` — engine-aware commit + push (renamed from the old
+  `scripts/scheduler-fallback-save.sh`)
+- `cleanup-sandbox.sh` — first-attempt delete of the sandbox branch
+  the Routine cloned onto, with diagnostic surfacing when the
+  platform holds the active session ref
+- `ship-failure-note.sh` — append a one-line cause to
+  CLARIFICATIONS.md and ship via save.sh, so failures surface in
+  the next interactive resolve session
+
+### Scheduler-tagged commit messages
+
+`/ztn:save` now accepts a `--tag <text>` flag that prefixes the commit
+message before the `[scheduled]` suffix. Each scheduler prompt passes
+its tick name (`--tag scheduler/process`, `--tag scheduler/lint`,
+`--tag scheduler/agent-lens`) so every autonomous commit makes the
+producing tick visible at a glance:
+
+```
+scheduler/lint: routine save: 25 file(s) across 6 areas [scheduled]
+scheduler/process: process batch: 8 sources → 9 records + 6 notes [scheduled]
+```
+
+Idempotent: if the message already starts with the tag, no second
+prefix is added. The bash fallback `save.sh` produces the same shape
+when invoked with `"scheduler/<tick>: ..."` style messages.
+
+### Sandbox branch cleanup
+
+When a Routine clones the repo onto its session branch (e.g.
+`claude/admiring-shannon-ETCE3`), the platform holds the branch ref
+for the duration of the run, so end-of-tick `git push --delete` is
+often rejected. Pin-main now runs a GC pass at the start of every
+tick that lists `claude/*` branches on origin (excluding the current
+session's own ref) and deletes any leftover from prior ticks. Net
+effect: the previous tick's sandbox branch goes away when the next
+tick fires, instead of accumulating on origin indefinitely.
+
+### After `/ztn:update`
+
+No manual migration required for friends pulling this release —
+`git pull` brings the new `.claude/skills/` symlinks; re-running
+`./integrations/claude-code/install.sh` (already part of the
+`/ztn:update` follow-up reminder) refreshes user-level symlinks.
+If you have scheduled prompts pasted into Claude Code's `/schedule`,
+re-paste the bodies of the three updated files in
+`integrations/claude-code/scheduler-prompts/` — `/schedule` holds
+prompt text verbatim and does not auto-update on `/ztn:update`.
+
 ## 0.20.0 — Lens output upgraded for Obsidian + in-vault graph reset
 
 ### In-vault Reset Graph button

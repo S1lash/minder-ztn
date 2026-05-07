@@ -286,22 +286,22 @@ This guides context loading in Step 3.3 — load only relevant hubs, not all of 
 
 Read these system files (in parallel where possible):
 
-0. `{{MINDER_ZTN_BASE}}/_system/docs/ENGINE_DOCTRINE.md` — operating philosophy (load FIRST; binding frame for every step). Cross-skill rules from §3 govern: surface-don't-decide, inclusion-bias-on-capture / curation-on-promotion, idempotency, the owner-LLM contract.
-1. `{{MINDER_ZTN_BASE}}/_system/docs/SYSTEM_CONFIG.md` — note formats, routing rules, naming
-2. `{{MINDER_ZTN_BASE}}/5_meta/PROCESSING_PRINCIPLES.md` — 8 principles + values profile
-3. `{{MINDER_ZTN_BASE}}/_system/SOUL.md` — identity + current focus + working style (context only)
-4. `{{MINDER_ZTN_BASE}}/_system/views/CURRENT_CONTEXT.md` — live state snapshot (context only)
-5. `{{MINDER_ZTN_BASE}}/_system/state/OPEN_THREADS.md` — open strategic threads (context only)
-6. `{{MINDER_ZTN_BASE}}/3_resources/people/PEOPLE.md` — people registry. Schema: `ID | Name | Role | Org | Profile | Tier | Mentions | Last`. Preserve all columns when writing
-7. `{{MINDER_ZTN_BASE}}/1_projects/PROJECTS.md` — project registry
-8. `{{MINDER_ZTN_BASE}}/_system/registries/TAGS.md` — tag registry (`tags:` namespace labels)
-9. `{{MINDER_ZTN_BASE}}/_system/registries/CONCEPT_NAMING.md` — canonical concept-name format. **Autonomous-pipeline policy:** the engine resolves all concept-name format issues with deterministic heuristics — never raises CLARIFICATIONs, never blocks owner. `_system/scripts/_common.py::normalize_concept_name()` is the single source of truth: normalisation algorithm + drop-on-impossibility (returns `None` to signal skip when non-ASCII residue or empty-after-strip). For non-English source terms, translate semantically to English; if genuinely untranslatable, drop the entry rather than transliterate (transliteration splits graph identity).
-10. `{{MINDER_ZTN_BASE}}/_system/registries/AUDIENCES.md` — `audience_tags` whitelist (canonical five + tenant Extensions). **Autonomous-pipeline policy:** unknown / non-canonical / non-whitelisted tags are silently dropped (entity stays `[]`, owner-only). Helper: `_system/scripts/_common.py::normalize_audience_tag()`. The fail-closed default (`[]`) is the right outcome on any uncertainty — false-positive sharing leaks; false-negative just keeps content owner-only.
-11. `{{MINDER_ZTN_BASE}}/_system/registries/DOMAINS.md` — `domains:` (plural — notes / hubs / typed objects) and `domain:` (singular — constitution principles) whitelist (canonical thirteen ∪ tenant Extensions). **Autonomous-pipeline policy (cascade):** (1) deterministic normalisation via `_system/scripts/_common.py::normalize_domain()` (case + separator drift autofixes to canonical); (2) slash-syntax (`work/learning`, `personal/psychology`) is split via `expand_domain_entry()` and each part is filtered against the accept set independently — `work/learning` keeps both, `work/process` keeps `work` and drops `process`; (3) residuals that survive (1) and (2) but miss the whitelist enter the concept-matcher subagent (Step 3.4.5) which runs an LLM remap-or-judge pass and emits `domain_resolutions[]` with `keep | remap | drop | clarify`; (4) `clarify` verdicts surface as `domain-resolution` CLARIFICATIONs with the conservative default (drop the value). Canonical set lives in `ALLOWED_DOMAINS`. Domains answer "which life area" — keep them coarse and structural; concrete topics belong in `concepts:`, categorical buckets in `tags:`.
-12. `{{MINDER_ZTN_BASE}}/_system/registries/SOURCES.md` — inbox source whitelist (consumed by Step 2.1)
-13. `{{MINDER_ZTN_BASE}}/_system/views/HUB_INDEX.md` — hub index (if not loaded in Step 0)
-14. `{{MINDER_ZTN_BASE}}/_system/state/PROCESSED.md` — already processed files
-15. `{{MINDER_ZTN_BASE}}/_system/state/CLARIFICATIONS.md` — pending clarifications.
+0. `zettelkasten/_system/docs/ENGINE_DOCTRINE.md` — operating philosophy (load FIRST; binding frame for every step). Cross-skill rules from §3 govern: surface-don't-decide, inclusion-bias-on-capture / curation-on-promotion, idempotency, the owner-LLM contract.
+1. `zettelkasten/_system/docs/SYSTEM_CONFIG.md` — note formats, routing rules, naming
+2. `zettelkasten/5_meta/PROCESSING_PRINCIPLES.md` — 8 principles + values profile
+3. `zettelkasten/_system/SOUL.md` — identity + current focus + working style (context only)
+4. `zettelkasten/_system/views/CURRENT_CONTEXT.md` — live state snapshot (context only)
+5. `zettelkasten/_system/state/OPEN_THREADS.md` — open strategic threads (context only)
+6. `zettelkasten/3_resources/people/PEOPLE.md` — people registry. Schema: `ID | Name | Role | Org | Profile | Tier | Mentions | Last`. Preserve all columns when writing
+7. `zettelkasten/1_projects/PROJECTS.md` — project registry
+8. `zettelkasten/_system/registries/TAGS.md` — tag registry (`tags:` namespace labels)
+9. `zettelkasten/_system/registries/CONCEPT_NAMING.md` — canonical concept-name format. **Autonomous-pipeline policy:** the engine resolves all concept-name format issues with deterministic heuristics — never raises CLARIFICATIONs, never blocks owner. `_system/scripts/_common.py::normalize_concept_name()` is the single source of truth: normalisation algorithm + drop-on-impossibility (returns `None` to signal skip when non-ASCII residue or empty-after-strip). For non-English source terms, translate semantically to English; if genuinely untranslatable, drop the entry rather than transliterate (transliteration splits graph identity).
+10. `zettelkasten/_system/registries/AUDIENCES.md` — `audience_tags` whitelist (canonical five + tenant Extensions). **Autonomous-pipeline policy:** unknown / non-canonical / non-whitelisted tags are silently dropped (entity stays `[]`, owner-only). Helper: `_system/scripts/_common.py::normalize_audience_tag()`. The fail-closed default (`[]`) is the right outcome on any uncertainty — false-positive sharing leaks; false-negative just keeps content owner-only.
+11. `zettelkasten/_system/registries/DOMAINS.md` — `domains:` (plural — notes / hubs / typed objects) and `domain:` (singular — constitution principles) whitelist (canonical thirteen ∪ tenant Extensions). **Autonomous-pipeline policy (cascade):** (1) deterministic normalisation via `_system/scripts/_common.py::normalize_domain()` (case + separator drift autofixes to canonical); (2) slash-syntax (`work/learning`, `personal/psychology`) is split via `expand_domain_entry()` and each part is filtered against the accept set independently — `work/learning` keeps both, `work/process` keeps `work` and drops `process`; (3) residuals that survive (1) and (2) but miss the whitelist enter the concept-matcher subagent (Step 3.4.5) which runs an LLM remap-or-judge pass and emits `domain_resolutions[]` with `keep | remap | drop | clarify`; (4) `clarify` verdicts surface as `domain-resolution` CLARIFICATIONs with the conservative default (drop the value). Canonical set lives in `ALLOWED_DOMAINS`. Domains answer "which life area" — keep them coarse and structural; concrete topics belong in `concepts:`, categorical buckets in `tags:`.
+12. `zettelkasten/_system/registries/SOURCES.md` — inbox source whitelist (consumed by Step 2.1)
+13. `zettelkasten/_system/views/HUB_INDEX.md` — hub index (if not loaded in Step 0)
+14. `zettelkasten/_system/state/PROCESSED.md` — already processed files
+15. `zettelkasten/_system/state/CLARIFICATIONS.md` — pending clarifications.
     Also scan **Resolved Archive** table: previously resolved name variants (e.g.,
     «Нуара» = Лара Непрокина, «Трафт» = Кравец). Use these to auto-resolve
     transcription artifacts in new transcripts without re-creating ambiguities.
@@ -1237,7 +1237,7 @@ Create exactly one record per transcript. Two kinds:
 ##### A1) Work meetings → `_records/meetings/`
 
 Filename: `YYYYMMDD-meeting-{main-participant}-{topic-slug}.md`
-Template: `{{MINDER_ZTN_BASE}}/5_meta/templates/record-template.md`
+Template: `zettelkasten/5_meta/templates/record-template.md`
 
 Frontmatter: `layer: record`, `kind: meeting` (omit `kind` for backward compat —
 absence implies meeting; new records SHOULD include it explicitly).
@@ -1277,7 +1277,7 @@ canonical anchor for any knowledge notes extracted from this transcript — it
 is what their `extracted_from:` and `## Evidence Trail` wikilink points to.
 
 Filename: `YYYYMMDD-observation-{topic-slug}.md`
-Template: `{{MINDER_ZTN_BASE}}/5_meta/templates/observation-record-template.md`
+Template: `zettelkasten/5_meta/templates/observation-record-template.md`
 
 Frontmatter:
 ```yaml
@@ -1338,7 +1338,7 @@ Filename mapping by primary type:
 - technical → `YYYYMMDD-technical-{topic}.md`
 
 Folder: use routing logic from SYSTEM_CONFIG.md (Folder Routing Logic section).
-Template: `{{MINDER_ZTN_BASE}}/5_meta/templates/note-template.md`
+Template: `zettelkasten/5_meta/templates/note-template.md`
 
 Frontmatter MUST include `layer: knowledge`.
 If extracted from a record: add `extracted_from: {record-id}` to frontmatter.
@@ -1539,7 +1539,7 @@ values verbatim. No CLARIFICATIONs at any point.
 #### D) New hub creation → CREATE in `5_meta/mocs/`
 
 When a topic reaches 3+ KNOWLEDGE notes (Q12):
-1. Use template: `{{MINDER_ZTN_BASE}}/5_meta/templates/hub-template.md`
+1. Use template: `zettelkasten/5_meta/templates/hub-template.md`
 2. Fill "Текущее понимание" — synthesize from all related notes
 3. BACKFILL "Хронологическая карта" — rows for ALL existing related notes
 4. Fill "Связанные знания" — decisions, insights, questions
@@ -1885,7 +1885,7 @@ For each person mentioned in the transcript (using the People Resolution Map):
 
 2. **If NEW (from People Resolution Map or discovered during audit):**
    - Create profile in `3_resources/people/{id}.md` using
-     `{{MINDER_ZTN_BASE}}/5_meta/templates/person-template.md`
+     `zettelkasten/5_meta/templates/person-template.md`
    - **Privacy trio (mandatory).** Set in profile frontmatter:
      - `origin` — inherit from the **creating record's `origin`** (the
        record that first surfaced this person in the current batch).

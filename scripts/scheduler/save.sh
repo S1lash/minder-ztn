@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Last-resort save for autonomous scheduler ticks when /ztn:save is unavailable
-# (skill-not-found in cloud-runner registry). Mirrors /ztn:save --auto behavior:
-# stages owner-data, surfaces engine drift to CLARIFICATIONS as a note (does
-# not block, does not commit engine paths). Pushes to origin/main.
+# Canonical save for autonomous scheduler ticks. Mirrors /ztn:save --auto:
+# stages owner-data only, surfaces engine drift to CLARIFICATIONS as a note
+# (never auto-commits engine paths), commits and pushes to origin/main.
+#
+# Used by every integrations/claude-code/scheduler-prompts/*.md tick after
+# the skill body finishes. Also invoked by ship-failure-note.sh so a failed
+# tick still ships the explanatory note to origin atomically.
 #
 # Usage:
-#   scripts/scheduler-fallback-save.sh "<commit message>"
+#   scripts/scheduler/save.sh "<commit message>"
 #
 # Exit codes:
 #   0 — committed + pushed (or no-op: nothing to commit)
@@ -16,7 +19,7 @@
 
 set -euo pipefail
 
-MESSAGE="${1:-scheduler: fallback save}"
+MESSAGE="${1:-scheduler: save}"
 CLAR="zettelkasten/_system/state/CLARIFICATIONS.md"
 TS="$(date -u +%Y-%m-%dT%H:%MZ)"
 
@@ -74,7 +77,7 @@ if [ ${#ENGINE_DIRTY[@]} -gt 0 ]; then
   mkdir -p "$(dirname "$CLAR")"
   touch "$CLAR"
   grep -q '^### Scheduler failures$' "$CLAR" || printf '\n### Scheduler failures\n' >> "$CLAR"
-  printf -- '- %s scheduler-fallback: engine drift skipped from auto-commit: %s\n' \
+  printf -- '- %s scheduler-save: engine drift skipped from auto-commit: %s\n' \
     "$TS" "${ENGINE_DIRTY[*]}" >> "$CLAR"
   # Ensure CLARIFICATIONS itself is staged for this commit
   case " ${OWNER_DIRTY[*]:-} " in
@@ -84,7 +87,7 @@ if [ ${#ENGINE_DIRTY[@]} -gt 0 ]; then
 fi
 
 if [ ${#OWNER_DIRTY[@]} -eq 0 ]; then
-  echo "scheduler-fallback-save: nothing to commit"
+  echo "scheduler-save: nothing to commit"
   exit 0
 fi
 
@@ -99,17 +102,17 @@ while IFS= read -r p; do
   fi
 done < <(git diff --cached --name-only)
 if [ ${#STAGED_ENGINE[@]} -gt 0 ]; then
-  echo "scheduler-fallback-save: aborting — engine path landed in stage despite filter:" >&2
+  echo "scheduler-save: aborting — engine path landed in stage despite filter:" >&2
   printf '  %s\n' "${STAGED_ENGINE[@]}" >&2
   git reset HEAD -- "${STAGED_ENGINE[@]}" >/dev/null 2>&1 || true
   exit 2
 fi
 
 if git diff --cached --quiet; then
-  echo "scheduler-fallback-save: nothing staged after filter"
+  echo "scheduler-save: nothing staged after filter"
   exit 0
 fi
 
-git commit -m "$MESSAGE [scheduled, save-fallback]" || exit 2
+git commit -m "$MESSAGE [scheduled]" || exit 2
 git push origin main || exit 2
-echo "scheduler-fallback-save: committed + pushed"
+echo "scheduler-save: committed + pushed"

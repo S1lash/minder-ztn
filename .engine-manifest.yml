@@ -111,6 +111,14 @@ engine:
   - .claude/CLAUDE.md
   - .claude/settings.json
 
+  # Project-local skill discoverability for Claude Code Routines (cloud
+  # cron). Routines clone the repo fresh and discover skills only at the
+  # canonical `.claude/skills/<name>/SKILL.md` path. Each entry under here
+  # is a relative symlink into `integrations/claude-code/skills/<name>/` —
+  # release_engine.py preserves symlinks; resolved path exists in the
+  # skeleton because the target is also engine-shipped.
+  - .claude/skills/
+
   # Public-facing docs (friend onboarding + upstream sync)
   - CONTRIBUTING.md
   - docs/onboarding.md

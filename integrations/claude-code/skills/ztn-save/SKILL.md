@@ -39,6 +39,11 @@ what to write in the message, did I push, should I rebase first.
   scheduler must never touch engine paths). On push rejection still
   fails loud (no force-push); the next scheduler tick will pre-sync and
   pick up the unsent commit.
+- `--tag <text>` — prepend `<text>: ` to the commit message before the
+  `[scheduled]` suffix is appended. Used by autonomous scheduler ticks
+  to mark which tick produced the commit (e.g. `--tag scheduler/lint`
+  yields `scheduler/lint: <auto-or-message-msg> [scheduled]`). Idempotent:
+  if the message already starts with `<text>:`, no second prefix is added.
 
 ## Preconditions
 
@@ -106,8 +111,11 @@ and let the owner edit (single-line input). Keep messages in lowercase
 imperative, no Claude attribution, no body unless owner asks.
 
 In `--auto` mode: use the proposed message (or `--message`) without
-prompting. Append `[scheduled]` suffix so the owner can grep
-`git log --grep '\[scheduled\]'` and audit autonomous commits.
+prompting. If `--tag <text>` is set, prepend `<text>: ` to that message
+(skip the prepend if the message already starts with `<text>:`). Append
+`[scheduled]` suffix so the owner can grep
+`git log --grep '\[scheduled\]'` and audit autonomous commits. Final
+shape: `[<tag>: ]<auto-or-message-msg> [scheduled]`.
 
 ### Step 3 — Show summary
 

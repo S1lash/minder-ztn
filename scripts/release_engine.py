@@ -25,6 +25,7 @@ Does NOT initialize git in the target — that is the operator's job
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -89,10 +90,28 @@ def parse_source_ids_from_template(template_path: Path) -> list[str]:
     return ids
 
 
+def _copy_symlink(src: Path, dst: Path, dry_run: bool, label: Path) -> None:
+    """Preserve a symlink at the destination (relative target stored verbatim)."""
+    target = os.readlink(src)
+    if dry_run:
+        print(f"  + {label} (symlink → {target})")
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.is_symlink() or dst.exists():
+        dst.unlink()
+    os.symlink(target, dst)
+
+
 def copy_path(src_root: Path, dst_root: Path, rel: str, *, strip_template: bool, dry_run: bool) -> int:
     """Copy a manifest entry. Returns count of files copied."""
     rel_clean = rel.rstrip("/")
     src = src_root / rel_clean
+
+    # Top-level symlink — preserve as symlink (do not deref).
+    if src.is_symlink():
+        sub_rel = Path(rel_clean)
+        _copy_symlink(src, dst_root / sub_rel, dry_run, sub_rel)
+        return 1
 
     if not src.exists():
         print(f"  ! missing in source: {rel_clean}", file=sys.stderr)
@@ -101,10 +120,18 @@ def copy_path(src_root: Path, dst_root: Path, rel: str, *, strip_template: bool,
     count = 0
     if src.is_dir():
         for sub in src.rglob("*"):
-            if sub.is_dir():
-                continue
             sub_rel = sub.relative_to(src_root)
             dst = dst_root / sub_rel
+            # Symlinks (to files OR directories) — preserve as symlinks.
+            # Must be checked BEFORE is_dir(), since is_dir() follows symlinks
+            # and rglob would otherwise either descend into them (duplicating
+            # content under a different path) or skip them silently.
+            if sub.is_symlink():
+                _copy_symlink(sub, dst, dry_run, sub_rel)
+                count += 1
+                continue
+            if sub.is_dir():
+                continue
             if dry_run:
                 print(f"  + {sub_rel}")
             else:

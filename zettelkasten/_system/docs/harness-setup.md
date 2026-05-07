@@ -20,17 +20,38 @@ stable local path:
 
 | Symlink | Repo source |
 |---|---|
-| `~/.claude/rules/ztn.md` | `integrations/claude-code/built/rules/ztn.md` |
+| `~/.claude/rules/ztn.md` | `integrations/claude-code/built/rules/ztn.md` (rendered) |
 | `~/.claude/rules/constitution-capture.md` | `zettelkasten/_system/docs/constitution-capture.md` |
 | `~/.claude/rules/constitution-core.md` | `zettelkasten/_system/views/constitution-core.md` |
-| `~/.claude/skills/ztn-*` (8 dirs) | `integrations/claude-code/built/skills/ztn-*` |
-| `~/.claude/commands/ztn-recap.md`, `ztn-search.md` | `integrations/claude-code/built/commands/*.md` |
+| `~/.claude/rules/ztn-engine-doctrine.md` | `zettelkasten/_system/docs/ENGINE_DOCTRINE.md` |
+| `~/.claude/skills/ztn-*` (15 dirs) | `integrations/claude-code/skills/ztn-*` (direct, no render step) |
+| `~/.claude/commands/ztn-recap.md`, `ztn-search.md` | `integrations/claude-code/built/commands/*.md` (rendered) |
 
-`built/` is gitignored. The installer renders templates from
-`integrations/claude-code/{rules,skills,commands}/` into `built/` by
+`built/` is gitignored. The installer renders **rules and commands**
+from `integrations/claude-code/{rules,commands}/` into `built/` by
 substituting `{{MINDER_ZTN_BASE}}` with the absolute path to
-`<repo>/zettelkasten`. Re-running the installer (after `git pull`, after
-moving the repo) refreshes `built/` in place.
+`<repo>/zettelkasten`. **Skills carry no placeholder** (sources use
+repo-relative `zettelkasten/...` paths) — they are NOT rendered, and
+`~/.claude/skills/ztn-*` symlinks point directly at the source tree.
+Re-running the installer (after `git pull`, after moving the repo)
+refreshes `built/` and rewrites symlinks in place.
+
+### Two parallel discovery paths
+
+Skills are reached through **two independent symlink layers**, both
+pointing at the same source:
+
+- **Project-level** (`.claude/skills/ztn-*` at the repo root, committed
+  to git) — required for cloud Routines, since Routines clone the repo
+  fresh and only look at this canonical path. Active when Claude Code
+  CWD is inside the repo.
+- **User-level** (`~/.claude/skills/ztn-*`, created by `install.sh`) —
+  active from any CWD. Lets ambient skills like `/ztn:capture-candidate`
+  and `/ztn:check-decision` reach sessions opened from work projects.
+
+When CWD is inside the repo, both layers load simultaneously; Claude
+Code dedupes by skill name. When CWD is outside, only the user-level
+layer loads.
 
 ## Install (per machine)
 
@@ -55,15 +76,19 @@ The installer is idempotent and non-interactive. In a fresh container:
 2. `pip install -r minder-ztn/zettelkasten/_system/scripts/requirements.txt`
 3. `./minder-ztn/integrations/claude-code/install.sh`
 
-## Why symlinks via `built/` instead of direct symlinks
+## Why `built/` for rules + commands but not skills
 
-- The repo source uses `{{MINDER_ZTN_BASE}}` placeholders so that paths
-  resolve against wherever the repo is cloned.
-- Another user cloning the repo to a different path needs paths
-  rendered against THEIR local clone — not hardcoded to one machine.
-- `built/` is the rendered output, gitignored, machine-local.
-- Symlinks point to `built/` so global `~/.claude/` consumers still get
-  the path-resolved versions.
+- **Rules and commands** still need machine-portable absolute paths,
+  because they reference `{{MINDER_ZTN_BASE}}` for things the user-
+  level layer must resolve from any CWD. `built/` is the rendered
+  output (gitignored, machine-local); symlinks point to it.
+- **Skills** were de-templatized to use repo-relative `zettelkasten/...`
+  paths because (a) the same source must be discoverable by cloud
+  Routines via committed `.claude/skills/` symlinks at the repo root,
+  and (b) all engine pipeline skills (process / lint / agent-lens /
+  bootstrap / etc.) inherently run inside the repo CWD, so the
+  relative paths always resolve. No render step needed; user-level
+  symlinks land directly on the source.
 
 ## Why not store directly in `~/.claude/rules/`?
 
@@ -74,9 +99,11 @@ The installer is idempotent and non-interactive. In a fresh container:
 Storing in the repo + symlinking + rendering keeps three properties:
 version control, stable local path, and machine-portable paths.
 
-## Add a new rule or skill
+## Add a new rule, command, or skill
 
-1. Drop the new file into the right `integrations/claude-code/{rules,skills,commands}/` subdir.
-2. Use `{{MINDER_ZTN_BASE}}` for any reference to the data root.
-3. Re-run `install.sh` — symlinks are picked up automatically (skills/commands by directory listing).
-4. For new rules: add a row to the table above and the `@` import in `~/.claude/CLAUDE.md`.
+1. Drop the new file into the right `integrations/claude-code/{rules,commands,skills}/` subdir.
+2. **Rules / commands:** use `{{MINDER_ZTN_BASE}}` for any reference to the data root — install.sh substitutes it during render.
+   **Skills:** use repo-relative `zettelkasten/...` paths — no placeholder, no render step.
+3. **For a new skill:** add a committed symlink at `.claude/skills/<name> → ../../integrations/claude-code/skills/<name>` so cloud Routines discover it.
+4. Re-run `install.sh` — symlinks are picked up automatically (skills/commands by directory listing).
+5. For new rules: add a row to the table above and the `@` import in `~/.claude/CLAUDE.md`.

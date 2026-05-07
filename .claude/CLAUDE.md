@@ -87,15 +87,17 @@ integrations/claude-code/skills/
   ztn-update/
 ```
 
-`./integrations/claude-code/install.sh` renders templates with `{{MINDER_ZTN_BASE}}` substituted, writes to `integrations/claude-code/built/` (gitignored), and symlinks `~/.claude/skills/<name>/` into `built/`.
+Skills are discovered through two paths:
+
+1. **Project-level (Routines + interactive in repo CWD)** — `.claude/skills/ztn-*` symlinks at the repo root point into `integrations/claude-code/skills/<name>/`. Auto-discovered by Claude Code (interactive + Routines) when CWD is inside the repo. SKILL.md sources use repo-relative `zettelkasten/...` paths and need no rendering.
+
+2. **User-level (interactive from any CWD)** — `./integrations/claude-code/install.sh` renders rules / commands templates (which still use `{{MINDER_ZTN_BASE}}`) into `integrations/claude-code/built/` (gitignored) and symlinks `~/.claude/{rules,commands,skills}/` so the constitution-capture hook + ambient `/ztn:capture-candidate` / `/ztn:check-decision` are reachable from sessions opened outside this repo. The skills loop in install.sh is a no-op pass for skills (no placeholder to render); kept for user-level symlink coverage.
 
 **Never edit:**
-- `integrations/claude-code/built/**` — generated output
-- `~/.claude/skills/<name>/SKILL.md` — symlink to `built/`
+- `integrations/claude-code/built/**` — generated output of install.sh
+- `~/.claude/skills/<name>/SKILL.md` — symlink chain into the repo
 
-After editing a SKILL source, re-run `./integrations/claude-code/install.sh` (idempotent) to refresh the rendered output.
-
-The same pattern applies to `integrations/claude-code/{rules,commands}/`. The repo path is the source; the symlink target is the rendered artefact.
+After editing a SKILL source, no rebuild is required — both `.claude/skills/` and `~/.claude/skills/` resolve to the same source. After editing a rule or command source, re-run `./integrations/claude-code/install.sh` (idempotent) to refresh `built/`.
 
 ## Authoritative docs to keep current
 

@@ -50,8 +50,8 @@ Do **not** invoke for:
 
 Read in parallel:
 
-1. `{{MINDER_ZTN_BASE}}/_system/registries/SOURCES.md` — the live registry. Check for ID collisions and table structure.
-2. `{{MINDER_ZTN_BASE}}/_system/registries/SOURCES.template.md` — the schema spec. Use it to validate Layout / Default Domain / Status values and to mirror the column order used in the live registry.
+1. `zettelkasten/_system/registries/SOURCES.md` — the live registry. Check for ID collisions and table structure.
+2. `zettelkasten/_system/registries/SOURCES.template.md` — the schema spec. Use it to validate Layout / Default Domain / Status values and to mirror the column order used in the live registry.
 
 If either file is missing, abort with a clear error pointing the owner at `/ztn:bootstrap` (the registries are bootstrap-seeded).
 
