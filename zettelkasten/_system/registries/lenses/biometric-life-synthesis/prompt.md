@@ -7,7 +7,7 @@ output_schema: synthesis-custom
 cadence: weekly
 cadence_anchor: monday
 self_history: longitudinal
-status: active
+status: draft
 ---
 
 # Biometric × Life Synthesis

@@ -7,7 +7,7 @@ output_schema: synthesis-custom
 cadence: daily
 cadence_anchor: daily
 self_history: fresh-eyes
-status: active
+status: draft
 ---
 
 # Biometric Anomaly Narrator
