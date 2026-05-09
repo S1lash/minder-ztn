@@ -403,11 +403,141 @@ def apply_decision_update_section(params: dict, source_lens: str, base: Path | N
 # Dispatch table
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Biometric: threshold_tune_proposal
+# ---------------------------------------------------------------------------
+
+_VALID_SEVERITIES = {"light", "medium", "strong"}
+
+
+def validate_threshold_tune_proposal(params: dict, base: Path | None = None) -> tuple[bool, str]:
+    metric = params.get("metric")
+    severity = params.get("severity")
+    proposed = params.get("proposed_sigma")
+    if not metric or not isinstance(metric, str):
+        return False, "missing or non-string metric"
+    if severity not in _VALID_SEVERITIES:
+        return False, f"severity must be one of {sorted(_VALID_SEVERITIES)}"
+    if not isinstance(proposed, (int, float)):
+        return False, "proposed_sigma must be a number"
+    if proposed <= 0 or proposed > 5:
+        return False, f"proposed_sigma {proposed} outside reasonable range (0, 5]"
+    target = _resolve(base, "_system/scripts/biometric_thresholds.yaml")
+    if not target.exists():
+        return False, "biometric_thresholds.yaml not found at expected path"
+    return True, ""
+
+
+def apply_threshold_tune_proposal(params: dict, source_lens: str, base: Path | None = None) -> dict:
+    ok, reason = validate_threshold_tune_proposal(params, base)
+    if not ok:
+        return {"success": False, "applied": False, "reason": reason,
+                "targets": [], "from_lens": source_lens}
+    metric = params["metric"]
+    severity = params["severity"]
+    proposed = float(params["proposed_sigma"])
+    target = _resolve(base, "_system/scripts/biometric_thresholds.yaml")
+
+    import yaml as _yaml
+    text = target.read_text(encoding="utf-8")
+    data = _yaml.safe_load(text) or {}
+    dt = data.setdefault("deviation_thresholds", {})
+    metric_block = dt.setdefault(metric, {})
+    metric_block[severity] = proposed
+    new_text = _yaml.safe_dump(data, sort_keys=False, allow_unicode=True, default_flow_style=False)
+    target.write_text(new_text, encoding="utf-8")
+    return {
+        "success": True, "applied": True, "reason": "",
+        "targets": [str(target.relative_to(base)) if base else str(target)],
+        "from_lens": source_lens,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Biometric: metric_record_rerender_apply (re-render hash-drift resolution)
+# ---------------------------------------------------------------------------
+
+_RERENDER_CHOICES = {"skip", "append-update", "recompute-baselines-forward"}
+
+
+def validate_metric_record_rerender_apply(params: dict, base: Path | None = None) -> tuple[bool, str]:
+    date = params.get("date")
+    choice = params.get("choice")
+    if not date or not isinstance(date, str):
+        return False, "missing or non-string date"
+    if choice not in _RERENDER_CHOICES:
+        return False, f"choice must be one of {sorted(_RERENDER_CHOICES)}"
+    return True, ""
+
+
+def apply_metric_record_rerender_apply(params: dict, source_lens: str, base: Path | None = None) -> dict:
+    """Owner-approved resolution of `metric-record-rerender` CLARIFICATION.
+
+    Three options:
+      * `skip` — no-op (default); the source-side already moved to processed.
+      * `append-update` — append `## Update YYYY-MM-DD` section to the
+        existing record with diff + re-computed deviations.
+      * `recompute-baselines-forward` — truncate baselines/streaks state
+        from the affected date forward, replay all biometric records
+        from that date onward.
+    """
+    ok, reason = validate_metric_record_rerender_apply(params, base)
+    if not ok:
+        return {"success": False, "applied": False, "reason": reason,
+                "targets": [], "from_lens": source_lens}
+    date = params["date"]
+    choice = params["choice"]
+    base_path = base or repo_root()
+
+    if choice == "skip":
+        return {"success": True, "applied": True, "reason": "no-op (skip)",
+                "targets": [], "from_lens": source_lens}
+
+    # Lazy-import to avoid pulling biometric pipeline into other resolver paths
+    import sys as _sys
+    scripts_dir = base_path / "_system" / "scripts"
+    if str(scripts_dir) not in _sys.path:
+        _sys.path.insert(0, str(scripts_dir))
+    import process_metric_day as _pmd
+
+    try:
+        if choice == "append-update":
+            target = _pmd.append_update_to_record(base_path, date=date)
+            return {
+                "success": True, "applied": True, "reason": "",
+                "targets": [str(target.relative_to(base_path))],
+                "from_lens": source_lens,
+            }
+        if choice == "recompute-baselines-forward":
+            summary = _pmd.recompute_baselines_forward(base_path, from_date=date)
+            return {
+                "success": True, "applied": True,
+                "reason": (
+                    f"truncated {summary['metrics_truncated']} metric histories; "
+                    f"replayed {summary['records_replayed']} records from {date}"
+                ),
+                "targets": ["_system/state/biometric/", "_records/biometric/"],
+                "from_lens": source_lens,
+            }
+    except Exception as exc:  # pragma: no cover — defensive guard
+        return {
+            "success": False, "applied": False,
+            "reason": f"rerender_apply failed: {type(exc).__name__}: {exc}",
+            "targets": [], "from_lens": source_lens,
+        }
+
+    return {"success": False, "applied": False,
+            "reason": f"unknown choice: {choice}",
+            "targets": [], "from_lens": source_lens}
+
+
 VALIDATORS = {
     "wikilink_add": validate_wikilink_add,
     "hub_stub_create": validate_hub_stub_create,
     "open_thread_add": validate_open_thread_add,
     "decision_update_section": validate_decision_update_section,
+    "threshold_tune_proposal": validate_threshold_tune_proposal,
+    "metric_record_rerender_apply": validate_metric_record_rerender_apply,
 }
 
 APPLIERS = {
@@ -415,6 +545,8 @@ APPLIERS = {
     "hub_stub_create": apply_hub_stub_create,
     "open_thread_add": apply_open_thread_add,
     "decision_update_section": apply_decision_update_section,
+    "threshold_tune_proposal": apply_threshold_tune_proposal,
+    "metric_record_rerender_apply": apply_metric_record_rerender_apply,
 }
 
 # Cross-check: every whitelisted type has both a validator and an applier.

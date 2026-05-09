@@ -27,11 +27,31 @@ to-do, не coaching. Только наблюдения, поданные так
 
 ## Что читать
 
-Доступ ко всему: записи (`_records/`), distilled заметки (PARA),
-хабы, конституция, SOUL, TASKS, CALENDAR, OPEN_THREADS, engine
-state, выводы других обзорных пробег. Multi-source frame body
-описывает epistemic weight: claim о владельце обязан резолвиться в
-его primary заметках, не в чужом наблюдении.
+Доступ ко всему: записи (`_records/` — включая `_records/biometric/`),
+distilled заметки (PARA), хабы, конституция, SOUL, TASKS, CALENDAR,
+OPEN_THREADS, engine state, выводы других обзорных пробег. Multi-source
+frame body описывает epistemic weight: claim о владельце обязан
+резолвиться в его primary заметках, не в чужом наблюдении.
+
+**Biometric sources (when `_records/biometric/` is non-empty):**
+- `_system/state/biometric/correlations-{recent}.json` — pre-computed
+  cross-source findings; cite by id (`phase_1.top_strong[i]` /
+  `phase_2.top_findings[j]`).
+- `_system/views/biometric/weekly-{recent}.md` — weekly biometric
+  summary in human-readable form.
+- Outputs from `biometric-anomaly-narrator` (last 7 daily runs),
+  `biometric-cross-domain` (latest weekly thursday),
+  `biometric-life-synthesis` (latest weekly monday — same week as
+  this run, if already produced).
+- `_records/biometric/<date>.md` Key Numbers — point lookup only,
+  per `_system/docs/biometric-lens-protocol.md` numerical access
+  policy.
+
+**Anchoring constraint reminder:** every claim using biometric MUST
+cite a specific biometric record path or correlation finding id
+(`phase_1.top_strong[2]` etc). Lens output alone is hypothesis-grade.
+Per biometric-lens-protocol n=1 caveats — phrase as «Garmin reports X»,
+never «X is true». Association language only; never causation.
 
 Window — выбирается под паттерн, не привязан к неделе. Что-то видно
 в 7 днях, что-то в 4 месяцах, что-то — forecast. Trailing 7 дней

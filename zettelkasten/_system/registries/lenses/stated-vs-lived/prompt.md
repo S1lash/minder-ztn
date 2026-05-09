@@ -48,6 +48,30 @@ Surface all three readings with their distinguishing markers. The owner decides 
 **Excluded from lived-side evidence:**
 - `_sources/processed/crafted/describe-me/**` — bootstrap input INTO the system, written once during onboarding. Mentioning a topic / project name there is a SEED, not lived attention — do not count it as a record-side signal.
 - `_sources/processed/` raw transcripts — covered by their derived `_records/` notes; don't double-count.
+
+## Health goal adherence (when biometric layer is active)
+
+When `_records/biometric/` is non-empty AND SOUL.md `## Goals`
+declarations include health-quantifiable goals (sleep ≥X hours, work
+out N×/week, stress reduction), compute adherence as a parallel
+reading of "stated vs lived":
+
+- **sleep ≥X hours.** Read last 7d / 28d biometric records' Key
+  Numbers (`sleep_h`); count days meeting target. Report rate.
+- **workout N×/week.** Count workout-days in declared window
+  (`acute_load > 0` OR `intensity_vigorous_min > 5`).
+- **stress reduction.** Trend `stress_avg` last 28d vs prior 28d
+  from `_system/state/biometric/baselines.json`.
+
+Read `_system/state/biometric/streaks.json` for active
+deviation-streak concepts that contradict declarations (e.g. owner
+declared «sleep matters» on 2026-04-15; `sleep_debt` streak active
+since 2026-05-04 → action gap).
+
+Bring biometric anchoring into the standard 3-reading output —
+health adherence gap is one parallel reading, not a verdict. Per
+biometric-lens-protocol n=1 caveat: phrase as «Garmin-reported
+adherence is X», never «sleep adherence is X».
 - Other lens outputs in `_system/agent-lens/{other-lens}/` — that is meta-territory, belongs to lens-output-input lenses, not this one.
 
 ## Domain alignment

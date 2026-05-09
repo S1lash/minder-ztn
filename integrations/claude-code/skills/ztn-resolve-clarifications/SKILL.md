@@ -186,6 +186,42 @@ items). Skipped entirely under `--no-constitution`.
 
 ## Step A: Lens Action Hints + Smart-Resolve Sweep
 
+### Biometric rate limiting + new action types
+
+When biometric pipeline is active (`_records/biometric/` non-empty),
+the smart-resolve sweep applies anti-DDoS calibration on biometric-origin
+action hints:
+
+- Read `_system/state/insights-config.yaml::biometric.biometric_max_hints_per_week`
+  (default 3 if absent).
+- For the current ISO week, count biometric-origin hints already
+  surfaced via this sweep (parse session logs under
+  `_system/state/resolve-sessions/` for the current week or use the
+  CLARIFICATIONS queue's biometric-typed items).
+- If exceeded, top-N by effect_size win; the remainder defer to next
+  week (drop with a one-line «rate-limited» log entry, do NOT queue).
+- Effect-size proxy: for `threshold_tune_proposal`, use
+  `|observed - expected| / expected` (calibration drift factor); for
+  `wikilink_add` from biometric lenses, use the cited correlation's r
+  if available, else 0.5.
+
+New CLARIFICATION types and action types added by biometric pipeline:
+
+| Type | Class | Apply mechanism |
+|---|---|---|
+| `metric-record-rerender` | C (proposal) | `metric_record_rerender_apply` action — owner picks `skip` / `append-update` / `recompute-baselines-forward` |
+| `biometric-baseline-cold-start` | informational | One-time on first metric-day run; resolution = dismiss with «expected cold-start» note |
+| `biometric-threshold-drift` | C (proposal) | `threshold_tune_proposal` action — writes proposed σ to `biometric_thresholds.yaml` |
+| `biometric-affect-lexicon-empty` | review | Owner audits lexicon; may add `affect_lexicon.local.yaml` overlay entries |
+
+Action handlers `threshold_tune_proposal` and
+`metric_record_rerender_apply` live in
+`_system/scripts/lens_action_handlers.py` and follow the existing
+two-phase contract (validate → apply with TOCTOU defence). Per
+ENGINE_DOCTRINE §3.6 spirit: no silent magic — every apply leaves an
+inline `<!-- from_lens: ... -->` comment + session log entry; owner
+sees the trail on the next interactive resolve session.
+
 This step is the engine that turns implicit lens proposals into either
 auto-applied additions or queued clarifications with rich reasoning.
 Runs in **both** modes:

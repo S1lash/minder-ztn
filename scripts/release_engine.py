@@ -102,6 +102,23 @@ def _copy_symlink(src: Path, dst: Path, dry_run: bool, label: Path) -> None:
     os.symlink(target, dst)
 
 
+# Build artifacts and IDE / editor noise that locally git-ignores but
+# physically lives under engine paths. Filtered at copy time so the
+# skeleton stays clean.
+_SKIP_DIRS: frozenset[str] = frozenset({
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".idea",
+    "node_modules",
+})
+
+_SKIP_SUFFIXES: tuple[str, ...] = (
+    ".pyc", ".pyo", ".pyd",
+)
+
+
 def copy_path(src_root: Path, dst_root: Path, rel: str, *, strip_template: bool, dry_run: bool) -> int:
     """Copy a manifest entry. Returns count of files copied."""
     rel_clean = rel.rstrip("/")
@@ -121,6 +138,12 @@ def copy_path(src_root: Path, dst_root: Path, rel: str, *, strip_template: bool,
     if src.is_dir():
         for sub in src.rglob("*"):
             sub_rel = sub.relative_to(src_root)
+            # Skip Python bytecode caches and other build artifacts that
+            # are gitignored locally but rglob still finds on disk. They
+            # would pollute the skeleton clone and cause permission /
+            # ownership weirdness on friend's machines.
+            if any(part in _SKIP_DIRS or part.endswith(_SKIP_SUFFIXES) for part in sub_rel.parts):
+                continue
             dst = dst_root / sub_rel
             # Symlinks (to files OR directories) — preserve as symlinks.
             # Must be checked BEFORE is_dir(), since is_dir() follows symlinks

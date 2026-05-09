@@ -996,6 +996,8 @@ ACTION_HINT_TYPES: frozenset[str] = frozenset({
     "hub_stub_create",
     "open_thread_add",
     "decision_update_section",
+    "threshold_tune_proposal",
+    "metric_record_rerender_apply",
 })
 
 ACTION_HINT_CONFIDENCES: frozenset[str] = frozenset({"low", "medium", "high"})
@@ -1007,6 +1009,8 @@ ACTION_HINT_REQUIRED_PARAMS: dict[str, frozenset[str]] = {
     "hub_stub_create": frozenset({"suggested_slug", "cited_notes"}),
     "open_thread_add": frozenset({"thread_title", "cited_records"}),
     "decision_update_section": frozenset({"decision_note_path", "update_reason"}),
+    "threshold_tune_proposal": frozenset({"metric", "severity", "proposed_sigma"}),
+    "metric_record_rerender_apply": frozenset({"date", "choice"}),
 }
 
 

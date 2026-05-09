@@ -427,6 +427,117 @@ This "move-first" approach guarantees:
 
 ---
 
+## Step 2.5: Family Routing — Inline Pre-processing for `metric-day`
+
+After Step 2 produces a chronological file list, partition by the
+SOURCES.md `Family` column before Step 3 dispatch:
+
+- `Family: transcript` (default) → flows into Step 3 batch + subagent
+  + LLM pipeline as before. No change.
+- `Family: metric-day` → processed **inline, synchronously, in the
+  main orchestrator process** by `_system/scripts/process_metric_day.py`.
+  NO subagent dispatch, NO LLM. Each file goes through
+  `process_metric_day.run()` deterministically (~100 ms per file).
+- `Family: recap` → reserved; falls back to `transcript` until the
+  reserved branch ships.
+
+Default for rows lacking the `Family` column → `transcript`. Migration
+`scripts/migrations/002-sources-family-column.sh` populates the column
+on existing registries.
+
+### 2.5.1 Metric-day branch contract
+
+For each file in the metric-day partition, in chronological order
+(date-sorted by filename):
+
+1. Call `process_metric_day.run(source_path, base_dir=…, source_id=<source-id>)`.
+2. Outcomes — one of:
+   - `emitted` — record written under `_records/biometric/<date>.md`,
+     baselines + streaks updated, source moved to
+     `_sources/processed/<source>/<filename>` (raw payload moved alongside
+     if a `raw/` subdir is present in the inbox).
+   - `skipped-failure-stub` — source had `status: collection-failed`
+     OR filename began `collection-failed-` / ended `.resolved.md`. No
+     record emitted; source moved to processed; log line written.
+   - `no-op-same-content` — record already exists with matching
+     `source_hash` frontmatter field. Source moved to processed; no
+     record write.
+   - `rerender-clarification` — record exists with different content
+     hash. Conservative default: skip overwrite. CLARIFICATION
+     `metric-record-rerender` raised with three options (skip /
+     append-update / recompute-baselines-forward). Source moved to
+     processed; no record write until owner approves alternative via
+     `/ztn:resolve-clarifications`.
+3. Concepts that surface on the emitted record's frontmatter:
+   - Active streak concepts (only those active on this date),
+     e.g. `low_hrv_streak`, `sleep_debt`, `rhr_elevation_streak`.
+   - Streak-end recovery concepts on the day a streak breaks,
+     e.g. `recovery_after_low_hrv_streak`.
+   - Categorical-event concepts on transition days,
+     e.g. `train_status_transition_to_productive`,
+     `readiness_changed_to_moderate`.
+4. Privacy trio is hard-set per family default in
+   `process_metric_day.py`: `is_sensitive: true`, `audience_tags: []`,
+   `origin: personal`. Per-record override is NOT a normal path —
+   biometric data is owner-only by design.
+5. Manifest emission — each emitted record contributes an entry to
+   the unified batch manifest under `records.biometric` section
+   (path, source_hash, privacy trio, kind=biometric, domains, concepts).
+
+### 2.5.2 Cold-start CLARIFICATION
+
+On the very first metric-day file processed (when
+`_system/state/biometric/baselines.json` does not exist), the
+orchestrator emits an informational `biometric-baseline-cold-start`
+CLARIFICATION. Resolution: dismiss as resolved with note "expected
+cold-start". One-time, expected, not actionable.
+
+### 2.5.3 Mixed-batch handling
+
+A single `/ztn:process` invocation may contain both `transcript` and
+`metric-day` files. Order:
+
+1. Metric-day phase runs **first** inline (deterministic Python).
+2. Transcript phase runs **second** via existing Step 3 subagent
+   dispatch (LLM pipeline).
+
+Single `batch_id`, single `BATCH_LOG` row, single manifest carrying
+multiple sections. The Step 2.4 "move-first" pass is skipped for
+metric-day files — the inline branch handles its own moves atomically
+with the record write.
+
+### 2.5.4 Why inline, not subagent
+
+Metric-day work is deterministic Python (~100 ms per file). The
+subagent infrastructure exists for parallel LLM work; for
+deterministic Python it adds overhead without benefit. Inline keeps
+state (baselines, streaks) consistent across the batch in a single
+process — no cross-subagent state-sync race window.
+
+### 2.5.5 Lock matrix
+
+Reuses the existing `/ztn:process` lock — metric-day branch acquires
+the same lock as the transcript branch. Mutual exclusion preserved.
+No new lock entries.
+
+### 2.5.6 Helper API (internal)
+
+```
+biometric_extractor.extract(record_md_path) -> dict
+biometric_baselines.update(baselines_path, date, metrics, thresholds) -> state
+biometric_baselines.flag_deviations(state, today_metrics, thresholds) -> [Deviation]
+biometric_streaks.advance(streaks_path, date, deviations) -> (state, events)
+process_metric_day.run(source_path, *, base_dir, source_id, …) -> ProcessResult
+process_metric_day.run_batch(source_paths, *, base_dir, source_id) -> [ProcessResult]
+```
+
+Thresholds layered at runtime: `biometric_thresholds.template.yaml`
+(engine-shipped baseline) → `biometric_thresholds.yaml` (live, one-time
+seed) → `biometric_thresholds.local.yaml` (owner-only override; missing
+file is OK).
+
+---
+
 ## Step 3: Process Files (per-batch full-pipeline subagents)
 
 ### Architecture

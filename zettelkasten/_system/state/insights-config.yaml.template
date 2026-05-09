@@ -38,3 +38,19 @@ coalescing:
   # LLM-judged similarity hint. The resolver does NOT use this as a
   # deterministic threshold — it is signal to the curator prompt.
   similarity_threshold: 0.6
+
+# Biometric pipeline overrides.
+biometric:
+  # Anti-DDoS — max biometric-origin action hints surfaced to the
+  # resolve queue per ISO week. When exceeded, top-by-effect-size
+  # win; rest defer to next week.
+  biometric_max_hints_per_week: 3
+
+  # When true, /ztn:maintain Tier II calibration check runs and may
+  # surface `biometric-threshold-drift` CLARIFICATIONs.
+  biometric_calibration_check_enabled: true
+
+  # Clarification classes the calibration check is allowed to emit.
+  # Only `threshold_tune_proposal` is whitelisted by default.
+  biometric_calibration_proposal_classes:
+    - threshold_tune_proposal

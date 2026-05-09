@@ -727,6 +727,91 @@ Run **once** after the per-batch loop completes.
 
 ---
 
+## Step 6.7: Biometric Weekly Worker — After-Batch with Weekly Gate
+
+Triggered on every `/ztn:maintain` after-batch invocation. **No new
+scheduler-prompt added** — re-uses the existing maintain tick.
+
+### Idempotency gate
+
+Read `_system/state/biometric/last_weekly_run.txt`. If contents equal
+the current ISO week (`YYYY-Www`) → log "biometric weekly: noop" and
+skip the entire step. Otherwise the worker proceeds.
+
+This means the worker runs at most once per ISO week, on the first
+`/ztn:maintain` invocation of that week, regardless of weekday.
+
+### Pre-checks
+
+1. `_records/biometric/` exists and contains ≥ 14 records. Below that,
+   log `pre-checks-failed` and skip — Tier II requires substantial
+   data.
+2. If `_records/biometric/` has ≥ 14 records BUT no
+   `_system/state/biometric/correlations-*.json` exists yet → enter
+   **backfill mode** (worker iterates completed ISO weeks chronologically,
+   produces per-week outputs, then the current sentinel week).
+3. Otherwise → normal current-week mode.
+
+### Steps
+
+1. Run `python3 _system/scripts/biometric_weekly_worker.py --base-dir <base>`.
+   The worker:
+   - Loads thresholds (template → live → .local layered merge).
+   - Reads last 56 days of `_records/biometric/` Key Numbers.
+   - Phase 1: Pearson over metric pairs at lag 0..3, anomaly clusters.
+   - Phase 2: lexicon-based affect tag extraction over `_records/observations/`
+     + `_records/meetings/`, point-biserial correlations vs metrics
+     at lag 0..2, structural `meeting_heavy_day` injection.
+   - Calibration: per-metric × severity fire-rate observation, drift
+     detection vs expected (light ≈ 16%, medium ≈ 7%, strong ≈ 2%);
+     proposes new σ when drift factor outside [0.5, 2.0] for ≥ 3
+     consecutive weeks.
+   - Writes `_system/state/biometric/correlations-{YYYY-Www}.json`
+     per processed week (1 file in normal mode; up to ~8 in backfill).
+   - Writes owner-readable `_system/views/biometric/weekly-{YYYY-Www}.md`
+     per processed week.
+   - Appends per-week observation to `_system/state/biometric/calibration-history.json`.
+   - Surfaces `biometric-threshold-drift` CLARIFICATIONs (rate-limited
+     by `insights-config.yaml::biometric_max_hints_per_week`).
+2. After worker completes successfully, write current ISO week into
+   `_system/state/biometric/last_weekly_run.txt` (single line, no
+   trailing newline).
+
+### Health Snapshot integration into Step 7 (CURRENT_CONTEXT regen)
+
+When CURRENT_CONTEXT.md regenerates (Step 7 below), inject the
+`## Health Snapshot` block produced by
+`python3 _system/scripts/render_health_snapshot.py --base-dir <base>`.
+Place it AFTER the `## Focus` block, BEFORE the Tasks/Meetings/Threads
+blocks — Health Snapshot is contextual to focus declarations.
+
+If `render_health_snapshot.py` returns empty (e.g. no biometric
+records yet), skip injection silently.
+
+### Failure semantics
+
+Per-step try/except. A failed worker step logs the error and does not
+block subsequent maintain steps. `last_weekly_run.txt` is updated only
+when the worker actually emitted output — otherwise next maintain run
+retries. Treat worker failure as a soft warning, not a hard error.
+
+### Lock matrix
+
+Reuses existing `/ztn:maintain` lock — biometric worker runs inside
+the same critical section. No new lock entries. CLARIFICATIONs raised
+follow normal `/ztn:resolve-clarifications` flow.
+
+### Manifest emission
+
+Each emitted correlations-week file + weekly-view file contributes a
+row under `derived_views.biometric` section of the maintain batch
+manifest, carrying privacy trio (`is_sensitive: true`,
+`audience_tags: []`, `origin: personal`). Tier II derived files are
+NOT new content (per Skill Write Territory rules) — they are
+recomputable from `_records/biometric/`.
+
+---
+
 ## Step 7: CURRENT_CONTEXT Full Regen
 
 Overwrite `_system/views/CURRENT_CONTEXT.md` entirely. Regenerate from source-of-truth:

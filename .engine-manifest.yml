@@ -173,6 +173,14 @@ template:
   # to live path on first run when missing. Owner-mutable thereafter.
   - zettelkasten/_system/state/insights-config.yaml.template
 
+  # Biometric pipeline live YAMLs — one-time seed at install; thereafter
+  # owner can layer overrides via `*.local.yaml` (never shipped). The
+  # paired `*.template.yaml` files sync via engine: (always upstream-
+  # to-downstream), carrying spec updates. Live files start byte-
+  # identical to their template siblings; divergence is owner's choice.
+  - zettelkasten/_system/scripts/biometric_thresholds.yaml
+  - zettelkasten/_system/scripts/affect_lexicon.yaml
+
   # Views (auto-generated, but file must exist for skills to write)
   - zettelkasten/_system/views/CURRENT_CONTEXT.template.md
   - zettelkasten/_system/views/HUB_INDEX.template.md

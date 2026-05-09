@@ -1,6 +1,6 @@
 # Agent Lenses Registry
 
-**Last Updated:** 2026-05-05 (Action Hints optional trailer added to `_frame.md` and 5 lens prompts; consumed by `/ztn:resolve-clarifications --auto-mode` dispatched inline by lint's nightly tick at 05:00, ~2 h after agent-lens runs at 03:00 — split keeps lens production isolated from resolve consumption)
+**Last Updated:** 2026-05-09 — biometric pipeline activated. 4 new lenses (`biometric-anomaly-narrator` daily, `biometric-cross-domain` weekly thursday, `training-load-trend` weekly monday with conditional self-skip, `biometric-life-synthesis` weekly monday flagship synthesis) flipped to `status: active`. 4 patches applied to existing prompts (`stated-vs-lived`, `energy-pattern`, `weekly-insights`, `global-navigator`) to read biometric records / Tier II output / new biometric lens runs. Tier I + Tier II already running (61 biometric records, 9 weekly correlations); next nightly /ztn:agent-lens tick will produce the first lens outputs.
 
 Registry of agent-lens definitions. Each row points to a folder under
 `_system/registries/lenses/{id}/` containing the lens prompt and any
@@ -76,6 +76,10 @@ will be visible in `global-navigator` as gaps.
 | knowledge-emergence | Knowledge Emergence | mechanical | records | weekly (sat) | longitudinal | active |
 | global-navigator | Global Navigator | meta | lens-outputs | weekly (mon) | longitudinal | active |
 | weekly-insights | Weekly Insights | meta | multi-source | weekly (mon) | longitudinal | active |
+| biometric-anomaly-narrator | Biometric Anomaly Narrator | mechanical | records | daily | fresh-eyes | active |
+| biometric-cross-domain | Biometric Cross-Domain | psyche | records | weekly (thu) | longitudinal | active |
+| training-load-trend | Training Load Trend | mechanical | records | weekly (mon) | longitudinal | active |
+| biometric-life-synthesis | Biometric × Life Synthesis | meta | multi-source | weekly (mon) | longitudinal | active |
 
 ## Draft Lenses
 
@@ -112,6 +116,22 @@ Runs weekly on Saturday — primary input is the **knowledge layer** (`1_project
 ### global-navigator
 
 Runs weekly on Monday — short status page for the **whole engine** over a trailing 7-day window ending the prior day (Mon-Sun calendar week): agent-lens layer (every active lens auto-discovered from this registry, including new ones), `/ztn:process` activity (batches + BATCH_LOG sums), `/ztn:lint` activity (F-codes + gaps), `/ztn:maintain` runs, candidate buffers (principle + people append counts by origin), CLARIFICATIONS state (new + open + by type), OPEN_THREADS delta. Output sections: stuck/failing → outstanding observations (by age) → lint → process → maintenance → candidates → clarifications → open-threads → productive lenses → silent lenses (only if non-empty) → aggregate counter; verbatim short titles, F-codes, batch-ids, type labels, counts only — no claims about the owner's life, no recommendations, no body-citation of any second-order content (observation bodies, candidate bodies, clarification quotes).
+
+### biometric-anomaly-narrator
+
+Runs daily — narrates yesterday's biometric record when at least one of `## Baseline Deviations` / `## Categorical Events` / `## Active Streaks` / `## Streak Transitions` is non-empty; otherwise outputs «Yesterday clean — no signal» and returns. Single-day frame → most outputs land at `weak` (question form) or `medium` tier. Bridges with same-day journal observations / meetings when the deviation has narrative context. Output schema: `synthesis-custom` per biometric-lens-protocol §«Output structure» (Facts / Patterns / Hypotheses-ranked / Counter-evidence / Suggested experiment / Memory note). Action hints: `wikilink_add` (record ↔ same-date journal), `open_thread_add` only if ≥4-day strong streak with actionable journal context.
+
+### biometric-cross-domain
+
+Runs weekly Thursday — narrates the top 1–2 strongest cross-domain findings from Tier II (`_system/state/biometric/correlations-{recent}.json` Phase 2: biometric × affect lexicon, plus Phase 1 cross-source). Diagnostic gate: n ≥ 10 AND effect_size ≥ 0.5 → diagnostic statement permitted; below → tentative or question form. Counter-evidence + falsifier mandatory. Empty output («No cross-source findings this week above noise») is a valid result. Output schema: `synthesis-custom`. Action hints: `wikilink_add`, `open_thread_add` if pattern strong + actionable.
+
+### training-load-trend
+
+Runs weekly Monday with **conditional execution**: if last 14 days of biometric records show `acute_load == 0` for all days, outputs «No training activity in window — skipping» and returns immediately. Otherwise surfaces train_status transitions (DETRAINING / MAINTAINING / PRODUCTIVE / PEAKING / OVERREACHING), ACWR drift escapes from OPTIMAL, sustained zones >2 weeks. Reads last 28 days of `_records/biometric/` Key Numbers. Output schema: `synthesis-custom`. Action hints: `open_thread_add` only if overreaching OR sustained detraining ≥3 weeks.
+
+### biometric-life-synthesis
+
+Runs weekly Monday — flagship multi-source synthesis. Reads all 4 biometric lens outputs from past 7 days, Tier II correlations + weekly view, INDEX (week-faceted activity), this week's records, OPEN_THREADS, SOUL Focus, recent stated-vs-lived + energy-pattern outputs. Synthesises week-shape (meeting count / conflict markers / late-work markers / workouts), convergent/divergent patterns, ranked hypotheses (with biometric + journal anchoring), counter-evidence, one falsifiable suggested experiment, optional Memory note when strong tier (n≥10, effect≥0.5) reached. Anchoring constraint: every claim resolves to primary owner-data; lens output alone is hypothesis-grade. Output schema: `synthesis-custom`. Action hints: `wikilink_add`, `open_thread_add`, `decision_update_section` on stated-vs-lived gap.
 
 ### weekly-insights
 

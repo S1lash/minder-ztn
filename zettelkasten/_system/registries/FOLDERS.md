@@ -1,6 +1,6 @@
 # Folder Registry
 
-**Last Updated:** 2026-04-20
+**Last Updated:** 2026-05-09
 
 Структура папок системы и правила маршрутизации.
 
@@ -32,8 +32,13 @@ zettelkasten/
 ├── _records/                     # Слой 1: Records (операционная память)
 │   ├── meetings/                 # Логи рабочих встреч (kind: meeting)
 │   │   └── YYYYMMDD-meeting-{person}-{topic}.md
-│   └── observations/             # Соло Plaud-транскрипты: reflection/idea/therapy (kind: observation)
-│       └── YYYYMMDD-observation-{topic}.md
+│   ├── observations/             # Соло Plaud-транскрипты: reflection/idea/therapy (kind: observation)
+│   │   └── YYYYMMDD-observation-{topic}.md
+│   └── biometric/                # Daily wearable snapshots (kind: biometric)
+│       └── YYYY-MM-DD.md         # one file per calendar day; auto-emitted by /ztn:process
+│                                 # metric-day branch from _sources/inbox/garmin/<date>.md.
+│                                 # Privacy: is_sensitive: true, audience_tags: [], origin: personal.
+│                                 # Never hand-edit (see _records/biometric/README.md).
 │
 ├── _system/                      # Системные файлы (Phase 4.75 layout, не для заметок)
 │   ├── SOUL.md                   # identity + focus + working style
@@ -156,6 +161,7 @@ zettelkasten/
 | log | 2_areas/personal/ |
 | record (kind: meeting) | _records/meetings/ |
 | record (kind: observation) | _records/observations/ |
+| record (kind: biometric) | _records/biometric/ |
 | hub | 5_meta/mocs/ |
 
 ### По домену (если тип неясен)

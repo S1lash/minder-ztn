@@ -2,6 +2,82 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.22.0 — Biometric pipeline (metric-day source family)
+
+### What landed
+
+A complete biometric ingestion + analysis pipeline running on top of the
+existing /ztn:process → /ztn:maintain → /ztn:agent-lens stack:
+
+- **Tier I** — Per-day deterministic pipeline. New `metric-day` source
+  family on SOURCES.md. /ztn:process metric-day branch parses
+  `_sources/inbox/garmin/<date>.md` (Garmin daily snapshot) into
+  `_records/biometric/<date>.md` with rolling 28-day baselines (42 for
+  chronic_load), σ-deviation flags, categorical event detection (HRV /
+  training / ACWR / readiness transitions), and streak state machine.
+  No LLM in this branch — pure Python (~100 ms per file).
+
+- **Tier II** — Weekly correlation worker, runs from /ztn:maintain
+  after-batch with weekly idempotency gate (`last_weekly_run.txt`).
+  Phase 1: Pearson over biometric × biometric metric pairs at lags
+  0–3, anomaly cluster detection. Phase 2: lexicon-based affect tag
+  extraction over `_records/observations/` + `_records/meetings/` +
+  point-biserial correlation against biometric metrics. Calibration
+  drift detection vs expected fire-rates surfaces
+  `biometric-threshold-drift` CLARIFICATIONs. Backfill mode on
+  first run iterates completed ISO weeks chronologically.
+
+- **Tier III** — Four new agent-lenses ship under `status: draft`:
+  - `biometric-anomaly-narrator` (daily) — narrates yesterday's
+    biometric record when non-empty.
+  - `biometric-cross-domain` (weekly thursday) — top 1–2 strongest
+    cross-source findings from Tier II with cited journal evidence.
+  - `training-load-trend` (weekly monday, conditional) —
+    self-skips when `acute_load == 0` for 14 days.
+  - `biometric-life-synthesis` (weekly monday, flagship) —
+    multi-source synthesis bridging biometric pattern with life
+    narrative; emits Memory note when strong tier reached.
+
+- **Patches** to four existing lenses (`stated-vs-lived`,
+  `energy-pattern`, `weekly-insights`, `global-navigator`) so they
+  read biometric records / Tier II output / new biometric lens runs.
+
+- **Ambient layer** — `## Health Snapshot` block (≤15 lines,
+  life-connection focused) injected into `CURRENT_CONTEXT.md` after
+  the Focus block, before Active Threads.
+
+### Migration
+
+`scripts/migrations/002-sources-family-column.sh` adds the `Family`
+column to existing SOURCES.md; existing rows populate as `transcript`.
+Idempotent — safe to re-run.
+
+### Activation
+
+The pipeline lies dormant until you wire a biometric source:
+
+```
+/ztn:source-add garmin --family metric-day
+```
+
+Then drop daily Garmin snapshots into `_sources/inbox/garmin/<date>.md`
+(your collector's responsibility). After ≥14 days of records, Tier II
+worker activates. Activate biometric lenses by flipping
+`status: draft` → `active` in `AGENT_LENSES.md`.
+
+### Notes for friends
+
+- Universal: thresholds are σ-based (auto-adapt per-user baseline);
+  affect lexicon ships RU+EN seeds, owner extends via
+  `affect_lexicon.local.yaml`. Non-RU users in the cohort can drop RU
+  entries via the local overlay.
+- Privacy hard-set: `is_sensitive: true`, `audience_tags: []`,
+  `origin: personal` on every biometric record + derived view.
+  Owner-only by construction.
+- Lens prompt patches reset precedent calibration in
+  `lens-resolution-history.jsonl` for the four patched lenses; first
+  interactive resolve session post-update will recalibrate naturally.
+
 ## 0.21.0 — Skills work in cloud Routines + thin scheduler prompts
 
 ### Cloud Routines now discover ZTN skills

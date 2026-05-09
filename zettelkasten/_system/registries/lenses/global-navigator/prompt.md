@@ -31,6 +31,16 @@ Metaphor: status page. A precise "where the engine's attention dropped over the 
 
 The navigator reads `_system/registries/AGENT_LENSES.md` `## Active Lenses` table at every run. Every row with `status: active` is in scope automatically — including lenses added after this prompt was written. No allow-list, no hardcoded ids. The only filter is `status: active` (paused / draft never enter the digest).
 
+**Biometric lens family (when active):** `biometric-anomaly-narrator`,
+`biometric-cross-domain`, `training-load-trend`, `biometric-life-synthesis`
+auto-discover through the same registry mechanism. Treat
+`training-load-trend`'s "no activity, skipped" as a normal state, not
+failure — the lens self-skips when `acute_load == 0` for 14 days. In
+the digest, render skipped runs as `skipped (no training)` with
+verbatim count, never as «overdue» or «stuck». Pointer-digest entries
+for biometric lenses follow the same shape as other lenses: counts
+(last 7d), most-recent run date, ids only — no body citation.
+
 Same auto-discovery applies to F-blocks in lint logs (any F-code surfaced is reported), batch ids in BATCH_LOG (any new batch this week), CLARIFICATION types (any type label appearing in open items), candidate origins (any `origin: ...` value appearing in candidates buffers).
 
 ## Window

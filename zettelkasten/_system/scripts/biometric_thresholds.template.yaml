@@ -1,0 +1,72 @@
+# Biometric thresholds — engine spec + universal defaults.
+#
+# Layered at runtime by Tier I + Tier II workers in this order:
+#   1. this template — engine-shipped baseline (synced via /ztn:update)
+#   2. biometric_thresholds.yaml — live working file (one-time seed
+#      from this template at install; not synced upstream-to-downstream)
+#   3. biometric_thresholds.local.yaml — owner-only override (created
+#      manually by owner when overriding specific values; never
+#      shipped, never synced)
+#
+# Universal seed: σ-based thresholds adapt automatically per-user
+# baseline (no hard-coded numbers). Owners with different distributions
+# (older / athletic / sedentary) work out-of-box.
+
+# Σ-based deviation thresholds. Light = >1.0σ, Medium = >1.5σ,
+# Strong = >2.0σ. Direction = "low" / "high" / "both" — one-sided
+# where the other side is benign.
+
+deviation_thresholds:
+  sleep_h:           { direction: low,  light: 1.0,  medium: 1.5, strong: 2.0 }
+  sleep_score:       { direction: low,  light: null, medium: 1.5, strong: 2.0 }
+  sleep_efficiency:  { direction: low,  light: null, medium: 1.5, strong: 2.0 }
+  awake_h:           { direction: high, light: null, medium: 1.5, strong: 2.0 }
+  hrv_ms:            { direction: low,  light: 1.0,  medium: 1.5, strong: 2.0 }
+  rhr:               { direction: high, light: null, medium: 1.5, strong: 2.0 }
+  bb_end:            { direction: low,  light: null, medium: 1.5, strong: 2.0 }
+  stress_avg:        { direction: high, light: null, medium: 1.5, strong: 2.0 }
+  readiness:         { direction: low,  light: null, medium: 1.5, strong: 2.0 }
+  steps:             { direction: low,  light: null, medium: 1.5, strong: 2.0 }
+  vo2max_running:    { direction: low,  light: null, medium: 1.5, strong: 2.0 }
+
+baseline_windows:
+  default:           28        # days — most metrics
+  chronic_load:      42        # ACWR / training_load_chronic
+  refresh_cadence:   daily     # baselines recompute daily on /ztn:process
+
+# Categorical (event-based) flags. Triggered on transitions, not σ.
+categorical_events:
+  hrv_status_changed_from_balanced:  true
+  train_status_transition:           true
+  acwr_zone_transition:              true
+  readiness_drops_to_or_below:       MODERATE   # MODERATE | LOW
+
+streak_rule:
+  min_consecutive_days:        3
+  min_severity:                medium
+  emit_state_concept:          true
+  emit_recovery_concept_on_end: true
+
+cold_start:
+  full_disable_below_days:     14    # n<14 → categorical only
+  reduced_mode_below_days:     28    # 14≤n<28 → strong-only thresholds
+  reduced_mode_min_severity:   strong
+
+# Calibration drift detection. Tier II worker counts threshold
+# fire-rate vs expected (light ≈ 16%, medium ≈ 7%, strong ≈ 2%).
+calibration:
+  enabled:                     true
+  observation_window_weeks:    3
+  drift_factor_threshold:      2.0   # >2× expected fire-rate triggers proposal
+  silent_drift_factor_threshold: 0.5 # <0.5× also surfaces (under-firing)
+  min_weeks_before_first_check: 4
+
+# Diagnostic statement gating in lens output (controls when lens may
+# state a finding vs ask a question).
+diagnostic_gate:
+  min_supporting_days: 10
+  min_effect_size:     0.5   # Cohen's r — large effect
+
+# Anti-DDoS: max biometric action hints surfaced to resolve queue per week.
+hint_rate_limit:
+  biometric_max_hints_per_week: 3

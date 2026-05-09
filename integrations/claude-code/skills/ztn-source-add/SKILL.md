@@ -40,11 +40,17 @@ Do **not** invoke for:
 |---|---|---|
 | `--id <kebab-case>` | Source ID. Becomes the folder name and the registry key. | prompt |
 | `--description <text>` | One-line human description for the registry row. | prompt |
+| `--family <type>` | One of: `transcript`, `metric-day`, `recap`. Drives /ztn:process branch routing. `transcript` = LLM pipeline (default for voice / written notes). `metric-day` = inline deterministic Python pipeline (one file per calendar day; biometric-style — see `_records/biometric/README.md`). `recap` = reserved, falls back to `transcript`. | `transcript` |
 | `--layout <type>` | One of: `flat-md`, `dir-per-item`, `dir-with-summary`. | prompt |
-| `--default-domain <hint>` | One of: `personal`, `work`, `mixed`, `auto`. | `auto` |
+| `--default-domain <hint>` | Free-form (`personal`, `work`, `mixed`, `auto`, `health`, ...). | `auto` |
 | `--skip-subdirs <csv>` | Comma-separated subdirectory names to exclude from processing. Empty = scan everything. | empty |
 | `--status <state>` | `active` or `reserved`. `reserved` = whitelisted with empty inbox by design. | `active` |
 | `--dry-run` | Print the row that would be appended and the folders that would be created. Make no changes. | off |
+
+**Family canonical use:** `/ztn:source-add garmin --family metric-day`
+is the canonical invocation for a Garmin biometric source. The flag
+must be validated against the family enum at parse time; unknown
+family values are rejected.
 
 ## Step 1: Load Context
 
@@ -64,8 +70,9 @@ For each argument that was not passed via flag, prompt the owner with one focuse
 - **ID** — kebab-case (`^[a-z][a-z0-9-]*[a-z0-9]$`), 3–32 chars. Reject if:
   - already present (case-insensitive) in any of `## Active Sources`, `## Reserved Sources`, `## Deprecated Sources`
   - matches a reserved system name: `inbox`, `processed`, `crafted/describe-me` segment, `.gitkeep`, `.lint.lock`, `.maintain.lock`, `.processing.lock`, `.resolve.lock`
+- **Family** — must be one of `transcript`, `metric-day`, `recap`. Default `transcript` if not provided. Reject any other value.
 - **Layout** — must be one of the three documented types. No free-form input.
-- **Default Domain** — must be one of `personal`, `work`, `mixed`, `auto`. Free-form rejected.
+- **Default Domain** — accept owner-provided string; reject only if empty / contains pipe characters. The whitelist (`personal`, `work`, `mixed`, `auto`, `health`, …) lives on SOURCES.template.md and is informational, not enforced.
 - **Skip Subdirs** — each entry is kebab-case or simple filename; reject `..`, absolute paths, glob characters (`*`, `?`, `[`).
 - **Status** — must be `active` or `reserved`. `deprecated` is intentionally NOT a creation state — deprecating happens by hand on an existing row.
 - **Description** — non-empty, no pipe characters (table delimiter). If a pipe is needed, escape with HTML entity `&#124;` and warn.
@@ -81,6 +88,7 @@ About to register source:
 
   ID:              {id}
   Inbox Path:      _sources/inbox/{id}/
+  Family:          {family}
   Layout:          {layout}
   Default Domain:  {default-domain}
   Skip Subdirs:    {skip-subdirs or "—"}
@@ -111,7 +119,7 @@ In order:
 2. **Append SOURCES.md row.** Locate the target table heading (`## Active Sources` or `## Reserved Sources`). If the heading is missing — create it just above `## Notes` (or at end-of-file if `## Notes` absent). Append the new row to the table preserving column order from SOURCES.template.md:
 
    ```
-   | {id} | `_sources/inbox/{id}/` | {layout} | {default-domain} | {skip-subdirs or "—"} | {description} | {status} |
+   | {id} | `_sources/inbox/{id}/` | {family} | {layout} | {default-domain} | {skip-subdirs or "—"} | {description} | {status} |
    ```
 
 3. **Update `Last Updated`** field at the top of SOURCES.md to today's ISO date (`YYYY-MM-DD`).

@@ -39,7 +39,28 @@ Scope разделён на **evidence-scope** (откуда берутся verb
 Hub-просмотр работает **автоматически на каждом run** без отдельного триггера: если категория-кандидат на hit совпадает с темой существующего hub'а, surface это явно («recurring known pattern, see [[hub-X]] dated YYYY-MM-DD»).
 
 **НЕ scope этой линзы:**
-- **Garmin physiological data** (HRV, sleep, body battery, stress) — будет отдельная линза `somatic-pattern`, когда pipeline появится.
+- **Garmin physiological data** (HRV, sleep, body battery, stress) — теперь partly доступно через `_records/biometric/` (см. ниже §«Biometric ground truth»). Глубокая somatic линза остаётся отдельной.
+
+## Biometric ground truth (when `_records/biometric/` is non-empty)
+
+Cross-reference journal energy markers with biometric body_battery_end
+and training_readiness from same-date `_records/biometric/<date>.md`
+Key Numbers. Probe specifically for **divergence**:
+
+- Journal says «энергично» / «in flow» BUT biometric `bb_end < 40`
+  consistently same days → potential measurement bias (sensor noise)
+  OR misperception (subjective feel diverges from physiological state).
+- Journal says «exhausted» BUT `readiness_lvl: HIGH` and
+  `stress_avg < 30` → mood-state ≠ physiological recovery.
+- Journal silent on energy BUT biometric shows `low_bb_streak` /
+  `low_readiness_streak` — silent depletion.
+
+Treat divergence as **hypothesis**, not conclusion. Surface as one of
+the existing three readings (action gap / baseline shift / episode)
+with the biometric pattern as the additional anchor.
+
+Per biometric-lens-protocol §n=1 caveats — phrase as «Garmin-reports
+X while owner journaled Y», never «X is true while Y was lied about».
 - **ActivityWatch behavioral data** (app time, context switches) — будет отдельная линза `time-allocation`.
 - **Affect about other people** (третьи лица) — «Vasily looked stressed» вне scope.
 - **Inferred affect без verbatim source** — гадание, reject.

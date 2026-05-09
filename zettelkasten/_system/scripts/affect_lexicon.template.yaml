@@ -1,0 +1,107 @@
+# Affect lexicon — engine spec + RU+EN universal seeds.
+#
+# Lexicon-based binary affect detection over observation + meeting
+# bodies. Tier II worker (biometric_weekly_worker) produces per-day
+# binary tags from this lexicon, then computes point-biserial
+# correlations against biometric metrics.
+#
+# Layered at runtime in this order:
+#   1. this template — engine-shipped baseline (RU+EN seeds)
+#   2. affect_lexicon.yaml — live working file (one-time seed from
+#      template at install)
+#   3. affect_lexicon.local.yaml — owner-only overlay; entries merged
+#      per category, deduped. Missing file is OK.
+#
+# Match rules:
+#   - case-insensitive
+#   - Russian roots use trailing `*` for stem matching
+#     (regex: \b{stem}\w*)
+#   - English entries match whole word (`\b{word}\b`) unless `*` suffix
+#   - one match per category per day flips the day's binary tag to true
+#
+# Known limitation: technical-context false positives (`merge conflict`
+# matches `конфликт*`, `flow control` matches `flow`). Mitigated by
+# Tier II diagnostic gate (n≥10, effect_size≥0.5 — random false
+# positives don't survive the gate). Owner refines via .local.yaml.
+
+categories:
+  anxious:
+    - тревож*
+    - паник*
+    - нервнича*
+    - напряжен*
+    - беспоко*
+    - anxious
+    - anxiety
+    - worried
+    - nervous
+    - tense
+
+  conflicted:
+    - конфликт*
+    - ссор*
+    - спор*
+    - разногласи*
+    - столкновен*
+    - conflict
+    - argument
+    - clash
+    - dispute
+
+  exhausted:
+    - выгор*
+    - истощ*
+    - обесси*
+    - вымота*
+    - устал*
+    - exhausted
+    - burnt out
+    - drained
+    - depleted
+
+  energized:
+    - энерги*
+    - бодр*
+    - продуктив*
+    - energized
+    - productive
+    - sharp
+
+  flow:
+    - флоу
+    - в потоке
+    - in flow
+    - flow state
+    - deep work
+
+  late_work:
+    - допоздна
+    - до ночи
+    - до 1 часу
+    - до 2 часов
+    - до 3 часов
+    - late night
+    - late evening
+    - past midnight
+
+  workout:
+    - тренир*
+    - бегал
+    - бежал
+    - спортзал
+    - gym
+    - run
+    - ran
+    - workout
+    - lifting
+    - cycling
+
+  meeting_heavy_day:
+    # detected structurally: ≥4 meeting records on a date.
+    # Not a lexicon entry — handled in worker code; documented
+    # here for completeness.
+    _structural: true
+
+# Skeleton-friendly: friends in non-RU contexts can drop RU entries
+# via .local.yaml or ship their own lexicon. Default ships both
+# languages as broad seed.
