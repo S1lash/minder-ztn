@@ -1,6 +1,6 @@
 # Agent Lenses Registry
 
-**Last Updated:** 2026-05-09 — biometric pipeline activated. 4 new lenses (`biometric-anomaly-narrator` daily, `biometric-cross-domain` weekly thursday, `training-load-trend` weekly monday with conditional self-skip, `biometric-life-synthesis` weekly monday flagship synthesis) flipped to `status: active`. 4 patches applied to existing prompts (`stated-vs-lived`, `energy-pattern`, `weekly-insights`, `global-navigator`) to read biometric records / Tier II output / new biometric lens runs. Tier I + Tier II already running (61 biometric records, 9 weekly correlations); next nightly /ztn:agent-lens tick will produce the first lens outputs.
+**Last Updated:** 2026-05-09 — biometric pipeline released. 4 new lenses ship `status: draft` (`biometric-anomaly-narrator` daily, `biometric-cross-domain` weekly thursday, `training-load-trend` weekly monday with conditional self-skip, `biometric-life-synthesis` weekly monday flagship synthesis). Activate after wiring a metric-day source via `/ztn:source-add garmin --family metric-day` and waiting for ≥14 days of records to accumulate — flip to `status: active` in both this table (move row from Draft to Active) and the lens's `prompt.md` frontmatter. 4 patches applied to existing prompts (`stated-vs-lived`, `energy-pattern`, `weekly-insights`, `global-navigator`) to read biometric records / Tier II output / new biometric lens runs (these patches are no-ops when biometric layer is absent — safe to ship as live).
 
 Registry of agent-lens definitions. Each row points to a folder under
 `_system/registries/lenses/{id}/` containing the lens prompt and any
@@ -76,14 +76,15 @@ will be visible in `global-navigator` as gaps.
 | knowledge-emergence | Knowledge Emergence | mechanical | records | weekly (sat) | longitudinal | active |
 | global-navigator | Global Navigator | meta | lens-outputs | weekly (mon) | longitudinal | active |
 | weekly-insights | Weekly Insights | meta | multi-source | weekly (mon) | longitudinal | active |
-| biometric-anomaly-narrator | Biometric Anomaly Narrator | mechanical | records | daily | fresh-eyes | active |
-| biometric-cross-domain | Biometric Cross-Domain | psyche | records | weekly (thu) | longitudinal | active |
-| training-load-trend | Training Load Trend | mechanical | records | weekly (mon) | longitudinal | active |
-| biometric-life-synthesis | Biometric × Life Synthesis | meta | multi-source | weekly (mon) | longitudinal | active |
 
 ## Draft Lenses
 
-_(empty)_
+| ID | Name | Type | Input | Cadence | Self-history | Status |
+|---|---|---|---|---|---|---|
+| biometric-anomaly-narrator | Biometric Anomaly Narrator | mechanical | records | daily | fresh-eyes | draft |
+| biometric-cross-domain | Biometric Cross-Domain | psyche | records | weekly (thu) | longitudinal | draft |
+| training-load-trend | Training Load Trend | mechanical | records | weekly (mon) | longitudinal | draft |
+| biometric-life-synthesis | Biometric × Life Synthesis | meta | multi-source | weekly (mon) | longitudinal | draft |
 
 ## Lens summaries
 
