@@ -3,20 +3,34 @@ is no human in this loop. The contract below is load-bearing.
 
 ## Invocation contract (read first)
 
-Every ZTN skill in this prompt — `/ztn:sync-data`, `/ztn:agent-lens`,
-`/ztn:save` — is invoked **as a slash command in this same conversation**.
-Skills are committed to the cloned repo at `.claude/skills/<name>/SKILL.md`
-(symlinks into `integrations/claude-code/skills/<name>/`), so the runtime
-loads them automatically — write the slash command literally as the next
-action and it executes.
+The ZTN skills in this prompt — `/ztn:sync-data`, `/ztn:agent-lens` —
+are invoked **as slash commands in this same conversation**. Skills are
+committed to the cloned repo at `.claude/skills/<name>/SKILL.md` (symlinks
+into `integrations/claude-code/skills/<name>/`), so the runtime loads them
+automatically — write the slash command literally as the next action and
+it executes.
 
 `/ztn:agent-lens --all-due` iterates all lenses whose cadence has elapsed
 and runs each through its two-stage thinker→structurer pipeline as the
 skill's own architecture. Outputs land in `_system/agent-lens/{id}/{date}.md`
 plus the runs index `_system/state/agent-lens-runs.jsonl`.
 
+**Single-commit guarantee.** This tick produces **exactly one git commit
++ one git push**, both from `bash scripts/scheduler/finalize-tick.sh` at
+Step 5. No other path in this prompt commits or pushes. `/ztn:save` is
+**forbidden** in scheduler ticks. Any intermediate `git commit`,
+`git push`, or `git add` outside the helper scripts listed below is a
+contract violation.
+
 **Hard prohibitions:**
 
+- Do NOT invoke `/ztn:save` in any form. Use `finalize-tick.sh` at Step 5.
+- Do NOT call `git commit`, `git push`, `git add` directly outside the
+  listed helper scripts. **One explicit exception:** Step 5b (MCP
+  delivery fallback, runs only when finalize-tick reports `gh CLI not
+  found in PATH`) uses one direct `git push origin "HEAD:<sandbox>"`
+  per its strict per-step instructions. No other direct git/gh calls
+  are authorized.
 - Do NOT open `integrations/claude-code/skills/ztn-*/SKILL.md` and
   re-implement its steps with Bash / Read / Edit. Skills are loaded by
   the runtime — invoke via slash, never re-execute.
@@ -26,6 +40,10 @@ plus the runs index `_system/state/agent-lens-runs.jsonl`.
 - Do NOT poll locks or state files between steps. Slash invocations are
   synchronous; their return IS completion.
 - Do NOT narrate or summarise between steps.
+- If the working tree looks "dirty across many lens outputs" after Step
+  4, that is NORMAL. Do NOT try to "group by lens" or "save progress" —
+  Step 5's `finalize-tick.sh` collapses every dirty owner path into one
+  commit.
 
 **Bash is permitted only for the helper invocations explicitly listed
 in the steps below.** Anything else is a contract violation.
@@ -37,15 +55,15 @@ response, triggers this exit path:
 
 ```
 bash scripts/scheduler/ship-failure-note.sh "<one-line cause>" agent-lens-nightly
-bash scripts/scheduler/cleanup-sandbox.sh
 ```
 
 Then exit `partial` immediately.
 
 ## Steps
 
-1. `bash scripts/scheduler/pin-main.sh` — get on fresh `origin/main` and
-   capture the starting sandbox branch for cleanup.
+1. `bash scripts/scheduler/pin-main.sh` — get on fresh `origin/main`,
+   capture the starting sandbox branch, and best-effort recover any
+   stranded scheduler work from prior ticks via PR-merge sweep.
 
 2. `bash scripts/scheduler/lock-check.sh` — abort if any pipeline lock
    (process / maintain / lint / agent-lens / resolve) is recent (<2h).
@@ -63,25 +81,73 @@ Then exit `partial` immediately.
      failure-handling, exit `partial`.
    - When the skill returns, the immediate next action is step 5.
 
-5. `/ztn:save --auto --tag scheduler/agent-lens` — engine-aware commit +
-   push to `origin/main` with `[scheduled]` suffix and
-   `scheduler/agent-lens:` tag prefix on the commit message.
-   - On "Unknown skill" / skill error → fall back to:
-     `bash scripts/scheduler/save.sh "scheduler/agent-lens: nightly save"`.
-     Exit code 0 → continue to step 6.
-     Exit code 2 → run failure-handling with cause `"save fallback failed"`,
-     continue to step 6 anyway.
+5. `bash scripts/scheduler/finalize-tick.sh scheduler/agent-lens` — the
+   single commit + delivery for this tick. Auto-detects mode:
+   - **LOCAL mode** (start branch = main) — direct `git push origin main`.
+   - **ROUTINES mode** (start branch = `claude/...` or other non-main) —
+     push HEAD to sandbox branch, `gh pr create --base main --head
+     <sandbox>`, then `gh pr merge --squash --delete-branch`. End state:
+     `main` updated with one squash commit on origin, sandbox deleted.
 
-6. `bash scripts/scheduler/cleanup-sandbox.sh` — best-effort delete of the
-   starting sandbox branch.
+   Folds any unpushed `[scheduled]` commits from a previous partial tick.
+   Engine paths filtered out. Refuses to touch non-scheduled commits if
+   owner has manual work ahead of `origin/main`.
+
+   - Exit code 0 → tick done. Print final status line per «Output».
+   - Exit code 2 → run failure-handling with cause
+     `"finalize-tick failed"`, then print final status line.
+
+   **No manual push retries.** If `finalize-tick.sh` exits 2 (push,
+   `gh pr create`, or `gh pr merge` failed), do NOT invent a retry loop
+   with direct git / gh calls. The script makes exactly one delivery
+   attempt by design. Surface the failure via failure-handling and exit
+   `partial`; the next tick runs fresh.
+
+   **Exception — gh missing.** If exit 2 is specifically because
+   `"gh CLI not found in PATH"` (Cloud Routines sandboxes don't ship
+   gh), proceed to Step 5b INSTEAD of failure-handling.
+
+5b. **MCP delivery fallback** — runs ONLY when Step 5's output contains
+   `"gh CLI not found in PATH"` AND a local `[scheduled]` commit was
+   created (Step 5 stdout has a `finalize-tick: committed <SHA> — …`
+   line). Skip this step in all other failure modes.
+
+   Do EXACTLY these actions in order. Do not deviate, do not retry:
+
+   1. Read sandbox branch name from `.scheduler-state/start-branch`
+      (call it `SANDBOX_BRANCH`).
+   2. `git push origin "HEAD:${SANDBOX_BRANCH}"` — push local commit to
+      sandbox branch. If this fails → run failure-handling.
+   3. Call the `github` MCP `create_pull_request` tool with:
+      - `base`: `main`
+      - `head`: `<SANDBOX_BRANCH>`
+      - `title`: commit subject from Step 5 stdout (substring after
+        `committed <SHA> — `, including `[scheduled]` suffix)
+      - `body`: `"Autonomous scheduler tick via MCP fallback (gh CLI
+        unavailable in sandbox). [scheduled]"`
+      Record the PR number returned.
+   4. Call the `github` MCP `merge_pull_request` tool with:
+      - `pullNumber`: from step 3
+      - `merge_method`: `squash`
+      - `commit_title`: same as PR title in step 3
+   5. Branch cleanup is automatic. The repo has «Automatically delete
+      head branches» enabled in GitHub Settings → General → Pull
+      Requests; GitHub removes `<SANDBOX_BRANCH>` the moment the squash
+      merge in step 4 completes. No manual delete call is needed.
+   6. Print final status: `success <merged-SHA>` and skip Step 6
+      failure-handling.
+
+   This is the ONE authorized non-script git/MCP path in this prompt.
 
 ## Forbidden in this tick
 
 - `/ztn:process`, `/ztn:lint` — separate schedules
 - `/ztn:resolve-clarifications` — owner-only interactive; auto-mode is
   dispatched only by lint Step 7.5, never from agent-lens
+- `/ztn:save` in any form (owner-interactive only — scheduler uses
+  `finalize-tick.sh`)
 - `/ztn:update` — engine sync is owner-only
-- `--include-engine` on save
+- direct `git commit`, `git push`, `git add` outside helper scripts
 - `git push --force` of any kind
 - creating a feature branch, worktree, or PR
 - leaving any non-`main` branch behind on completion

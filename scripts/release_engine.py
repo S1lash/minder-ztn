@@ -102,6 +102,95 @@ def _copy_symlink(src: Path, dst: Path, dry_run: bool, label: Path) -> None:
     os.symlink(target, dst)
 
 
+# Lenses that the maintainer keeps `status: active` locally (owner has
+# the prerequisite data — biometric records, custom sources) but that
+# MUST ship `status: draft` to the skeleton, because friends won't have
+# the prerequisites and would otherwise see daily empty lens runs that
+# burn LLM budget.
+#
+# Add to this list when releasing a new lens family that depends on a
+# specific source-family (e.g. future `apple-watch`, `whoop` metric-day
+# variants, or any feature gated on owner-created infrastructure).
+DEMOTE_LENSES_ON_RELEASE: tuple[str, ...] = (
+    "biometric-anomaly-narrator",
+    "biometric-cross-domain",
+    "training-load-trend",
+    "biometric-life-synthesis",
+)
+
+
+def _demote_lens_status(skeleton_root: Path, *, lens_ids: tuple[str, ...]) -> int:
+    """Demote each lens's `status: active` → `status: draft` in two
+    places under the freshly-extracted skeleton:
+
+      1. `_system/registries/lenses/<id>/prompt.md` frontmatter.
+      2. `_system/registries/AGENT_LENSES.md` rows — moves them out of
+         the `## Active Lenses` table into `## Draft Lenses`.
+
+    Idempotent: if a lens row is already `draft` (or missing), no-op
+    on that lens. Returns count of lenses demoted (across both files).
+    """
+    import re
+
+    demoted = 0
+    # 1) Per-prompt frontmatter
+    for lens in lens_ids:
+        prompt = skeleton_root / "zettelkasten" / "_system" / "registries" / "lenses" / lens / "prompt.md"
+        if not prompt.exists():
+            continue
+        text = prompt.read_text(encoding="utf-8")
+        new_text = re.sub(
+            r"^(status:\s*)active\s*$", r"\1draft",
+            text, count=1, flags=re.MULTILINE,
+        )
+        if new_text != text:
+            prompt.write_text(new_text, encoding="utf-8")
+            demoted += 1
+
+    # 2) Registry table — move rows from Active Lenses → Draft Lenses
+    registry = skeleton_root / "zettelkasten" / "_system" / "registries" / "AGENT_LENSES.md"
+    if not registry.exists():
+        return demoted
+    text = registry.read_text(encoding="utf-8")
+    moved_rows: list[str] = []
+    new_lines: list[str] = []
+    for line in text.splitlines():
+        is_target_active_row = (
+            line.startswith("|")
+            and any(f"| {lid} " in line for lid in lens_ids)
+            and line.rstrip().endswith("| active |")
+        )
+        if is_target_active_row:
+            moved_rows.append(line.replace("| active |", "| draft |"))
+            continue  # skip from output (will re-insert in Draft Lenses)
+        new_lines.append(line)
+    if not moved_rows:
+        return demoted
+    # Insert moved rows under `## Draft Lenses` (replacing the
+    # `_(empty)_` placeholder if present, else appending under header).
+    out: list[str] = []
+    i = 0
+    while i < len(new_lines):
+        line = new_lines[i]
+        out.append(line)
+        if line.startswith("## Draft Lenses"):
+            # Skip blank + `_(empty)_` placeholder if present
+            j = i + 1
+            while j < len(new_lines) and (new_lines[j].strip() == "" or new_lines[j].strip() == "_(empty)_"):
+                j += 1
+            # Emit blank + table header + moved rows
+            out.append("")
+            out.append("| ID | Name | Type | Input | Cadence | Self-history | Status |")
+            out.append("|---|---|---|---|---|---|---|")
+            out.extend(moved_rows)
+            out.append("")
+            i = j
+            continue
+        i += 1
+    registry.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return demoted + len(moved_rows)
+
+
 # Build artifacts and IDE / editor noise that locally git-ignores but
 # physically lives under engine paths. Filtered at copy time so the
 # skeleton stays clean.
@@ -253,6 +342,13 @@ def main() -> int:
             keep = target / d / ".gitkeep"
             if not keep.exists():
                 keep.touch()
+
+        # Skeleton-only post-process: demote owner-activated lenses
+        # back to `status: draft` so friends don't auto-run lenses
+        # against absent data. The maintainer's clone retains `active`
+        # for the maintainer's own data; this hook only touches the
+        # extracted skeleton tree.
+        _demote_lens_status(target, lens_ids=DEMOTE_LENSES_ON_RELEASE)
 
         print(f"\nlayout ready at {target}")
         print("\nnext steps (operator):")

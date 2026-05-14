@@ -172,17 +172,17 @@ divergence, and runs migrations in order. Your data is never touched.
 Three ready-made scheduler prompts ship in
 `integrations/claude-code/scheduler-prompts/`:
 
-- `process-scheduled.md` — pre-sync → `/ztn:process` → `/ztn:save --auto`.
+- `process-scheduled.md` — pre-sync → `/ztn:process` →
+  `finalize-tick.sh scheduler/process`.
   Recommended cadence: 3× per day (e.g. cron `0 9,14,19 * * *`).
 - `agent-lens-nightly.md` — pre-sync → `/ztn:agent-lens --all-due` →
-  `/ztn:save --auto`. Recommended cadence: 1× per night
-  (e.g. cron `0 3 * * *`). The skill filters lenses by per-lens
+  `finalize-tick.sh scheduler/agent-lens`. Recommended cadence: 1× per
+  night (e.g. cron `0 3 * * *`). The skill filters lenses by per-lens
   cadence — nightly tick ≠ nightly lens runs.
 - `lint-nightly.md` — pre-sync → `/ztn:lint` (which dispatches
   `/ztn:resolve-clarifications --auto-mode` inline via Step 7.5)
-  → `/ztn:save --auto`. Recommended cadence: ~2 h after agent-lens
-  (e.g. cron `0 5 * * *`), so fresh `## Action Hints` emitted by
-  lenses get consumed in the same tick that runs invariant cleanup.
+  → `finalize-tick.sh scheduler/lint`. Recommended cadence: ~2 h after
+  agent-lens (e.g. cron `0 5 * * *`).
 
 Two nightly ticks (lens production isolated from lint+resolve
 consumption — prevents the agent that produced lens bodies from
@@ -193,20 +193,45 @@ Paste each body into your scheduler of choice (Claude Code `/schedule`,
 GitHub Actions cron, host crontab calling `claude` headless — any
 runner that can launch a Claude Code session works).
 
-**Important — push credentials.** `/ztn:save --auto` pushes to your
-`origin` remote. The scheduler runs in a non-interactive environment,
-so it cannot prompt for SSH passphrases or 2FA. Set up one of:
+### Required GitHub repo setting — auto-delete head branches
+
+Before relying on Cloud Routines (Claude Code `/schedule`), enable:
+
+**GitHub repo → Settings → General → Pull Requests → ☑ Automatically
+delete head branches**
+
+In Routines mode `finalize-tick.sh` pushes each tick's commit to a
+sandbox branch (the Routines git proxy refuses direct push to `main`),
+then creates and squash-merges a PR. The Routines proxy also refuses
+`git push origin --delete <branch>`, so deleting the sandbox branch
+after merge must happen on GitHub's side via this setting. Without it
+on, every Routines tick leaves a leftover `claude/*` branch on origin
+and they accumulate.
+
+This is a one-time toggle per repository. Local cron / launchd setups
+do not strictly need it (LOCAL delivery mode pushes directly to `main`
+with no PR involved), but enabling it does no harm.
+
+### Push credentials
+
+The scheduler runs in a non-interactive environment, so it cannot
+prompt for SSH passphrases or 2FA. Set up one of:
 
 - **SSH key without passphrase** stored on the scheduler host, added
   to your GitHub account.
 - **Personal Access Token** with `repo` scope, configured as the
-  remote URL: `git remote set-url origin https://<TOKEN>@github.com/<you>/my-ztn.git`.
-- **Platform-managed credentials** (Claude Code cloud `/schedule`
-  inherits your authenticated session — no extra setup).
+  remote URL:
+  `git remote set-url origin https://<TOKEN>@github.com/<you>/my-ztn.git`.
+- **Platform-managed credentials** — Claude Code cloud `/schedule`
+  inherits your authenticated GitHub session (no extra setup).
 
 Verify before relying on the schedule: run the prompt body manually
-once in the scheduler environment and confirm the `[scheduled]`
-commit lands on `origin`.
+once in the scheduler environment and confirm:
+
+1. The `[scheduled]` commit lands on `origin/main` (via direct push in
+   LOCAL mode, or via squash-merged PR in ROUTINES mode).
+2. The sandbox branch (Routines only) is gone from origin after the
+   tick — proves the auto-delete setting is on and working.
 
 Full design — `docs/scheduling.md`.
 

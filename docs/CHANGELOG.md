@@ -2,6 +2,75 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.25.0 — Scheduler single-commit + Cloud Routines delivery
+
+### What changed
+
+The autonomous scheduler protocol was producing dozens of commits per
+tick (one per phase the agent felt like grouping) and accumulating
+stranded `claude/*` branches on origin in Cloud Routines setups.
+Replaced the old per-step `/ztn:save --auto` model with a strict
+single-commit + adaptive-delivery design:
+
+- **One commit per tick, guaranteed.** `scripts/scheduler/stage.sh`
+  is staging-only (idempotent, may be called any number of times
+  during a tick); `scripts/scheduler/finalize-tick.sh <tag>` is the
+  sole commit + delivery point. Engine paths are filtered out via
+  `.engine-manifest.yml` + a small conservative-prefix list.
+- **Two delivery modes auto-detected.** LOCAL (start branch = main):
+  direct `git push origin main`. ROUTINES (start branch = sandbox
+  ref like `claude/<random>`): push to sandbox, `gh pr create
+  --base main --head <sandbox>`, `gh pr merge --squash
+  --delete-branch`. Cloud Routines' git proxy refuses direct push
+  to main; this routes around it.
+- **MCP fallback for gh-less sandboxes.** Cloud Routines sandboxes
+  typically don't ship `gh`. When `finalize-tick.sh` exits 2 with
+  «gh CLI not found in PATH», the scheduler prompts have a strict
+  Step 5b that routes the create + merge through the `github` MCP
+  server. The only authorized non-script git/MCP path in the
+  prompts.
+- **Partial-tick fold recovery.** If a previous tick committed
+  locally but never pushed, the next tick's `finalize-tick.sh`
+  folds it into the current commit via `git reset --soft
+  origin/main`. Refuses to touch non-scheduled commits ahead of
+  origin/main (no force-push, ever).
+
+### Required repo setting
+
+Cloud Routines also refuses `git push origin --delete <branch>`, and
+the github MCP server has no `delete_branch` tool. Sandbox-branch
+cleanup is therefore delegated to GitHub's repo setting:
+
+**Settings → General → Pull Requests → ☑ Automatically delete head
+branches**
+
+Enable this once per repository. Without it, every Routines tick
+leaves a sandbox branch on origin.
+
+`docs/onboarding.md` §9 calls this out for new setups.
+`docs/scheduling.md` documents the full delivery model.
+
+### Migration
+
+`scripts/migrations/005-scheduler-pr-merge-delivery.sh` prints a
+re-paste reminder when run after `/ztn:update`. After this engine
+update:
+
+1. Enable the «Auto-delete head branches» repo setting (above).
+2. Re-paste the three updated prompt bodies from
+   `integrations/claude-code/scheduler-prompts/` into your
+   `/schedule` Routines.
+3. (Optional one-time) Delete any pre-existing `claude/*` sandbox
+   branches accumulated before this update:
+   `git push origin --delete <branch>` from a local clone.
+
+### Removed
+
+- `scripts/scheduler/save.sh` — replaced by `stage.sh` +
+  `finalize-tick.sh`.
+- `scripts/scheduler/cleanup-sandbox.sh` — replaced by GitHub's
+  built-in auto-delete on PR merge.
+
 ## 0.22.0 — Biometric pipeline (metric-day source family)
 
 ### What landed

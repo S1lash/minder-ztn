@@ -42,6 +42,14 @@
    - Что установилось, где бэкап (если был).
    - Подсказать пользователю **перезапустить Claude Code / открыть новую сессию**, чтобы правила подхватились.
    - Если SOUL.md или другие derived views ещё не сгенерены — упомянуть, что после первого batch стоит прогнать `/ztn:regen-constitution`.
+   - **Если пользователь планирует автоматический шедулер** (Claude Code
+     `/schedule`, cron, GitHub Actions): напомнить включить в GitHub repo
+     **Settings → General → Pull Requests → ☑ Automatically delete head
+     branches**. Без этой галки в Cloud Routines режиме каждый tick
+     оставляет sandbox-ветку на origin — proxy блокирует
+     `git push origin --delete`, MCP сервер не имеет `delete_branch`,
+     удаление делегировано самому GitHub. Подробности — `docs/scheduling.md`
+     раздел «Required repo setting».
 
 ---
 

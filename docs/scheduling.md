@@ -10,9 +10,9 @@ Three scheduled jobs. No more.
 
 | Job | Cadence | Skill chain | Prompt source |
 |---|---|---|---|
-| `ztn-process` | ≥ 3× per day | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/process-scheduled.md` |
-| `ztn-agent-lens` | 1× nightly (03:00) | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/agent-lens-nightly.md` |
-| `ztn-lint` | 1× nightly (05:00) | `/ztn:sync-data` → `/ztn:lint` (Step 7.5 dispatches `/ztn:resolve-clarifications --auto-mode` inline) → `/ztn:save --auto` | `integrations/claude-code/scheduler-prompts/lint-nightly.md` |
+| `ztn-process` | ≥ 3× per day | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `finalize-tick.sh scheduler/process` | `integrations/claude-code/scheduler-prompts/process-scheduled.md` |
+| `ztn-agent-lens` | 1× nightly (03:00) | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `finalize-tick.sh scheduler/agent-lens` | `integrations/claude-code/scheduler-prompts/agent-lens-nightly.md` |
+| `ztn-lint` | 1× nightly (05:00) | `/ztn:sync-data` → `/ztn:lint` (Step 7.5 dispatches `/ztn:resolve-clarifications --auto-mode` inline) → `finalize-tick.sh scheduler/lint` | `integrations/claude-code/scheduler-prompts/lint-nightly.md` |
 
 Two nightly ticks. Agent-lens runs first (03:00) in its own scheduler-
 agent context — lens production isolated from resolve consumption,
@@ -29,6 +29,75 @@ the owner reviews the queue manually; that is the human-in-loop hinge
 of the whole system. There is no `ztn-agent-lens-add` schedule — lens
 creation is owner-driven (wizard-style); see
 `integrations/claude-code/skills/ztn-agent-lens-add/SKILL.md`.
+
+## Single-commit guarantee
+
+Every scheduler tick produces **exactly one commit on `origin/main`**.
+The contract is enforced by `scripts/scheduler/finalize-tick.sh` — the
+single point in the prompt that commits + delivers. Two helpers feed
+into it:
+
+- `scripts/scheduler/stage.sh` — staging-only (idempotent). Engine
+  paths are filtered (defined in `.engine-manifest.yml` + a small
+  conservative-prefix list in `_classify_paths.py`); only owner data
+  is staged. May be called any number of times during a tick.
+- `scripts/scheduler/finalize-tick.sh <tag>` — single commit + delivery.
+  Folds any unpushed `[scheduled]` commits from a previous partial tick
+  into one commit. Refuses to rewrite history if owner has manual
+  non-scheduled commits ahead of `origin/main` (no force-push, ever).
+
+`/ztn:save` is owner-interactive only. Scheduler prompts never invoke
+it and never call `git commit` / `git push` / `git add` outside the
+helper scripts (with one narrow exception below for the MCP fallback).
+
+## Delivery model — two modes with an MCP fallback
+
+`finalize-tick.sh` auto-detects how to deliver the tick's commit:
+
+**LOCAL mode** — start branch is `main` (local cron, launchd, GitHub
+Actions running with full push rights to main). Single
+`git push origin main`. No sandbox branch involved.
+
+**ROUTINES mode** — start branch is a sandbox ref (`claude/...`).
+Anthropic Cloud Routines' git proxy refuses direct push to `main` and
+refuses `git push origin --delete <branch>` (both HTTP 403). The script
+instead:
+
+1. `git push origin HEAD:<sandbox-branch>` (proxy-allowed).
+2. `gh pr create --base main --head <sandbox-branch>`.
+3. `gh pr merge --squash --delete-branch`.
+
+End state: `main` has one squash commit, sandbox branch deleted.
+
+**MCP fallback** — Cloud Routines sandboxes typically don't ship `gh`.
+When `finalize-tick.sh` exits 2 with `"gh CLI not found in PATH"`, the
+scheduler prompts have an explicit Step 5b that routes through the
+`github` MCP server: push HEAD to the sandbox branch via plain `git
+push`, call MCP `create_pull_request`, call MCP `merge_pull_request`
+with `merge_method: squash`. Branch cleanup falls to the repo setting
+described in the next section. Step 5b is the **only** authorized
+non-script git/MCP path in the prompts.
+
+## ⚠️ Required repo setting — auto-delete head branches
+
+The Routines proxy blocks `git push origin --delete <branch>`, and the
+github MCP server does not currently have a `delete_branch` tool. The
+scheduler therefore **cannot** delete its own sandbox branch from
+within a Routines tick. The cleanup mechanism is GitHub itself:
+
+**Settings → General → Pull Requests → ☑ Automatically delete head
+branches**
+
+Enable this **once per repository**. With it on, GitHub removes the
+head branch the moment its PR is squash-merged. With it off, each
+scheduler tick leaves a sandbox branch on origin and they accumulate.
+
+This is the load-bearing assumption of the ROUTINES delivery path. The
+new-repo onboarding checklist (`docs/onboarding.md` §9) calls it out
+explicitly. Verify it is on before relying on cloud scheduling.
+
+For LOCAL mode the setting is not required (no PR involved), but
+enabling it does no harm.
 
 ## Opinionated assumptions
 
@@ -49,33 +118,52 @@ scheduler prompts are not for you yet.
   CLARIFICATIONS mechanism exists for this exact case. A scheduled
   run that pauses on a question is broken — it just hangs the agent
   until timeout. CLARIFICATIONS is the async hand-off.
-- **Engine drift is never resolved by the scheduler.** `--auto` on
-  `/ztn:save` refuses engine paths. If you edited engine files locally,
-  the scheduler will leave them dirty and surface a CLARIFICATIONS
-  note. Run `/ztn:update` (or revert) yourself.
+- **Engine drift is never resolved by the scheduler.** `stage.sh` and
+  `finalize-tick.sh` refuse engine paths. If you edited engine files
+  locally, the scheduler will leave them dirty and surface a
+  CLARIFICATIONS note. Run `/ztn:update` (or revert) yourself.
 
 ## What the scheduler will NEVER do
 
 | Operation | Why not |
 |---|---|
-| `git push --force` | Data-loss risk. Push rejection means «sync next tick», not «overwrite remote». |
-| `--include-engine` on save | Engine is owned upstream. Local edits to engine paths are an owner concern. |
-| `/ztn:resolve-clarifications` | Resolution is the human-in-loop step by design. Auto-resolution defeats the purpose. |
+| `git push --force` (or `--force-with-lease`) | Data-loss risk. Push rejection means «sync next tick», not «overwrite remote». |
+| Stage engine paths | Engine is owned upstream. Local edits to engine paths are an owner concern; engine drift is logged to CLARIFICATIONS instead. |
+| `/ztn:resolve-clarifications` interactive | Resolution is the human-in-loop step by design. The auto-mode dispatch inside lint Step 7.5 is the exception. |
 | `/ztn:update` | Engine sync needs owner attention (VERSION delta, migrations, divergence resolution). |
 | Pause and ask the owner | No human in this loop. Anything that would be a question becomes a CLARIFICATIONS row. |
+| Retry push on failure | The script makes exactly one delivery attempt per tick. A failed delivery surfaces as `partial`; next tick processes fresh state from inbox. |
 | Skip commit on «small» changes | Every tick commits, even routine state-only churn. Predictability beats minimalism. |
+
+## Partial-tick handling
+
+If a tick aborts between push and PR-merge (network glitch, MCP error,
+PR creation failure), the sandbox branch on origin holds the unmerged
+commit. There is **no automatic recovery sweep** — the new architecture
+keeps the design minimal. The next tick processes fresh state from
+`_sources/inbox/` and produces a new commit. The stranded sandbox
+branch is harmless (work content is re-derivable from inputs) and can
+be removed manually if it accumulates:
+
+```bash
+git push origin --delete <branch>   # from a local clone with push rights
+```
+
+Routines tick output ends with the contract status: `success <SHA>`,
+`partial`, or `sync-blocked`. Owner sees the line in the Routine's
+own log and can intervene if needed.
 
 ## How skills reach the scheduler agent
 
 The scheduler agent is just a Claude Code session running your prompt
 body. For the slash invocations (`/ztn:process`, `/ztn:lint`,
-`/ztn:agent-lens --all-due`, `/ztn:save --auto`) to actually fire,
-ZTN skills must be visible in the session's skill registry.
+`/ztn:agent-lens --all-due`, `/ztn:sync-data`) to actually fire, ZTN
+skills must be visible in the session's skill registry.
 
 - **Cloud Routines / `/schedule`** — clone the repo fresh and look at
   `.claude/skills/<name>/SKILL.md` at the repo root. The repo ships
   committed symlinks there pointing into
-  `integrations/claude-code/skills/<name>/`, so all 15 skills load
+  `integrations/claude-code/skills/<name>/`, so all skills load
   automatically. Nothing to configure.
 - **Local cron / launchd / GitHub Actions** — same `.claude/skills/`
   symlinks load when the runner has the repo as CWD. If the runner
@@ -83,12 +171,12 @@ ZTN skills must be visible in the session's skill registry.
   `./integrations/claude-code/install.sh` once on the runner so
   user-level `~/.claude/skills/` symlinks cover the case.
 
-The bash helpers under `scripts/scheduler/` (pin-main, lock-check,
-save, cleanup-sandbox, ship-failure-note) are repo-local — every
-prompt body invokes them via `bash scripts/scheduler/<name>.sh`.
-They handle git plumbing + cross-skill lock detection + sandbox
-branch cleanup so the prompt bodies stay thin and identical across
-the three ticks.
+The bash helpers under `scripts/scheduler/` (`pin-main.sh`,
+`lock-check.sh`, `stage.sh`, `finalize-tick.sh`, `ship-failure-note.sh`)
+are repo-local — every prompt body invokes them via
+`bash scripts/scheduler/<name>.sh`. They handle git plumbing +
+cross-skill lock detection + single-commit delivery so the prompt
+bodies stay thin and identical across the three ticks.
 
 ## Plug-in — Claude Code `/schedule`
 
@@ -115,12 +203,13 @@ The recommended path. Three routines:
   prompt: <paste body of integrations/claude-code/scheduler-prompts/lint-nightly.md>
 ```
 
-The prompt bodies are self-contained — fresh agent per run, no extra
-context loaded. They are engine-shipped, so `/ztn:update` keeps your
-prompts current as the engine evolves. After a `/ztn:update` that
-changed either prompt file, re-paste the updated body into `/schedule`
-(detection of «schedule prompts changed» is on the `/ztn:update`
-follow-up checklist).
+Each routine runs in a fresh agent — the prompt body is fully
+self-contained, no extra context required.
+
+After a `/ztn:update` that changed any prompt body in
+`integrations/claude-code/scheduler-prompts/`, re-paste the updated
+body into `/schedule`. Claude Code holds the prompt verbatim; engine
+updates do not propagate to running schedules automatically.
 
 ## Plug-in — non-Claude-Code schedulers
 
@@ -133,7 +222,10 @@ same prompt bodies. Ensure:
   Concrete setup options (passphrase-less SSH, PAT-baked remote URL,
   platform-managed credentials) — see `docs/onboarding.md` §9.
 - A way to surface non-zero exit (logs, email, pager) — the prompt
-  bodies exit non-zero on sync-blocked / save-blocked.
+  bodies exit non-zero on sync-blocked / partial.
+
+Local cron starts on the `main` branch by default, so LOCAL mode in
+`finalize-tick.sh` applies — no PR ceremony, just direct push.
 
 ## Owner morning routine
 

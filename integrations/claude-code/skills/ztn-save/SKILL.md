@@ -32,18 +32,21 @@ what to write in the message, did I push, should I rebase first.
   refuses; engine paths are owned upstream and changed by `/ztn:update`)
 - `--dry-run` — show what would be committed and the proposed message,
   apply nothing
-- `--auto` — non-interactive mode for scheduler use. Skips Step 3
+- `--auto` — non-interactive mode for owner power use. Skips Step 3
   confirmation, uses the auto-proposed message verbatim (or `--message`
   if passed), commits and pushes silently. Engine refusal still applies
-  (`--include-engine` is forbidden in combination with `--auto` —
-  scheduler must never touch engine paths). On push rejection still
-  fails loud (no force-push); the next scheduler tick will pre-sync and
-  pick up the unsent commit.
+  (`--include-engine` is forbidden in combination with `--auto`). On push
+  rejection fails loud (no force-push). **Not for scheduler use** — the
+  autonomous scheduler protocol uses `scripts/scheduler/finalize-tick.sh`
+  instead, which guarantees one commit per tick. Calling `/ztn:save
+  --auto` from a scheduler prompt is a contract violation that produces
+  multiple commits per tick.
 - `--tag <text>` — prepend `<text>: ` to the commit message before the
-  `[scheduled]` suffix is appended. Used by autonomous scheduler ticks
-  to mark which tick produced the commit (e.g. `--tag scheduler/lint`
-  yields `scheduler/lint: <auto-or-message-msg> [scheduled]`). Idempotent:
-  if the message already starts with `<text>:`, no second prefix is added.
+  `[scheduled]` suffix is appended (e.g. `--tag scheduler/lint` yields
+  `scheduler/lint: <auto-or-message-msg> [scheduled]`). Idempotent: if
+  the message already starts with `<text>:`, no second prefix is added.
+  Retained for parity with `finalize-tick.sh`; scheduler prompts use
+  `finalize-tick.sh` directly.
 
 ## Preconditions
 
