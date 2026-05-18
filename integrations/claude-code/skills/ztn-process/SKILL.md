@@ -352,8 +352,32 @@ according to the row's `Layout` column:
 | Layout | Scan rule |
 |---|---|
 | `flat-md` | Glob `{Inbox Path}/*.md` (top-level only — never recurse). |
-| `dir-per-item` | For every immediate subfolder of `Inbox Path`, take `transcript.md` if present. |
-| `dir-with-summary` | For every immediate subfolder of `Inbox Path`, pick exactly one file with this priority: (1) `transcript_with_summary.md` if present (combined raw+summary, see §3.1 delimiter contract), (2) `transcript.md` otherwise. A folder with NEITHER file is skipped silently (empty / partial export). A folder that has BOTH never reads `transcript.md` — the combined file is canonical. |
+| `dir-per-item` | For every immediate subfolder of `Inbox Path`, pick exactly one file with this priority: (1) `transcript.md` if present, (2) the single `*.md` file in the subfolder otherwise. If multiple `*.md` files exist with no `transcript.md`, surface a `source-format-anomaly` CLARIFICATION (genuine ambiguity — picking the wrong file degrades downstream quality). Zero `*.md` → skip silently (empty subfolder). |
+| `dir-with-summary` | For every immediate subfolder of `Inbox Path`, pick exactly one file with this priority: (1) `transcript_with_summary.md` if present (combined raw+summary, see §3.1 delimiter contract), (2) `transcript.md` otherwise, (3) the single `*.md` file in the subfolder otherwise. A folder with no `*.md` at all is skipped silently (empty / partial export). A folder with multiple `*.md` files but no `transcript_with_summary.md` / `transcript.md` surfaces a `source-format-anomaly` CLARIFICATION (ambiguity). A folder that has BOTH `transcript_with_summary.md` and `transcript.md` never reads `transcript.md` — the combined file is canonical. |
+
+> **Naming tolerance — universal across all source-types.** Folders inside any
+> `_sources/inbox/{id}/` may be created by the owner manually (drag-drop, ad-hoc
+> capture) or by various producer tools (Claude Code `/ztn-recap`, voice recorders
+> exporting under different versions). The engine treats folder-name and
+> contained-filename layout as **best-effort hints**, not contracts. Concretely:
+>
+> 1. A folder whose name doesn't parse against any of the patterns in §2.3 falls
+>    back to file mtime silently — no CLARIFICATION. mtime is a safe lower bound
+>    for chronological order (the file existed by then).
+> 2. A subfolder containing a single `*.md` with a non-canonical name (anything
+>    other than `transcript.md` / `transcript_with_summary.md`) is taken as-is,
+>    no CLARIFICATION. Owner-driven naming is a normal flow, not an anomaly.
+> 3. CLARIFICATIONs are reserved for cases where the engine would otherwise have
+>    to **guess at the cost of quality**: multiple `*.md` files without a canonical
+>    name (which file is the real transcript?), missing summary-delimiter inside
+>    a file named `transcript_with_summary.md` (summary contract violation —
+>    downstream consumers rely on it), or a folder name that parses but contradicts
+>    obvious file metadata in a way mtime can't resolve.
+>
+> Producer-controlled source-types (`plaud`, `garmin`) typically emit canonical
+> names; deviations may signal a producer bug but are still tolerated at the
+> processor level. The right place to catch producer drift is `/ztn:lint` heuristics
+> on the source itself, not the inbox scanner.
 
 For every layout, honour the row's `Skip Subdirs` column — any subdirectory
 whose name matches an entry in that comma-separated list is skipped without
@@ -399,8 +423,10 @@ Folder-name forms accepted (all may coexist within one source):
 1. **Pure ISO** — `2026-04-29T14:09:30Z` → use as-is.
 2. **ISO + topic suffix** — `2026-04-29T14:09:30Z_short topic` → split on first `_`, parse left side.
 3. **Date + topic** — `2026-04-29_short-topic` → midnight UTC of that date.
-4. **Legacy short date + topic** — `04-29 short topic` → assume current year, midnight UTC, surface a CLARIFICATION (`type: source-folder-naming`) so the owner can rename.
-5. **No parseable date** → fall back to file mtime, surface a CLARIFICATION suggesting a rename. Never silently drop the file.
+4. **Legacy short date + topic** — `04-29 short topic` → assume current year, midnight UTC. No CLARIFICATION; mtime is the secondary anchor if parsing later turns out wrong.
+5. **No parseable date** → fall back to file mtime silently. Never drop the file. No CLARIFICATION — the naming-tolerance principle (see §2.1) applies: owners and producers may create folders in any layout, the processor proceeds best-effort.
+
+The engine surfaces a `source-folder-naming` CLARIFICATION ONLY when both parsing fails AND mtime is unreliable (e.g. mtime is in the future, or noticeably older than file contents would suggest because the file was moved/copied with metadata reset). Pure naming non-canonicity is not a CLARIFICATION-worthy event — it is a hint about quality, not a blocker.
 
 Chronological order matters: earlier transcripts provide context for later ones —
 within a batch via shared subagent context, across batches via the pre-scan

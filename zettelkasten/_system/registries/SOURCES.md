@@ -41,18 +41,31 @@ sections (e.g. `records`, `records.biometric`).
 ### Layout types
 
 - **`flat-md`** — files live directly at `inbox/{id}/*.md`. One file = one item. The file's mtime or filename is the chronological key. Example: hand-written notes, daily Garmin snapshots.
-- **`dir-per-item`** — each item is its own folder: `inbox/{id}/{folder}/transcript.md`. The folder name carries the timestamp / topic. Example: voice-note exports without summary.
-- **`dir-with-summary`** — same shape as `dir-per-item`, but the source MAY also produce `transcript_with_summary.md` next to `transcript.md`. The processor prefers the `_with_summary` variant when present and falls back to plain `transcript.md` otherwise. Example: Plaud, DJI mic, any AI-summarising recorder.
+- **`dir-per-item`** — each item is its own folder: `inbox/{id}/{folder}/transcript.md`. The folder name carries the timestamp / topic. Example: voice-note exports without summary. The single-`*.md` fallback applies (see «Naming tolerance» below) when `transcript.md` is absent.
+- **`dir-with-summary`** — same shape as `dir-per-item`, but the source MAY also produce `transcript_with_summary.md` next to `transcript.md`. The processor prefers the `_with_summary` variant when present, falls back to plain `transcript.md`, then to the single-`*.md` fallback. Example: Plaud, DJI mic, any AI-summarising recorder.
 
 ### Per-item folder naming (dir-per-item / dir-with-summary)
 
-The processor parses the leading timestamp from the folder name. Three forms are supported and may coexist within a single source:
+The processor parses the leading timestamp from the folder name. Forms supported and may coexist within a single source:
 
 1. **Pure ISO** — `2026-04-29T14:09:30Z`
 2. **ISO + topic suffix** — `2026-04-29T14:09:30Z_short topic`
-3. **Date + topic** — `2026-04-29_short-topic` or legacy `04-29 short topic` (short form falls back to current year, last seen, owner-warned via CLARIFICATION when ambiguous).
+3. **Date + topic** — `2026-04-29_short-topic`
+4. **Legacy / free-form** — `04-29 short topic`, `14-05-2026 19:40`, `2026-05-06_ctp-tms-passkey-tech-recap`, or any other layout an owner / producer creates. Best-effort parse first; if it fails, fall back to file mtime silently. mtime is a safe lower bound for chronological order.
 
-If no timestamp can be parsed, the processor falls back to file mtime and surfaces a CLARIFICATION asking the owner to rename. **Never** silently drops the file.
+### Naming tolerance (universal across all source-types)
+
+Folder names and contained filenames may be created by the owner manually (drag-drop, ad-hoc capture) or by a variety of producer tools (Claude Code `/ztn-recap`, voice recorders exporting under different versions, `kebab-case` renames, etc.). The engine treats both as **best-effort hints**, never as contracts:
+
+1. **Folder naming** — if a folder name doesn't match any pattern above, fall back to file mtime silently. No CLARIFICATION on pure naming non-canonicity.
+2. **File naming inside a subfolder** — if `transcript.md` (and `transcript_with_summary.md` for `dir-with-summary`) is absent but a single `*.md` exists, take it. No CLARIFICATION.
+3. **CLARIFICATION reserved for genuine quality risk:**
+   - Multiple `*.md` files in one subfolder with no canonical name → which is the real transcript? Picking wrong degrades downstream. → `source-format-anomaly`.
+   - Missing summary-delimiter inside a file actually named `transcript_with_summary.md` → summary contract violation, downstream consumers rely on it. → `source-format-anomaly`.
+   - Folder name parsed to a date that contradicts mtime in a way mtime cannot resolve (e.g. parsed-date in the future, or mtime preserved from a copy long after the content). → `source-folder-naming`.
+4. **Producer-controlled source-types** (`plaud`, `garmin`) typically emit canonical names; deviations may signal a producer bug. The right place to catch producer drift is `/ztn:lint` heuristics on the source itself, not the inbox scanner. Pure naming non-canonicity is never a blocker.
+
+The principle: **never block on naming**. Naming is a hint; mtime + content classify everything else. CLARIFICATIONs only fire when the engine would otherwise have to guess at the cost of correctness.
 
 For metric-day family the filename is canonical `YYYY-MM-DD.md` — one file per calendar day.
 

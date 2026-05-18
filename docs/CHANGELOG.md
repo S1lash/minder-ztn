@@ -2,6 +2,52 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.27.0 — Source naming tolerance (universal)
+
+### What changed
+
+The `/ztn:process` inbox scanner now treats folder names and contained
+filenames as **best-effort hints**, not contracts. Across every source-
+type (`plaud`, `garmin`, `claude-sessions`, manual drop-ins, …) the
+processor accepts whatever the owner or producer drops in:
+
+- Folder names that don't match the ISO / date / topic patterns fall
+  back to file mtime silently — no CLARIFICATION.
+- A subfolder containing a single `*.md` with a non-canonical filename
+  is taken as-is (applies to `dir-per-item` and the new third
+  fallback step in `dir-with-summary`).
+- CLARIFICATIONs are reserved for cases where the engine would
+  otherwise have to guess at the cost of correctness: multiple `*.md`
+  files in one subfolder with no canonical name, missing summary-
+  delimiter inside a file actually named `transcript_with_summary.md`,
+  or a parsed folder-date that contradicts mtime in a way mtime can't
+  resolve.
+
+This removes friction for owner-driven flows (ad-hoc capture, manual
+folder creation, `/ztn-recap` exports across Claude Code versions that
+produce non-canonical filenames like `TECH-RECAP.md`) without weakening
+the producer-drift signal (the right place to catch a producer suddenly
+emitting weird names is `/ztn:lint` heuristics on the source itself,
+not the inbox scanner).
+
+### Affected files
+
+- `integrations/claude-code/skills/ztn-process/SKILL.md` — §2.1
+  «Naming tolerance» blockquote + relaxed `dir-per-item` /
+  `dir-with-summary` scan rules; §2.3 folder-name parsing drops the
+  CLARIFICATION on legacy / free-form names.
+- `zettelkasten/_system/registries/SOURCES.template.md` — new spec
+  section «Naming tolerance (universal across all source-types)»;
+  `dir-per-item` / `dir-with-summary` Layout descriptions extended.
+
+### Compatibility
+
+Backward-compatible relaxation. Strict-canonical-name producers
+(`plaud`, `garmin`) continue to emit canonical names — no change to
+producer output. Friends running older `/ztn:process` will keep
+seeing CLARIFICATIONs on free-form folder names until they sync
+this version via `/ztn:update`.
+
 ## 0.25.0 — Scheduler single-commit + Cloud Routines delivery
 
 ### What changed
