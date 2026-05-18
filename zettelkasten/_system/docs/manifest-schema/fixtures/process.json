@@ -187,6 +187,12 @@
         "related_concepts": [
           "deep_work"
         ]
+      },
+      {
+        "name": "manifest_schema_evolution",
+        "type": "technical",
+        "subtype": null,
+        "related_concepts": []
       }
     ]
   },

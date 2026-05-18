@@ -105,6 +105,105 @@ TIER1_CREATE_UPDATE_KEYS: frozenset[str] = frozenset({
 })
 TIER1_UPSERT_KEYS: frozenset[str] = frozenset({"people", "projects"})
 
+# Tier 2 subsection keys (per manifest-schema/v2.json
+# tier2_objects_section): each is an object `{upserts: [...]}` of
+# tier2_typed_object_entry / tier2_lens_observation_entry. The
+# /ztn:process accumulator occasionally drops these to bare arrays
+# (mirroring the tier1 shorthand bug). The normaliser coerces both
+# empty and non-empty bare arrays to the canonical envelope.
+TIER2_SUBSECTION_KEYS: frozenset[str] = frozenset({
+    "inventory", "wardrobe", "content_candidates", "lens_observation",
+    "tasks", "ideas", "events", "decisions", "content",
+    "lens-observation",
+})
+
+# Legacy concept-type aliases — historical /ztn:process emissions used
+# wider vocabulary than the schema's 17-value enum. Owner-confirmed
+# mapping; original value is preserved under section_extras.legacy_type
+# so the audit chain stays recoverable. Types NOT in this map and NOT
+# in the enum pass through untouched — the schema validator will flag
+# them so visibility is preserved (no silent re-mapping).
+LEGACY_CONCEPT_TYPE_ALIASES: dict[str, str] = {
+    "technical_concept": "technical",
+    "pattern": "technical",
+    "process": "theme",
+    "concept": "theme",
+    "technique": "skill",
+    "system": "theme",
+    "policy": "decision",
+    "decision_pattern": "decision",
+    "engineering_pattern": "technical",
+    "engineering_task": "technical",
+    "project_concept": "theme",
+    "personal_insight": "idea",
+    "career_pattern": "theme",
+    "tech_component": "tool",
+    "tech_concept": "technical",
+    "tech_standard": "technical",
+}
+
+# Legacy tier2.tasks → tier1.tasks relocation. Owner tasks belong in
+# tier1_objects.tasks (per ARCHITECTURE.md three-tier model). The
+# /ztn:process accumulator historically misrouted them under
+# tier2_objects.tasks (tier2 is for typed registries: inventory,
+# wardrobe, lens-observation). Producer relocates with
+# title-derivation from id and ownership mapping from legacy `type`.
+TIER2_TO_TIER1_OWNERSHIP_MAP: dict[str, str] = {
+    "action": "MINE",
+    "delegate": "DELEGATED",
+    "delegated": "DELEGATED",
+    "waiting": "WAITING",
+}
+
+CONCEPT_TYPE_ENUM: frozenset[str] = frozenset({
+    "theme", "tool", "decision", "idea", "event", "organization",
+    "skill", "technical", "location", "emotion", "goal", "value",
+    "preference", "constraint", "algorithm", "fact", "other",
+})
+
+# Folder-prefix → SOURCES.md source_type inference for the
+# `sources_processed` coercion. Bare-string entries from the
+# Claude-driven accumulator are wrapped into structured
+# `source_entry` objects with source_type inferred from the path. Keys
+# are checked longest-prefix first; unmatched paths fall through to
+# `unknown` (counted in stats).
+SOURCE_TYPE_PREFIX_MAP: tuple[tuple[str, str], ...] = (
+    ("_sources/processed/garmin/", "garmin-daily"),
+    ("_sources/processed/plaud/", "plaud-transcript"),
+    ("_sources/processed/claude-sessions/", "claude-session"),
+)
+
+# Privacy-trio defaults. Applied when any of origin / audience_tags /
+# is_sensitive is missing on an entity-list entry (see
+# ENTITY_LIST_PARENTS). Conservative-safe — per ENGINE_DOCTRINE §3.8.
+PRIVACY_TRIO_DEFAULTS: dict = {
+    "origin": "personal",
+    "audience_tags": [],
+    "is_sensitive": False,
+}
+
+# Where in the manifest tree do we inject the privacy trio when it's
+# missing? Only on entity-list entries: each tuple is
+# (parent_dotted_path_suffix, child_key_under_parent). The
+# walk_and_normalise function checks `path` against these to decide
+# whether to inject. Top-level keys and non-entity dicts are skipped.
+ENTITY_LIST_PARENT_PATHS: frozenset[str] = frozenset({
+    # records / knowledge_notes / hubs entries
+    "$.records.created", "$.records.updated",
+    "$.knowledge_notes.created", "$.knowledge_notes.updated",
+    "$.hubs.created", "$.hubs.updated",
+    # tier1_objects.{type}.upserts / created / updated
+    "$.tier1_objects.tasks.created", "$.tier1_objects.tasks.updated",
+    "$.tier1_objects.ideas.created", "$.tier1_objects.ideas.updated",
+    "$.tier1_objects.events.created", "$.tier1_objects.events.updated",
+    "$.tier1_objects.decisions.created", "$.tier1_objects.decisions.updated",
+    "$.tier1_objects.content.created", "$.tier1_objects.content.updated",
+    "$.tier1_objects.people.upserts",
+    "$.tier1_objects.people.created", "$.tier1_objects.people.updated",
+    "$.tier1_objects.projects.upserts",
+    "$.tier1_objects.projects.created", "$.tier1_objects.projects.updated",
+})
+
 
 class ManifestValidationError(Exception):
     """Raised on structural failures that the autonomous-resolution
@@ -331,6 +430,34 @@ def process_concepts_upserts(
             })
             entry["name"] = norm_name
 
+        raw_type = entry.get("type")
+        if isinstance(raw_type, str) and raw_type not in CONCEPT_TYPE_ENUM:
+            mapped = LEGACY_CONCEPT_TYPE_ALIASES.get(raw_type)
+            if mapped is not None:
+                extras = entry.get("section_extras")
+                if not isinstance(extras, dict):
+                    extras = {}
+                extras["legacy_type"] = raw_type
+                entry["section_extras"] = extras
+                entry["type"] = mapped
+                events.append({
+                    "fix_id": "concept-type-legacy-alias-autofix",
+                    "field_path": f"{path_prefix}[{i}].type",
+                    "before": raw_type, "after": mapped,
+                })
+            else:
+                # Non-mutating: surfaces the unknown type but leaves
+                # the value as-is. Tagged `mutation: false` so
+                # idempotence tests can filter on `mutation: true`
+                # without losing visibility across passes.
+                events.append({
+                    "fix_id": "concept-type-unknown-coercion-warning",
+                    "field_path": f"{path_prefix}[{i}].type",
+                    "before": raw_type, "after": raw_type,
+                    "reason": "not-in-enum-and-no-alias",
+                    "mutation": False,
+                })
+
         sub = entry.get("subtype")
         if sub is not None and sub != "":
             sub_norm = normalize_concept_name(sub) if isinstance(sub, str) else None
@@ -364,28 +491,517 @@ def process_concepts_upserts(
     return kept
 
 
-def normalise_empty_section_shapes(data: dict, events: list[dict]) -> None:
-    """Coerce empty-shorthand `[]` to canonical empty-envelope `{}` form
-    on sections where the schema expects an object.
+def infer_source_type(path: str) -> str | None:
+    """Return the SOURCES.md source_type for a `_sources/processed/...`
+    path, or None if no prefix matches. Conservative — callers map
+    None to `unknown` and bump the stats counter.
+    """
+    if not isinstance(path, str):
+        return None
+    for prefix, source_type in SOURCE_TYPE_PREFIX_MAP:
+        if path.startswith(prefix):
+            return source_type
+    return None
+
+
+def coerce_sources_processed(
+    data: dict, events: list[dict], stats: dict,
+) -> None:
+    """Coerce `sources_processed[i]` bare strings into `source_entry`
+    objects with inferred `source_type`. Mixed lists of strings + dicts
+    are handled in place — dict entries pass through untouched.
+
+    Schema requirement: each item must be an object with `path`. Bare
+    strings violate this; the producer accumulator occasionally emits
+    raw paths instead of structured entries.
+    """
+    raw = data.get("sources_processed")
+    if not isinstance(raw, list):
+        return
+    coerced: list = []
+    unknown = 0
+    for i, item in enumerate(raw):
+        if isinstance(item, dict):
+            coerced.append(item)
+            continue
+        if isinstance(item, str):
+            source_type = infer_source_type(item)
+            if source_type is None:
+                source_type = "unknown"
+                unknown += 1
+            new_entry = {
+                "path": item,
+                "source_type": source_type,
+                "section_extras": {},
+            }
+            coerced.append(new_entry)
+            events.append({
+                "fix_id": "sources-processed-coerce-autofix",
+                "field_path": f"$.sources_processed[{i}]",
+                "before": item, "after": new_entry,
+                "reason": "bare-string-wrapped",
+            })
+            continue
+        # Unknown shape — record a coercion warning and skip.
+        events.append({
+            "fix_id": "sources-processed-drop-autofix",
+            "field_path": f"$.sources_processed[{i}]",
+            "before": item, "after": None,
+            "reason": "unsupported-shape",
+        })
+        warnings = stats.setdefault("coercion_warnings", [])
+        new_warning = {
+            "field_path": f"$.sources_processed[{i}]",
+            "shape": type(item).__name__,
+        }
+        if new_warning not in warnings:
+            warnings.append(new_warning)
+    data["sources_processed"] = coerced
+    if unknown:
+        stats["source_type_inferred_unknown"] = (
+            stats.get("source_type_inferred_unknown", 0) + unknown
+        )
+
+
+def coerce_sensitive_entities(
+    data: dict, events: list[dict], stats: dict,
+) -> None:
+    """Coerce legacy `sensitive_entities[i]` shape `{note_id, reason}` →
+    canonical `{id, kind, reason}`. The schema (manifest-schema/v2.json
+    `sensitive_entity_entry`) requires `kind`; `note_id` was the
+    historical synonym for `id` when the entity was always a knowledge
+    note. Modern manifests carry mixed kinds (record / note / hub /
+    task / event / ...), so `kind` is now explicit.
+
+    Idempotent: items already in canonical shape pass through. Items
+    with unknown legacy keys surface a coercion warning and are left
+    in place so the validator can flag them downstream.
+    """
+    raw = data.get("sensitive_entities")
+    if not isinstance(raw, list):
+        return
+    out: list = []
+    for i, item in enumerate(raw):
+        if not isinstance(item, dict):
+            out.append(item)
+            continue
+        if "note_id" in item and "id" not in item:
+            new_entry: dict = {
+                "id": item["note_id"],
+                "kind": "note",
+            }
+            if "reason" in item:
+                new_entry["reason"] = item["reason"]
+            for key, value in item.items():
+                if key in ("note_id", "id", "kind", "reason"):
+                    continue
+                new_entry[key] = value
+            extras = new_entry.get("section_extras")
+            if not isinstance(extras, dict):
+                extras = {}
+            extras["legacy_note_id_field"] = True
+            new_entry["section_extras"] = extras
+            out.append(new_entry)
+            events.append({
+                "fix_id": "sensitive-entities-note-id-coerce-autofix",
+                "field_path": f"$.sensitive_entities[{i}]",
+                "before": item, "after": new_entry,
+                "reason": "legacy-note-id-field",
+            })
+            continue
+        if "id" not in item and "kind" not in item:
+            # Unknown legacy shape — surface coercion warning, pass
+            # through. The schema validator downstream will flag the
+            # missing `kind`, preserving visibility.
+            events.append({
+                "fix_id": "sensitive-entities-unknown-shape-warning",
+                "field_path": f"$.sensitive_entities[{i}]",
+                "before": item, "after": item,
+                "reason": "unknown-legacy-shape",
+                "mutation": False,
+            })
+            warnings = stats.setdefault("coercion_warnings", [])
+            new_warning = {
+                "field_path": f"$.sensitive_entities[{i}]",
+                "shape": "unknown-keys",
+                "keys": sorted(item.keys()),
+            }
+            # Dedupe — re-running on the same input must not grow stats.
+            if new_warning not in warnings:
+                warnings.append(new_warning)
+        out.append(item)
+    data["sensitive_entities"] = out
+
+
+def _derive_task_title_from_id(task_id: str) -> str:
+    """`task-pay-by-bank-tink-communicate` → "Pay by bank tink communicate".
+
+    Mirrors the hand-patch heuristic used to retrofit legacy batches:
+    strip `task-` prefix, kebab → space, capitalise first letter only.
+    The result is a human-readable placeholder; the owner can rename
+    later via the task-manager surface. Conservative-safe — never
+    fails, even on degenerate ids.
+    """
+    if not isinstance(task_id, str):
+        return "Untitled task"
+    stem = task_id
+    if stem.startswith("task-"):
+        stem = stem[len("task-"):]
+    stem = stem.replace("-", " ").strip()
+    if not stem:
+        return "Untitled task"
+    return stem.capitalize()
+
+
+def relocate_tier2_misplaced_sections(
+    data: dict, events: list[dict], stats: dict,
+) -> None:
+    """Three legacy patterns under `tier2_objects` get reshaped here:
+
+    1. `tier2_objects.tasks.upserts[]` items without `name` (the tier2
+       typed-object marker) but with `id` (the tier1 task marker) →
+       relocate to `tier1_objects.tasks.created[]` with title
+       derivation + ownership mapping. The whole `tier2_objects.tasks`
+       subsection is removed once empty.
+    2. `tier2_objects.events.upserts[]` items lacking the required
+       tier2 typed-object trio (id + type + name) → drop into
+       `section_extras.legacy_tier2_drop` on the manifest root to
+       preserve audit. Genuine tier2 events (with the trio) stay.
+    3. `tier2_objects.people_candidates` — deprecated section. Always
+       preserved under `section_extras.legacy_tier2_drop` and removed
+       from tier2_objects.
+
+    Idempotent: re-running on already-relocated input produces no
+    further events (the relocated tier1 items carry
+    `section_extras.legacy_origin = "tier2_objects.tasks"`; the
+    detector keys off the tier2 presence, not the tier1 marker).
+    """
+    tier2 = data.get("tier2_objects")
+    if not isinstance(tier2, dict):
+        return
+
+    tasks_section = tier2.get("tasks")
+    if isinstance(tasks_section, dict):
+        upserts = tasks_section.get("upserts")
+        if isinstance(upserts, list) and upserts:
+            misplaced: list[dict] = []
+            genuine: list = []
+            for item in upserts:
+                if (
+                    isinstance(item, dict)
+                    and "id" in item
+                    and "name" not in item
+                ):
+                    misplaced.append(item)
+                else:
+                    genuine.append(item)
+            if misplaced:
+                created_entries: list[dict] = []
+                for task in misplaced:
+                    task_id = task.get("id", "unknown")
+                    new_task: dict = {
+                        "id": task_id,
+                        "title": _derive_task_title_from_id(task_id),
+                        "origin": PRIVACY_TRIO_DEFAULTS["origin"],
+                        "audience_tags": list(
+                            PRIVACY_TRIO_DEFAULTS["audience_tags"]
+                        ),
+                        "is_sensitive": PRIVACY_TRIO_DEFAULTS["is_sensitive"],
+                    }
+                    legacy_type = task.get("type")
+                    if isinstance(legacy_type, str):
+                        new_task["ownership"] = (
+                            TIER2_TO_TIER1_OWNERSHIP_MAP.get(
+                                legacy_type, "MINE",
+                            )
+                        )
+                    else:
+                        new_task["ownership"] = "MINE"
+                    due = task.get("due")
+                    if due is not None:
+                        new_task["deadline"] = due
+                    source_path = task.get("note") or task.get("source")
+                    if isinstance(source_path, str) and source_path:
+                        new_task["source_record_path"] = source_path
+                    extras: dict = {
+                        "legacy_origin": "tier2_objects.tasks",
+                    }
+                    if legacy_type is not None:
+                        extras["legacy_type"] = legacy_type
+                    assignee = task.get("assignee")
+                    if assignee is not None:
+                        extras["assignee"] = assignee
+                    owner_field = task.get("owner")
+                    if (
+                        owner_field is not None
+                        and owner_field != "owner"
+                    ):
+                        extras["legacy_owner"] = owner_field
+                    new_task["section_extras"] = extras
+                    created_entries.append(new_task)
+
+                tier1 = data.setdefault("tier1_objects", {})
+                if not isinstance(tier1, dict):
+                    tier1 = {}
+                    data["tier1_objects"] = tier1
+                tier1_tasks = tier1.get("tasks")
+                if not isinstance(tier1_tasks, dict):
+                    tier1_tasks = {"created": [], "updated": []}
+                    tier1["tasks"] = tier1_tasks
+                created_list = tier1_tasks.setdefault("created", [])
+                if not isinstance(created_list, list):
+                    created_list = []
+                    tier1_tasks["created"] = created_list
+                tier1_tasks.setdefault("updated", [])
+                created_list.extend(created_entries)
+                events.append({
+                    "fix_id": "tier2-tasks-relocated-to-tier1",
+                    "field_path": "$.tier2_objects.tasks.upserts",
+                    "before_len": len(misplaced),
+                    "after": {
+                        "tier1_created_added": len(created_entries),
+                    },
+                })
+
+                if genuine:
+                    tasks_section["upserts"] = genuine
+                else:
+                    tier2.pop("tasks", None)
+
+    events_section = tier2.get("events")
+    if isinstance(events_section, dict):
+        ev_upserts = events_section.get("upserts")
+        if isinstance(ev_upserts, list) and ev_upserts:
+            unmappable: list = []
+            genuine_events: list = []
+            for item in ev_upserts:
+                if (
+                    isinstance(item, dict)
+                    and "id" in item
+                    and "type" in item
+                    and "name" in item
+                ):
+                    genuine_events.append(item)
+                else:
+                    unmappable.append(item)
+            if unmappable:
+                extras_root = data.setdefault("section_extras", {})
+                if not isinstance(extras_root, dict):
+                    extras_root = {}
+                    data["section_extras"] = extras_root
+                legacy_drop = extras_root.setdefault(
+                    "legacy_tier2_drop", {},
+                )
+                if not isinstance(legacy_drop, dict):
+                    legacy_drop = {}
+                    extras_root["legacy_tier2_drop"] = legacy_drop
+                bucket = legacy_drop.setdefault("events", [])
+                if not isinstance(bucket, list):
+                    bucket = []
+                    legacy_drop["events"] = bucket
+                bucket.extend(unmappable)
+                events.append({
+                    "fix_id": "tier2-events-preserved-as-legacy",
+                    "field_path": "$.tier2_objects.events.upserts",
+                    "before_len": len(unmappable),
+                    "after": {
+                        "legacy_tier2_drop_added": len(unmappable),
+                    },
+                    "reason": "missing-id-type-name-triple",
+                })
+                if genuine_events:
+                    events_section["upserts"] = genuine_events
+                else:
+                    tier2.pop("events", None)
+
+    people_candidates = tier2.get("people_candidates")
+    if people_candidates is not None:
+        # Unwrap if normalise_empty_section_shapes already wrapped a
+        # bare list into `{upserts: [...]}` — the deprecated section
+        # has no internal envelope semantics, so we preserve the raw
+        # items list under legacy_tier2_drop.
+        if (
+            isinstance(people_candidates, dict)
+            and "upserts" in people_candidates
+            and isinstance(people_candidates["upserts"], list)
+        ):
+            people_candidates = people_candidates["upserts"]
+        extras_root = data.setdefault("section_extras", {})
+        if not isinstance(extras_root, dict):
+            extras_root = {}
+            data["section_extras"] = extras_root
+        legacy_drop = extras_root.setdefault("legacy_tier2_drop", {})
+        if not isinstance(legacy_drop, dict):
+            legacy_drop = {}
+            extras_root["legacy_tier2_drop"] = legacy_drop
+        legacy_drop["people_candidates"] = people_candidates
+        tier2.pop("people_candidates", None)
+        events.append({
+            "fix_id": "tier2-people-candidates-preserved-as-legacy",
+            "field_path": "$.tier2_objects.people_candidates",
+            "before": "deprecated-section",
+            "after": "$.section_extras.legacy_tier2_drop.people_candidates",
+            "reason": "section-deprecated",
+        })
+
+
+def _coerce_hub_array(
+    items: list, events: list[dict], path_prefix: str,
+) -> dict:
+    """Bucket a non-empty hubs array into `{created: [], updated: []}`.
+    Items with `state: "created"` go to created; everything else
+    (including no-state) goes to updated.
+    """
+    created: list = []
+    updated: list = []
+    for i, item in enumerate(items):
+        if isinstance(item, dict) and item.get("state") == "created":
+            created.append(item)
+        else:
+            updated.append(item)
+    events.append({
+        "fix_id": "hubs-nonempty-shape-autofix",
+        "field_path": path_prefix,
+        "before_len": len(items),
+        "after": {"created_len": len(created), "updated_len": len(updated)},
+    })
+    return {"created": created, "updated": updated}
+
+
+def _coerce_created_updated_array(
+    items: list, events: list[dict], path_prefix: str, fix_id: str,
+) -> dict:
+    """Bucket a non-empty bare array of entries into `{created, updated}`.
+    Items with `state: "created"` go to created; everything else
+    (including no-state) goes to updated. Used for records /
+    knowledge_notes when the producer emitted a flat array.
+    """
+    created: list = []
+    updated: list = []
+    for item in items:
+        if isinstance(item, dict) and item.get("state") == "created":
+            created.append(item)
+        else:
+            updated.append(item)
+    events.append({
+        "fix_id": fix_id,
+        "field_path": path_prefix,
+        "before_len": len(items),
+        "after": {"created_len": len(created), "updated_len": len(updated)},
+    })
+    return {"created": created, "updated": updated}
+
+
+def _coerce_tier2_subsection_array(
+    items: list, events: list[dict], path_prefix: str,
+) -> dict:
+    """Wrap a non-empty Tier 2 subsection bare array into `{upserts: [...]}`.
+    Items pass through unchanged — Tier 2 entries are owner-shaped; the
+    schema only requires id/type/name at the entry level, and the
+    surrounding envelope is the producer-side bug we are fixing here.
+    """
+    upserts: list = list(items)
+    events.append({
+        "fix_id": "tier2-nonempty-shape-autofix",
+        "field_path": path_prefix,
+        "before_len": len(items),
+        "after": {"upserts_len": len(upserts)},
+    })
+    return {"upserts": upserts}
+
+
+def _coerce_upserts_array(
+    items: list, events: list[dict], path_prefix: str, stats: dict,
+) -> dict:
+    """Wrap a non-empty people/projects array into `{upserts: [...]}`.
+    Bare-string items (`"maxim-goncharov"`) are wrapped as
+    `{"id": <string>}` before being pushed into upserts. Dict items
+    pass through. Anything else is logged as a coercion warning and
+    dropped.
+    """
+    upserts: list = []
+    for i, item in enumerate(items):
+        if isinstance(item, dict):
+            upserts.append(item)
+        elif isinstance(item, str):
+            upserts.append({"id": item})
+            events.append({
+                "fix_id": "tier1-bare-string-wrap-autofix",
+                "field_path": f"{path_prefix}[{i}]",
+                "before": item, "after": {"id": item},
+            })
+        else:
+            events.append({
+                "fix_id": "tier1-upserts-drop-autofix",
+                "field_path": f"{path_prefix}[{i}]",
+                "before": item, "after": None,
+                "reason": "unsupported-shape",
+            })
+            warnings = stats.setdefault("coercion_warnings", [])
+            new_warning = {
+                "field_path": f"{path_prefix}[{i}]",
+                "shape": type(item).__name__,
+            }
+            if new_warning not in warnings:
+                warnings.append(new_warning)
+    events.append({
+        "fix_id": "tier1-nonempty-shape-autofix",
+        "field_path": path_prefix,
+        "before_len": len(items),
+        "after": {"upserts_len": len(upserts)},
+    })
+    return {"upserts": upserts}
+
+
+def normalise_empty_section_shapes(
+    data: dict, events: list[dict], stats: dict | None = None,
+) -> None:
+    """Coerce array-shorthand to canonical envelope `{}` form on sections
+    where the schema expects an object — empty AND non-empty.
 
     Why this lives at the producer-side normaliser, not in the schema:
     the manifest schema (manifest-schema/v2.json) is the consumer-facing
     contract — keeping it strict means downstream consumers do not have
     to handle two equivalent representations of "nothing here". The
     /ztn:process accumulator (Claude-driven) sometimes drops to literal
-    `[]` on empty sections; this helper rewrites them to the canonical
-    `{"created": [], "updated": []}` (Tier 1 create-update sections),
-    `{"upserts": []}` (people / projects / concepts / constitution
-    principles), or `{}` (tier2_objects when no Tier 2 entities) before
-    the schema validator runs.
+    `[]` (empty) or `[entity, ...]` (non-empty) on sections that the
+    schema requires as objects. This helper rewrites both forms:
+    - Tier 1 create-update sections → `{"created": [...], "updated": [...]}`
+    - people / projects / concepts / constitution principles → `{"upserts": [...]}`
+    - hubs (`hubs: []` or `hubs: [hub, ...]`) → `{"created": [...], "updated": [...]}`
+    - tier2_objects empty → `{}`; inner empty arrays → `{"upserts": []}`
+
+    For tier 1 create-update non-empty arrays, the bucketing rule is
+    deferred to the owner — we leave them as-is at this layer, since
+    splitting requires per-item create/update knowledge that only the
+    upstream accumulator has (the field is rare in practice; emit it
+    correctly upstream).
 
     Forward-conformant; legacy batches predate the validator baseline
     and stay as-is (append-only).
     """
+    if stats is None:
+        stats = {}
     tier1 = data.get("tier1_objects")
+    if isinstance(tier1, list) and len(tier1) == 0:
+        data["tier1_objects"] = {}
+        events.append({
+            "fix_id": "tier1-empty-shape-autofix",
+            "field_path": "$.tier1_objects",
+            "before": [], "after": {},
+        })
+        tier1 = data["tier1_objects"]
     if isinstance(tier1, dict):
         for key in TIER1_CREATE_UPDATE_KEYS:
-            if isinstance(tier1.get(key), list) and len(tier1[key]) == 0:
+            if key in tier1 and tier1[key] is None:
+                tier1[key] = {"created": [], "updated": []}
+                events.append({
+                    "fix_id": "tier1-null-shape-autofix",
+                    "field_path": f"$.tier1_objects.{key}",
+                    "before": None,
+                    "after": {"created": [], "updated": []},
+                })
+            elif isinstance(tier1.get(key), list) and len(tier1[key]) == 0:
                 tier1[key] = {"created": [], "updated": []}
                 events.append({
                     "fix_id": "tier1-empty-shape-autofix",
@@ -393,13 +1009,58 @@ def normalise_empty_section_shapes(data: dict, events: list[dict]) -> None:
                     "before": [], "after": {"created": [], "updated": []},
                 })
         for key in TIER1_UPSERT_KEYS:
-            if isinstance(tier1.get(key), list) and len(tier1[key]) == 0:
+            if key in tier1 and tier1[key] is None:
                 tier1[key] = {"upserts": []}
                 events.append({
-                    "fix_id": "tier1-empty-shape-autofix",
+                    "fix_id": "tier1-null-shape-autofix",
                     "field_path": f"$.tier1_objects.{key}",
-                    "before": [], "after": {"upserts": []},
+                    "before": None, "after": {"upserts": []},
                 })
+                continue
+            value = tier1.get(key)
+            if isinstance(value, list):
+                if len(value) == 0:
+                    tier1[key] = {"upserts": []}
+                    events.append({
+                        "fix_id": "tier1-empty-shape-autofix",
+                        "field_path": f"$.tier1_objects.{key}",
+                        "before": [], "after": {"upserts": []},
+                    })
+                else:
+                    tier1[key] = _coerce_upserts_array(
+                        value, events,
+                        f"$.tier1_objects.{key}", stats,
+                    )
+
+    for section_key, fix_id in (
+        ("records", "records-nonempty-shape-autofix"),
+        ("knowledge_notes", "knowledge-notes-nonempty-shape-autofix"),
+    ):
+        value = data.get(section_key)
+        if isinstance(value, list):
+            if len(value) == 0:
+                data[section_key] = {"created": [], "updated": []}
+                events.append({
+                    "fix_id": fix_id.replace("nonempty", "empty"),
+                    "field_path": f"$.{section_key}",
+                    "before": [], "after": {"created": [], "updated": []},
+                })
+            else:
+                data[section_key] = _coerce_created_updated_array(
+                    value, events, f"$.{section_key}", fix_id,
+                )
+
+    hubs = data.get("hubs")
+    if isinstance(hubs, list):
+        if len(hubs) == 0:
+            data["hubs"] = {"created": [], "updated": []}
+            events.append({
+                "fix_id": "hubs-empty-shape-autofix",
+                "field_path": "$.hubs",
+                "before": [], "after": {"created": [], "updated": []},
+            })
+        else:
+            data["hubs"] = _coerce_hub_array(hubs, events, "$.hubs")
 
     tier2 = data.get("tier2_objects")
     if isinstance(tier2, list) and len(tier2) == 0:
@@ -411,15 +1072,29 @@ def normalise_empty_section_shapes(data: dict, events: list[dict]) -> None:
         })
     elif isinstance(tier2, dict):
         for type_key, value in list(tier2.items()):
-            if isinstance(value, list) and len(value) == 0:
-                tier2[type_key] = {"upserts": []}
-                events.append({
-                    "fix_id": "tier2-empty-shape-autofix",
-                    "field_path": f"$.tier2_objects.{type_key}",
-                    "before": [], "after": {"upserts": []},
-                })
+            if isinstance(value, list):
+                if len(value) == 0:
+                    tier2[type_key] = {"upserts": []}
+                    events.append({
+                        "fix_id": "tier2-empty-shape-autofix",
+                        "field_path": f"$.tier2_objects.{type_key}",
+                        "before": [], "after": {"upserts": []},
+                    })
+                else:
+                    tier2[type_key] = _coerce_tier2_subsection_array(
+                        value, events,
+                        f"$.tier2_objects.{type_key}",
+                    )
 
     constitution = data.get("constitution")
+    if isinstance(constitution, list) and len(constitution) == 0:
+        data["constitution"] = {}
+        events.append({
+            "fix_id": "constitution-empty-shape-autofix",
+            "field_path": "$.constitution",
+            "before": [], "after": {},
+        })
+        constitution = data["constitution"]
     if isinstance(constitution, dict):
         if isinstance(constitution.get("principles"), list) and len(constitution["principles"]) == 0:
             constitution["principles"] = {"upserts": [], "archived": [], "superseded": []}
@@ -438,6 +1113,28 @@ def normalise_empty_section_shapes(data: dict, events: list[dict]) -> None:
             "field_path": "$.concepts",
             "before": [], "after": {"upserts": []},
         })
+
+
+def inject_privacy_trio_defaults(
+    entry: dict, events: list[dict], path: str,
+) -> None:
+    """If any of the privacy-trio fields is missing on an entity-list
+    entry, inject the conservative-safe default in place.
+
+    Per ENGINE_DOCTRINE §3.8: every Tier 0/1/2 entity carries the trio
+    with `personal / [] / false` defaults. Coercion functions normalise
+    values when present; this fills in absent keys.
+    """
+    for key, default in PRIVACY_TRIO_DEFAULTS.items():
+        if key not in entry:
+            entry[key] = (
+                list(default) if isinstance(default, list) else default
+            )
+            events.append({
+                "fix_id": "privacy-trio-inject-autofix",
+                "field_path": f"{path}.{key}",
+                "before": None, "after": entry[key],
+            })
 
 
 def walk_and_normalise(
@@ -512,10 +1209,27 @@ def walk_and_normalise(
             )
 
     elif isinstance(node, list):
+        inject_trio = path in ENTITY_LIST_PARENT_PATHS
+        derive_hub_path = path in ("$.hubs.created", "$.hubs.updated")
         for i, item in enumerate(node):
+            child_path = f"{path}[{i}]"
+            if inject_trio and isinstance(item, dict):
+                inject_privacy_trio_defaults(item, events, child_path)
+            if (
+                derive_hub_path
+                and isinstance(item, dict)
+                and "path" not in item
+                and isinstance(item.get("id"), str)
+            ):
+                derived = f"5_meta/mocs/{item['id']}.md"
+                item["path"] = derived
+                events.append({
+                    "fix_id": "hub-path-derive-autofix",
+                    "field_path": f"{child_path}.path",
+                    "before": None, "after": derived,
+                })
             walk_and_normalise(
-                item, audience_accept, domain_accept, events,
-                f"{path}[{i}]",
+                item, audience_accept, domain_accept, events, child_path,
             )
 
 
@@ -637,7 +1351,13 @@ def main(argv: list[str] | None = None) -> int:
     domain_accept = set(ALLOWED_DOMAINS) | domain_extensions
 
     events: list[dict] = []
-    normalise_empty_section_shapes(data, events)
+    if not isinstance(data.get("stats"), dict):
+        data["stats"] = {}
+    stats = data["stats"]
+    coerce_sources_processed(data, events, stats)
+    normalise_empty_section_shapes(data, events, stats)
+    relocate_tier2_misplaced_sections(data, events, stats)
+    coerce_sensitive_entities(data, events, stats)
     walk_and_normalise(data, audience_accept, domain_accept, events)
 
     try:

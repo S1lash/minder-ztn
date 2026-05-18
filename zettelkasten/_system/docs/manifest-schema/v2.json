@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ztn:manifest-schema:v2",
+  "$id": "urn:ztn:manifest-schema:v2.2",
   "title": "ZTN engine batch manifest — v2.x",
   "description": "Universal output contract emitted by every ZTN engine skill that produces persistent state changes (/ztn:process, /ztn:maintain, /ztn:lint, /ztn:agent-lens). Single shape, distinguished by the top-level `processor` field. SemVer per ARCHITECTURE.md §8.12.2: MAJOR breaks consumers, MINOR additive (new optional fields, sections, entity types). Forward-compat slot `section_extras: jsonb` lives both top-level and per-section. Audience-tag whitelist enforcement happens at the ZTN registry layer (lint scan A.7 against AUDIENCES.md, owner-extensible per tenant) — this schema enforces type only. Concept-name format conformance is producer-side guarantee (ZTN normalisers in `_system/scripts/_common.py`); this schema does not re-validate the regex. Privacy trio (`origin`, `audience_tags`, `is_sensitive`) is required-slot on every Tier 0/1/2 entity emission with conservative-safe defaults applied at emission time.",
 
@@ -110,11 +110,11 @@
     },
     "concept_type_enum": {
       "type": "string",
-      "description": "Concept type. ZTN-emitted manifests deliberately exclude `person` and `project` from `concepts.upserts[]` — those have first-class channels (`tier1_objects.people`, `tier1_objects.projects`). The full CONCEPT_NAMING enum is wider (18 values incl. person/project) to cover downstream graph completeness; this schema's emission enum is the 16-value ZTN subset.",
+      "description": "Concept type. ZTN-emitted manifests deliberately exclude `person` and `project` from `concepts.upserts[]` — those have first-class channels (`tier1_objects.people`, `tier1_objects.projects`). The full CONCEPT_NAMING enum is wider (18 values incl. person/project) to cover downstream graph completeness; this schema's emission enum is the 17-value ZTN subset.",
       "enum": [
         "theme", "tool", "decision", "idea", "event", "organization",
-        "skill", "location", "emotion", "goal", "value", "preference",
-        "constraint", "algorithm", "fact", "other"
+        "skill", "technical", "location", "emotion", "goal", "value",
+        "preference", "constraint", "algorithm", "fact", "other"
       ]
     },
 

@@ -67,6 +67,17 @@ covers entirely new sections. Consumers log unknown contents but do
 not fail. This is what lets the engine ship new fields without
 coordinating a major bump.
 
+### SemVer log
+
+The single exception to the «no version history in doc bodies» rule
+(`CONVENTIONS.md`): the schema contract IS its version log. Entries
+describe what changed and why, so a consumer can decide whether to
+update.
+
+| Version | Change | Rationale |
+|---|---|---|
+| 2.2 | Add `technical` to `concepts.upserts[].type` enum (additive). | Producer-emitted category observed in real batches (e.g. `20260514-103200-process`); owner-approved trade-off 2a in resolve-clarifications session 2026-05-18. |
+
 ---
 
 ## What is in the manifest

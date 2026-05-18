@@ -536,12 +536,14 @@ class DomainNormalisationTests(unittest.TestCase):
             tmp = Path(td)
             audiences = _audiences_file(tmp)
             data = _minimal_manifest()
-            data["records"] = [{"domains": ["work", "career", "health"]}]
+            data["records"]["updated"].append(
+                {"domains": ["work", "career", "health"]},
+            )
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
             written = json.loads((tmp / "out.json").read_text())
             self.assertEqual(
-                written["records"][0]["domains"],
+                written["records"]["updated"][0]["domains"],
                 ["work", "career", "health"],
             )
             domain_events = [
@@ -556,11 +558,14 @@ class DomainNormalisationTests(unittest.TestCase):
             tmp = Path(td)
             audiences = _audiences_file(tmp)
             data = _minimal_manifest()
-            data["records"] = [{"domains": ["work", "payments", "career"]}]
+            data["records"]["updated"].append(
+                {"domains": ["work", "payments", "career"]},
+            )
             _, _, err = _run(data, tmp / "out.json", audiences)
             written = json.loads((tmp / "out.json").read_text())
             self.assertEqual(
-                written["records"][0]["domains"], ["work", "career"],
+                written["records"]["updated"][0]["domains"],
+                ["work", "career"],
             )
             self.assertIn("domain-drop-autofix", err)
             self.assertIn("payments", err)
@@ -572,13 +577,14 @@ class DomainNormalisationTests(unittest.TestCase):
             tmp = Path(td)
             audiences = _audiences_file(tmp)
             data = _minimal_manifest()
-            data["records"] = [{
+            data["records"]["updated"].append({
                 "domains": ["work/process", "personal/psychology"],
-            }]
+            })
             _, _, err = _run(data, tmp / "out.json", audiences)
             written = json.loads((tmp / "out.json").read_text())
             self.assertEqual(
-                written["records"][0]["domains"], ["work", "personal"],
+                written["records"]["updated"][0]["domains"],
+                ["work", "personal"],
             )
             self.assertIn("domain-normalise-autofix", err)
 
@@ -587,11 +593,12 @@ class DomainNormalisationTests(unittest.TestCase):
             tmp = Path(td)
             audiences = _audiences_file(tmp)
             data = _minimal_manifest()
-            data["records"] = [{"domains": ["work/learning"]}]
+            data["records"]["updated"].append({"domains": ["work/learning"]})
             _, _, _ = _run(data, tmp / "out.json", audiences)
             written = json.loads((tmp / "out.json").read_text())
             self.assertEqual(
-                written["records"][0]["domains"], ["work", "learning"],
+                written["records"]["updated"][0]["domains"],
+                ["work", "learning"],
             )
 
     def test_extension_accepted(self):
@@ -600,13 +607,16 @@ class DomainNormalisationTests(unittest.TestCase):
             audiences = _audiences_file(tmp)
             domains = _domains_file(tmp, extensions=["gardening"])
             data = _minimal_manifest()
-            data["records"] = [{"domains": ["gardening", "work"]}]
+            data["records"]["updated"].append(
+                {"domains": ["gardening", "work"]},
+            )
             _, _, err = _run(
                 data, tmp / "out.json", audiences, domains=domains,
             )
             written = json.loads((tmp / "out.json").read_text())
             self.assertEqual(
-                written["records"][0]["domains"], ["gardening", "work"],
+                written["records"]["updated"][0]["domains"],
+                ["gardening", "work"],
             )
 
     def test_singular_domain_normalised(self):
@@ -644,10 +654,14 @@ class DomainNormalisationTests(unittest.TestCase):
             tmp = Path(td)
             audiences = _audiences_file(tmp)
             data = _minimal_manifest()
-            data["records"] = [{"domains": ["Work", "work", "WORK"]}]
+            data["records"]["updated"].append(
+                {"domains": ["Work", "work", "WORK"]},
+            )
             _, _, _ = _run(data, tmp / "out.json", audiences)
             written = json.loads((tmp / "out.json").read_text())
-            self.assertEqual(written["records"][0]["domains"], ["work"])
+            self.assertEqual(
+                written["records"]["updated"][0]["domains"], ["work"],
+            )
 
 
 class AtomicWriteTests(unittest.TestCase):
@@ -689,6 +703,814 @@ class AtomicWriteTests(unittest.TestCase):
             self.assertFalse(output.exists())
             self.assertFalse(output.with_suffix(".json.tmp").exists())
         clear_ztn_env()
+
+
+class SourcesProcessedCoercionTests(unittest.TestCase):
+    """Producer-side coercion: bare-string entries in `sources_processed[]`
+    are wrapped as structured `source_entry` objects with inferred
+    source_type per SOURCE_TYPE_PREFIX_MAP.
+    """
+
+    def test_sources_processed_bare_string_coerced(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["sources_processed"] = [
+                "_sources/processed/garmin/2026-05-17/metrics.md",
+                "_sources/processed/plaud/2026-05-18T08:00:00Z/transcript.md",
+                "_sources/processed/claude-sessions/2026-05-18-session.md",
+                "_sources/processed/unknown-folder/foo.md",
+                {"path": "_sources/processed/plaud/already-structured.md",
+                 "source_type": "plaud-transcript"},
+            ]
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            sources = written["sources_processed"]
+            self.assertEqual(len(sources), 5)
+            for entry in sources:
+                self.assertIsInstance(entry, dict)
+                self.assertIn("path", entry)
+            self.assertEqual(sources[0]["source_type"], "garmin-daily")
+            self.assertEqual(sources[1]["source_type"], "plaud-transcript")
+            self.assertEqual(sources[2]["source_type"], "claude-session")
+            self.assertEqual(sources[3]["source_type"], "unknown")
+            self.assertEqual(sources[4]["source_type"], "plaud-transcript")
+            self.assertEqual(
+                written["stats"].get("source_type_inferred_unknown"), 1,
+            )
+            self.assertIn("sources-processed-coerce-autofix", err)
+        clear_ztn_env()
+
+
+class Tier1NonEmptyArrayCoercionTests(unittest.TestCase):
+    def test_tier1_people_nonempty_array_coerced(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["tier1_objects"] = {
+                "people": [
+                    {"id": "alice-smith", "display_name": "Alice Smith"},
+                    {"id": "bob-jones"},
+                ],
+            }
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(
+                {k for k in written["tier1_objects"]["people"]},
+                {"upserts"},
+            )
+            self.assertEqual(
+                [u["id"] for u in written["tier1_objects"]["people"]["upserts"]],
+                ["alice-smith", "bob-jones"],
+            )
+            self.assertIn("tier1-nonempty-shape-autofix", err)
+        clear_ztn_env()
+
+    def test_tier1_projects_nonempty_bare_strings_coerced(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["tier1_objects"] = {
+                "projects": ["minder", "ztn-engine"],
+            }
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            upserts = written["tier1_objects"]["projects"]["upserts"]
+            self.assertEqual(
+                [u["id"] for u in upserts],
+                ["minder", "ztn-engine"],
+            )
+            self.assertIn("tier1-bare-string-wrap-autofix", err)
+        clear_ztn_env()
+
+    def test_hubs_nonempty_array_coerced(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["hubs"] = [
+                {"path": "5_meta/mocs/foo.md", "state": "created",
+                 "origin": "personal", "audience_tags": [],
+                 "is_sensitive": False},
+                {"path": "5_meta/mocs/bar.md",
+                 "origin": "work", "audience_tags": ["work"],
+                 "is_sensitive": False},
+            ]
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(
+                len(written["hubs"]["created"]), 1,
+            )
+            self.assertEqual(
+                len(written["hubs"]["updated"]), 1,
+            )
+            self.assertIn("hubs-nonempty-shape-autofix", err)
+        clear_ztn_env()
+
+
+class PrivacyTrioInjectionTests(unittest.TestCase):
+    def test_privacy_trio_injected_when_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["records"]["created"].append({
+                "path": "_records/meetings/foo.md",
+            })
+            data["knowledge_notes"]["created"].append({
+                "path": "1_projects/foo.md",
+            })
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            rec = written["records"]["created"][0]
+            self.assertEqual(rec["origin"], "personal")
+            self.assertEqual(rec["audience_tags"], [])
+            self.assertEqual(rec["is_sensitive"], False)
+            note = written["knowledge_notes"]["created"][0]
+            self.assertEqual(note["origin"], "personal")
+            self.assertEqual(note["audience_tags"], [])
+            self.assertEqual(note["is_sensitive"], False)
+            self.assertIn("privacy-trio-inject-autofix", err)
+        clear_ztn_env()
+
+    def test_privacy_trio_partial_keys_injected(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            # Only `origin` present; the other two should be injected.
+            data["records"]["created"].append({
+                "path": "_records/meetings/foo.md",
+                "origin": "work",
+            })
+            rc, _, _ = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            rec = written["records"]["created"][0]
+            self.assertEqual(rec["origin"], "work")
+            self.assertEqual(rec["audience_tags"], [])
+            self.assertEqual(rec["is_sensitive"], False)
+        clear_ztn_env()
+
+    def test_privacy_trio_not_injected_at_top_level(self):
+        # Defaults must not leak onto the manifest root.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            rc, _, _ = _run(data, tmp / "out.json", audiences)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertNotIn("origin", written)
+            self.assertNotIn("audience_tags", written)
+            self.assertNotIn("is_sensitive", written)
+        clear_ztn_env()
+
+
+class RecordsKnowledgeNotesBareArrayTests(unittest.TestCase):
+    def test_records_nonempty_bare_array_coerced(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["records"] = [
+                {"id": "r1", "path": "_records/observations/r1.md",
+                 "state": "created"},
+                {"id": "r2", "path": "_records/observations/r2.md"},
+            ]
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertIsInstance(written["records"], dict)
+            self.assertEqual(len(written["records"]["created"]), 1)
+            self.assertEqual(len(written["records"]["updated"]), 1)
+            self.assertEqual(written["records"]["created"][0]["id"], "r1")
+            self.assertEqual(written["records"]["updated"][0]["id"], "r2")
+            self.assertIn("records-nonempty-shape-autofix", err)
+        clear_ztn_env()
+
+    def test_knowledge_notes_nonempty_bare_array_coerced(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["knowledge_notes"] = [
+                {"id": "n1", "path": "1_projects/foo/n1.md"},
+                {"id": "n2", "path": "1_projects/foo/n2.md",
+                 "state": "created"},
+            ]
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertIsInstance(written["knowledge_notes"], dict)
+            self.assertEqual(len(written["knowledge_notes"]["created"]), 1)
+            self.assertEqual(len(written["knowledge_notes"]["updated"]), 1)
+            self.assertIn("knowledge-notes-nonempty-shape-autofix", err)
+        clear_ztn_env()
+
+
+class Tier2SubsectionBareArrayTests(unittest.TestCase):
+    def test_tier2_tasks_with_name_nonempty_bare_array_coerced(self):
+        # Genuine tier2 typed-object task (has `name`) stays in tier2
+        # after envelope coercion. Items lacking `name` get relocated
+        # to tier1 — see Tier2TasksRelocationTests.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["tier2_objects"] = {
+                "tasks": [
+                    {"id": "task-foo", "type": "action",
+                     "name": "Foo task", "note": "20260507-foo"},
+                ],
+            }
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(
+                written["tier2_objects"]["tasks"],
+                {"upserts": [{"id": "task-foo", "type": "action",
+                              "name": "Foo task",
+                              "note": "20260507-foo"}]},
+            )
+            self.assertIn("tier2-nonempty-shape-autofix", err)
+        clear_ztn_env()
+
+    def test_tier2_all_known_subsections_coerced(self):
+        # Parametrise-style: every tier2 subsection accepts bare-array
+        # coercion. Both empty (existing behaviour) and non-empty.
+        subsections = [
+            "inventory", "wardrobe", "content_candidates",
+            "lens_observation", "tasks", "ideas", "events", "decisions",
+            "content", "lens-observation",
+        ]
+        for sub in subsections:
+            with tempfile.TemporaryDirectory() as td:
+                tmp = Path(td)
+                audiences = _audiences_file(tmp)
+                data = _minimal_manifest()
+                data["tier2_objects"] = {
+                    sub: [{"id": f"{sub}-x", "type": "kind", "name": "X"}],
+                }
+                rc, _, _ = _run(
+                    data, tmp / f"out-{sub.replace('-', '_')}.json",
+                    audiences,
+                )
+                self.assertEqual(rc, 0)
+                written = json.loads(
+                    (tmp / f"out-{sub.replace('-', '_')}.json").read_text(),
+                )
+                self.assertIn("upserts", written["tier2_objects"][sub])
+                self.assertEqual(
+                    len(written["tier2_objects"][sub]["upserts"]), 1,
+                )
+            clear_ztn_env()
+
+
+class LegacyConceptTypeAliasTests(unittest.TestCase):
+    def test_legacy_concept_type_aliases_mapped(self):
+        mappings = [
+            ("technical_concept", "technical"),
+            ("pattern", "technical"),
+            ("process", "theme"),
+            ("concept", "theme"),
+            ("technique", "skill"),
+            ("system", "theme"),
+            ("policy", "decision"),
+        ]
+        for legacy, mapped in mappings:
+            with tempfile.TemporaryDirectory() as td:
+                tmp = Path(td)
+                audiences = _audiences_file(tmp)
+                data = _minimal_manifest()
+                data["concepts"]["upserts"].append({
+                    "name": f"sample_{legacy}",
+                    "type": legacy,
+                })
+                rc, _, err = _run(
+                    data, tmp / f"out-{legacy}.json", audiences,
+                )
+                self.assertEqual(rc, 0)
+                written = json.loads(
+                    (tmp / f"out-{legacy}.json").read_text(),
+                )
+                entry = written["concepts"]["upserts"][0]
+                self.assertEqual(entry["type"], mapped)
+                self.assertEqual(
+                    entry["section_extras"]["legacy_type"], legacy,
+                )
+                self.assertIn("concept-type-legacy-alias-autofix", err)
+            clear_ztn_env()
+
+    def test_unknown_concept_type_NOT_silently_remapped(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["concepts"]["upserts"].append({
+                "name": "weird_thing",
+                "type": "totally_unknown_type",
+            })
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            # validate_manifest does not enforce concept enum — schema
+            # does. The emitter passes the unknown type through and
+            # writes a coercion warning.
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            entry = written["concepts"]["upserts"][0]
+            self.assertEqual(entry["type"], "totally_unknown_type")
+            self.assertNotIn(
+                "legacy_type",
+                entry.get("section_extras", {}) or {},
+            )
+            self.assertIn(
+                "concept-type-unknown-coercion-warning", err,
+            )
+        clear_ztn_env()
+
+
+class ConstitutionEmptyArrayCoercionTests(unittest.TestCase):
+    def test_constitution_empty_array_coerced_to_object(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["constitution"] = []
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(written["constitution"], {})
+            self.assertIn("constitution-empty-shape-autofix", err)
+        clear_ztn_env()
+
+
+class HubMissingPathDerivationTests(unittest.TestCase):
+    def test_hub_missing_path_derived(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["hubs"]["updated"].append({
+                "id": "hub-example-topic",
+                "notes_added": 4,
+                "origin": "personal",
+                "audience_tags": [],
+                "is_sensitive": False,
+            })
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            entry = written["hubs"]["updated"][0]
+            self.assertEqual(entry["path"], "5_meta/mocs/hub-example-topic.md")
+            self.assertIn("hub-path-derive-autofix", err)
+        clear_ztn_env()
+
+
+class SensitiveEntitiesCoercionTests(unittest.TestCase):
+    def test_sensitive_entities_note_id_coerced(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["sensitive_entities"] = [
+                {"note_id": "20260506-therapy", "reason": "privacy"},
+            ]
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            entry = written["sensitive_entities"][0]
+            self.assertEqual(entry["id"], "20260506-therapy")
+            self.assertEqual(entry["kind"], "note")
+            self.assertEqual(entry["reason"], "privacy")
+            self.assertNotIn("note_id", entry)
+            self.assertTrue(
+                entry["section_extras"]["legacy_note_id_field"]
+            )
+            self.assertIn(
+                "sensitive-entities-note-id-coerce-autofix", err,
+            )
+        clear_ztn_env()
+
+    def test_sensitive_entities_idempotent(self):
+        # Re-running on already-coerced output emits zero coercion
+        # events for sensitive_entities.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["sensitive_entities"] = [
+                {"note_id": "20260506-therapy", "reason": "privacy"},
+            ]
+            out1 = tmp / "out1.json"
+            rc1, _, _ = _run(data, out1, audiences)
+            self.assertEqual(rc1, 0)
+            first_pass = json.loads(out1.read_text())
+            out2 = tmp / "out2.json"
+            rc2, _, err2 = _run(first_pass, out2, audiences)
+            self.assertEqual(rc2, 0)
+            second_pass = json.loads(out2.read_text())
+            self.assertEqual(first_pass, second_pass)
+            self.assertNotIn(
+                "sensitive-entities-note-id-coerce-autofix", err2,
+            )
+        clear_ztn_env()
+
+    def test_sensitive_entities_unknown_legacy_shape_warned(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["sensitive_entities"] = [
+                {"weird_field": "value", "reason": "x"},
+            ]
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            self.assertIn(
+                "sensitive-entities-unknown-shape-warning", err,
+            )
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(
+                written["sensitive_entities"][0]["weird_field"],
+                "value",
+            )
+            self.assertIn("coercion_warnings", written["stats"])
+        clear_ztn_env()
+
+
+class Tier2TasksRelocationTests(unittest.TestCase):
+    def test_tier2_tasks_relocated_to_tier1(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["tier2_objects"] = {
+                "tasks": {
+                    "upserts": [
+                        {
+                            "id": "task-pay-by-bank-tink-communicate",
+                            "type": "action",
+                            "due": "2026-05-20",
+                            "note": "_records/meetings/20260506-foo.md",
+                            "assignee": "ivan-petrov",
+                        },
+                        {
+                            "id": "task-followup-team",
+                            "type": "delegate",
+                        },
+                    ],
+                },
+            }
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertNotIn(
+                "tasks", written.get("tier2_objects", {}) or {},
+            )
+            created = written["tier1_objects"]["tasks"]["created"]
+            self.assertEqual(len(created), 2)
+            first = created[0]
+            self.assertEqual(
+                first["id"], "task-pay-by-bank-tink-communicate",
+            )
+            self.assertEqual(
+                first["title"], "Pay by bank tink communicate",
+            )
+            self.assertEqual(first["ownership"], "MINE")
+            self.assertEqual(first["deadline"], "2026-05-20")
+            self.assertEqual(
+                first["source_record_path"],
+                "_records/meetings/20260506-foo.md",
+            )
+            self.assertEqual(
+                first["section_extras"]["legacy_origin"],
+                "tier2_objects.tasks",
+            )
+            self.assertEqual(
+                first["section_extras"]["legacy_type"], "action",
+            )
+            self.assertEqual(
+                first["section_extras"]["assignee"], "ivan-petrov",
+            )
+            self.assertEqual(first["origin"], "personal")
+            self.assertEqual(first["audience_tags"], [])
+            self.assertFalse(first["is_sensitive"])
+            second = created[1]
+            self.assertEqual(second["ownership"], "DELEGATED")
+            self.assertIn("tier2-tasks-relocated-to-tier1", err)
+        clear_ztn_env()
+
+    def test_tier2_tasks_with_name_field_NOT_relocated(self):
+        # Genuine tier2 typed-object task (has `name`) stays in tier2.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["tier2_objects"] = {
+                "tasks": {
+                    "upserts": [
+                        {
+                            "id": "task-genuine",
+                            "type": "kind",
+                            "name": "Genuine tier2 task",
+                        },
+                    ],
+                },
+            }
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(
+                written["tier2_objects"]["tasks"]["upserts"][0]["id"],
+                "task-genuine",
+            )
+            tier1_tasks = written.get("tier1_objects", {}).get("tasks")
+            if isinstance(tier1_tasks, dict):
+                # No relocation — created list is whatever empty
+                # envelope existed.
+                for entry in tier1_tasks.get("created", []) or []:
+                    self.assertNotEqual(entry.get("id"), "task-genuine")
+            self.assertNotIn("tier2-tasks-relocated-to-tier1", err)
+        clear_ztn_env()
+
+    def test_tier2_events_unmappable_preserved_in_section_extras(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["tier2_objects"] = {
+                "events": {
+                    "upserts": [
+                        # Missing `type` AND `name` — unmappable.
+                        {"id": "event-foo", "note": "blah"},
+                    ],
+                },
+            }
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertNotIn(
+                "events", written.get("tier2_objects", {}) or {},
+            )
+            preserved = (
+                written["section_extras"]["legacy_tier2_drop"]["events"]
+            )
+            self.assertEqual(len(preserved), 1)
+            self.assertEqual(preserved[0]["id"], "event-foo")
+            self.assertIn("tier2-events-preserved-as-legacy", err)
+        clear_ztn_env()
+
+    def test_tier2_people_candidates_preserved_in_section_extras(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["tier2_objects"] = {
+                "people_candidates": [
+                    {"name": "Old candidate"},
+                ],
+            }
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertNotIn(
+                "people_candidates",
+                written.get("tier2_objects", {}) or {},
+            )
+            preserved = (
+                written["section_extras"]
+                       ["legacy_tier2_drop"]
+                       ["people_candidates"]
+            )
+            self.assertEqual(preserved, [{"name": "Old candidate"}])
+            self.assertIn(
+                "tier2-people-candidates-preserved-as-legacy", err,
+            )
+        clear_ztn_env()
+
+    def test_tier2_relocation_idempotent(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["tier2_objects"] = {
+                "tasks": {
+                    "upserts": [
+                        {"id": "task-foo", "type": "action"},
+                    ],
+                },
+                "events": {
+                    "upserts": [
+                        {"id": "ev-x"},
+                    ],
+                },
+                "people_candidates": [{"name": "X"}],
+            }
+            out1 = tmp / "out1.json"
+            rc1, _, _ = _run(data, out1, audiences)
+            self.assertEqual(rc1, 0)
+            first_pass = json.loads(out1.read_text())
+            out2 = tmp / "out2.json"
+            rc2, _, err2 = _run(first_pass, out2, audiences)
+            self.assertEqual(rc2, 0)
+            second_pass = json.loads(out2.read_text())
+            self.assertEqual(first_pass, second_pass)
+            for fix_id in (
+                "tier2-tasks-relocated-to-tier1",
+                "tier2-events-preserved-as-legacy",
+                "tier2-people-candidates-preserved-as-legacy",
+            ):
+                self.assertNotIn(fix_id, err2)
+        clear_ztn_env()
+
+
+class Phase4LowFindingsTests(unittest.TestCase):
+    def test_idempotence_after_all_new_coercions(self):
+        # Worst-case payload exercising every fix pattern. Re-running
+        # the producer on its own output MUST produce 0 fix events.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = {
+                "batch_id": "20260502-120000",
+                "timestamp": "2026-05-02T12:00:00Z",
+                "format_version": "2.1",
+                "processor": "ztn:process",
+                "sources_processed": [
+                    "_sources/processed/garmin/2026-05-02.md",
+                    {"path": "_sources/processed/plaud/x.md",
+                     "source_type": "plaud-transcript"},
+                ],
+                "records": [
+                    {"path": "_records/meetings/foo.md",
+                     "state": "created"},
+                ],
+                "knowledge_notes": [],
+                "hubs": [
+                    {"id": "hub-foo"},
+                ],
+                "tier1_objects": {
+                    "people": ["alice-x", {"id": "bob-y"}],
+                    "projects": [],
+                    "tasks": [],
+                },
+                "tier2_objects": {
+                    "tasks": {
+                        "upserts": [
+                            {"id": "task-foo", "type": "action"},
+                        ],
+                    },
+                    "events": {
+                        "upserts": [{"id": "ev-x"}],
+                    },
+                    "people_candidates": [{"name": "X"}],
+                },
+                "concepts": {
+                    "upserts": [
+                        {"name": "team_restructuring",
+                         "type": "pattern"},
+                    ],
+                },
+                "constitution": [],
+                "sensitive_entities": [
+                    {"note_id": "n1", "reason": "privacy"},
+                ],
+                "stats": {},
+            }
+            out1 = tmp / "out1.json"
+            rc1, _, _ = _run(data, out1, audiences)
+            self.assertEqual(rc1, 0)
+            first = json.loads(out1.read_text())
+            out2 = tmp / "out2.json"
+            rc2, _, err2 = _run(first, out2, audiences)
+            self.assertEqual(rc2, 0)
+            second = json.loads(out2.read_text())
+            self.assertEqual(first, second)
+            # No autofix / coerce / inject / drop events on second
+            # pass. The only stderr lines acceptable are the AUDIENCES
+            # / DOMAINS warnings emitted during normal startup — those
+            # would carry "warning:" prefix, not fix-event JSON.
+            fix_lines = [
+                ln for ln in err2.splitlines()
+                if ln.strip().startswith("{") and "fix_id" in ln
+            ]
+            self.assertEqual(
+                fix_lines, [], msg=f"unexpected fix events: {fix_lines}",
+            )
+        clear_ztn_env()
+
+    def test_tier1_people_mixed_dict_and_bare_strings(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["tier1_objects"] = {
+                "people": [
+                    {"id": "alice"},
+                    "bob-jones",
+                    {"id": "charlie"},
+                ],
+            }
+            rc, _, _ = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            upserts = written["tier1_objects"]["people"]["upserts"]
+            self.assertEqual(len(upserts), 3)
+            self.assertEqual(upserts[0]["id"], "alice")
+            self.assertEqual(upserts[1]["id"], "bob-jones")
+            self.assertEqual(upserts[2]["id"], "charlie")
+        clear_ztn_env()
+
+    def test_privacy_trio_NOT_injected_at_non_entity_lists(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            # concept_hints at top level (not an entity list).
+            data["concept_hints"] = ["alpha_concept", "beta_concept"]
+            # stats.streaks — arbitrary non-entity list.
+            data["stats"]["streaks"] = [
+                {"id": "s1", "len": 4},
+                {"id": "s2", "len": 9},
+            ]
+            rc, _, _ = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(
+                written["concept_hints"],
+                ["alpha_concept", "beta_concept"],
+            )
+            for streak in written["stats"]["streaks"]:
+                self.assertNotIn("origin", streak)
+                self.assertNotIn("audience_tags", streak)
+                self.assertNotIn("is_sensitive", streak)
+        clear_ztn_env()
+
+
+class LegacyConceptTypeAliasCompletenessTests(unittest.TestCase):
+    def test_legacy_concept_type_aliases_complete_set(self):
+        # All 16 alias keys map to a value in the canonical enum.
+        self.assertEqual(len(e.LEGACY_CONCEPT_TYPE_ALIASES), 16)
+        for legacy_key, mapped in e.LEGACY_CONCEPT_TYPE_ALIASES.items():
+            self.assertIn(
+                mapped, e.CONCEPT_TYPE_ENUM,
+                msg=f"alias {legacy_key!r} maps to {mapped!r}, "
+                    f"not in CONCEPT_TYPE_ENUM",
+            )
+
+
+class Tier1NullShapeTests(unittest.TestCase):
+    def test_tier1_null_section_coerced_to_empty_shape(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["tier1_objects"] = {
+                "tasks": None,
+                "ideas": None,
+                "people": None,
+                "projects": None,
+            }
+            rc, _, err = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text())
+            self.assertEqual(
+                written["tier1_objects"]["tasks"],
+                {"created": [], "updated": []},
+            )
+            self.assertEqual(
+                written["tier1_objects"]["ideas"],
+                {"created": [], "updated": []},
+            )
+            self.assertEqual(
+                written["tier1_objects"]["people"], {"upserts": []},
+            )
+            self.assertEqual(
+                written["tier1_objects"]["projects"], {"upserts": []},
+            )
+            self.assertIn("tier1-null-shape-autofix", err)
+        clear_ztn_env()
+
+
+class DegenerateTaskIdTests(unittest.TestCase):
+    def test_derive_task_title_degenerate_id(self):
+        # Empty stem after strip → "Untitled task".
+        self.assertEqual(e._derive_task_title_from_id("task-"), "Untitled task")
+        self.assertEqual(e._derive_task_title_from_id(""), "Untitled task")
+        self.assertEqual(e._derive_task_title_from_id("task----"), "Untitled task")
+        # Non-string input → "Untitled task".
+        self.assertEqual(e._derive_task_title_from_id(None), "Untitled task")
+        # Valid stem still capitalises normally.
+        self.assertEqual(
+            e._derive_task_title_from_id("task-pay-the-bill"),
+            "Pay the bill",
+        )
 
 
 if __name__ == "__main__":
