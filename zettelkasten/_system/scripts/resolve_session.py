@@ -76,6 +76,7 @@ class SessionState:
     auto_applied: list[dict] = field(default_factory=list)
     constitution_vetoed: list[dict] = field(default_factory=list)
     owner_decisions: list[dict] = field(default_factory=list)
+    extracted_artefacts: list[dict] = field(default_factory=list)
     items_total: int = 0
     items_deferred: int = 0
 
@@ -97,6 +98,8 @@ def _frontmatter(state: SessionState, ended_at: str) -> str:
         "items_owner_modified": sum(1 for d in state.owner_decisions if d.get("decision") == "modify"),
         "items_deferred": state.items_deferred,
         "items_constitution_veto": len(state.constitution_vetoed),
+        "items_extracted_approved": sum(1 for e in state.extracted_artefacts if e.get("decision") == "approved"),
+        "items_extracted_declined": sum(1 for e in state.extracted_artefacts if e.get("decision") in {"declined", "declined_at_diff"}),
     }
     lines = [
         "---",
@@ -165,6 +168,25 @@ def _render_decisions(state: SessionState) -> str:
     return "\n".join(out)
 
 
+def _render_extracted(state: SessionState) -> str:
+    if not state.extracted_artefacts:
+        return ""
+    out = ["## Extracted artefacts (Step 6.5)", ""]
+    for n, entry in enumerate(state.extracted_artefacts, start=1):
+        out.append(f"### #{n} — {entry.get('class', '?')} from {entry.get('q_ref', '?')}")
+        if entry.get("target_path"):
+            out.append(f"**Target:** `{entry['target_path']}`")
+        if entry.get("confidence") is not None:
+            out.append(f"**Confidence (at proposal):** {entry['confidence']}")
+        out.append(f"**Decision:** {entry.get('decision', '?')}")
+        if entry.get("summary"):
+            out.append(f"**Суть:** {entry['summary']}")
+        if entry.get("owner_comment"):
+            out.append(f"**Owner comment:** {entry['owner_comment']}")
+        out.append("")
+    return "\n".join(out)
+
+
 def write_session_log(state: SessionState, base: Path | None = None) -> Path:
     """Flush the in-memory session accumulator to disk.
 
@@ -186,6 +208,9 @@ def write_session_log(state: SessionState, base: Path | None = None) -> Path:
     decisions = _render_decisions(state)
     if decisions:
         body_parts.append(decisions)
+    extracted = _render_extracted(state)
+    if extracted:
+        body_parts.append(extracted)
     path.write_text("\n".join(body_parts), encoding="utf-8")
     return path
 

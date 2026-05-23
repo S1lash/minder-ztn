@@ -46,6 +46,9 @@ version/phase/rename-history narratives.
 - `--no-refresh` — skip Step 9 post-resolution refresh (`/ztn:regen-constitution`,
   `/ztn:maintain`); owner promises to run them manually
 - `--no-save` — skip the Step 9.5 save reminder (commit later by hand)
+- `--no-extraction` — skip Step 6.5 knowledge extraction pass entirely
+  (no proposals surfaced; resolutions applied as usual). Use when owner
+  wants pure queue review without follow-up artefact creation
 - `--auto-mode` — non-interactive entry point dispatched by
   `/ztn:lint` Step 7.5 inline (the lint nightly tick is the timer;
   resolve is the engine). Runs Step A (lens hint ingestion + smart
@@ -1043,6 +1046,180 @@ classes of writes happened during the session (counters, not file lists):
 These are surfaced + acted on by Step 9. The skill no longer leaves
 them as text suggestions in the round-close report.
 
+### Inline extraction evaluation (parallel to resolution)
+
+While processing each owner answer to apply its resolution above, the
+skill ALSO evaluates whether the answer carries durable knowledge worth
+capturing as a separate artefact. This evaluation runs in the same
+processing pass as the resolution itself — no separate LLM call, no
+pre-filter on word count. The running model has the answer fully
+in-context already; extraction is a parallel output of the same
+understanding.
+
+**Skip extraction evaluation entirely (no per-answer work at all) when
+ANY of:**
+- `--no-extraction` flag is set on the run (owner opted out for the
+  whole session — no point evaluating answers Step 6.5 won't show).
+- `--auto-mode` is set (no owner conversation to extract from).
+- `--dry-run` is set (no writes happen anyway).
+
+**Otherwise, skip extraction for an individual answer when ANY of:**
+- Owner gave a pure letter answer (`a`, `b`, `c`, `d`, `e`, `f`) with
+  no accompanying explanation.
+- Owner gave a `skip` / `defer` / `dismiss` with no rationale.
+- Answer is ≤ ~10 words of purely procedural content («сделаю на
+  следующей неделе», «не получилось добраться»).
+- Owner explicitly opted out in the answer («не сохраняй», «не надо
+  фиксировать», «just for context», «забудь это»).
+
+**Otherwise evaluate as candidate for ONE of three classes:**
+
+| Class | What it captures | Target |
+|---|---|---|
+| `knowledge-note` | Architectural / organizational / decision / factual content that exceeds what fits in the Resolution text — explanations of how systems work, why a choice was made, status updates, niche-research conclusions | New file in `1_projects/` / `2_areas/{domain}/` / `3_resources/` per PARA routing; or append-section to existing note if anti-dedup found a match |
+| `soul-update` | Identity / Focus / Active Goals / Values shift the owner just declared («не делаю X», «теперь focus Y», «убираю Z как направление») | `_system/SOUL.md` targeted edit |
+| `people-update` | Factual update about an **existing** person — role change, org transition, relationship status change, biographical fact («Петя теперь в team B», «Маша вышла замуж»). NEW person mentions are NEVER handled by this class — they flow through the existing `people-bare-name` / `person-identity` CLARIFICATION path (raised by `/ztn:process` when transcripts surface unknown names) per doctrine §3.6 «no silent profile creation». | `3_resources/people/{id}.md` profile body edits and/or `PEOPLE.md` row updates (Org, Notes, Recent contexts columns). NEVER creates a new profile file. |
+
+**Do NOT propose:**
+- `principle-candidate` — handled by the global `constitution-capture`
+  hook in CLAUDE.md (fires on triggers (a)/(b)/(c)/(d) during any
+  Claude conversation). Step 6.5 transparency line reports hook fires
+  for owner visibility but does not duplicate the capture path.
+- `hub-context-update` — hub edits flow through `/ztn:maintain` Step 4
+  linkage and lens action hints. Step 6.5 staying out of hub-write
+  territory keeps the linkage layer single-source.
+
+**Anti-dedup before proposing.** For each tentative proposal:
+- If the same information was just written by Step 6 (Resolution text
+  in CLARIFICATIONS_ARCHIVE, thread `Resolution:` field, Class B file
+  edit) → drop, no proposal.
+- For `knowledge-note`: quick check against `_system/views/INDEX.md`
+  for existing notes on the same topic (grep on topic keywords from
+  draft filename). If a close match exists → reframe proposal as
+  «append-section to existing note» with the existing note's path,
+  not a new file.
+
+**Confidence floor: 0.6.** If extraction confidence is below 0.6, drop.
+Owner declines via `n` on diff are cheap; missing a capture is
+expensive — tilt toward proposing, not toward holding back.
+
+**Independence from resolution outcome.** Evaluation considers the
+answer text only, not which resolution action was finally executed.
+A rich `defer` answer with substantive content still produces
+proposals; a one-letter `apply` answer to a Class L item produces
+none.
+
+**Output template — MANDATORY structure in Step 6.** Even when no
+extractions are proposed, the resolution output includes the
+`## Extraction proposals` section explicitly. Format:
+
+```
+## Resolutions applied
+- Q1: {resolution-action} → {target / file touched}
+- Q2: ...
+- ...
+
+## Extraction proposals
+- Q1: {class} — draft path: {path}; confidence: 0.X; one-line суть
+- Q3: {class} + {class}  (multiple proposals for one Q ok)
+- Q2, Q4: (none — purely procedural / already-captured / opt-out)
+```
+
+The empty-section case is written as `(none — all Qs procedural or
+already-captured)` rather than omitting the section. This is a
+force-function: future model invocations cannot silently forget the
+extraction pass; the spec demands the section appears.
+
+Accumulate proposals into in-memory `extracted_artefact_proposals[]`
+for Step 6.5 batch UI.
+
+---
+
+## Step 6.5: Extraction Batch — Present and Apply
+
+**Runs strictly before Step 7 archive.** If owner is interrupted
+mid-6.5, CLARIFICATIONS items are still in `## Open Items`; resume
+re-renders the round, Step 6 re-evaluates, anti-dedup catches
+artefacts already written. State stays recoverable.
+
+**Skip Step 6.5 entirely when:**
+- `--auto-mode` flag is set (auto-mode has no owner conversation to
+  extract from).
+- `--no-extraction` flag is set (owner opted out for the session).
+- `--dry-run` flag is set (preview-only sessions don't write).
+- `extracted_artefact_proposals[]` is empty (silent no-op, no UI
+  noise).
+
+**Transparency line (optional, only when N>0).** Before showing the
+proposal batch, check `_system/state/principle-candidates.jsonl` for
+entries appended since the round started (by mtime / line count
+delta). If N>0, print:
+
+```
+ℹ Constitution-capture hook fired N× during round →
+  {1-line hypothesis per entry}
+  Will surface in next /ztn:lint F.3 weekly aggregation.
+```
+
+When N=0, omit the line entirely. The line is FYI only — no owner
+action expected.
+
+**Batch UI.**
+
+```
+💡 Knowledge extraction — N предложений зафиксировать:
+
+  1. Q{n} → {class}  (conf 0.X)
+     📂 {target path}
+     🧩 {1-2 sentence суть of what the artefact captures}
+     People: {person-ids if relevant}
+
+  2. Q{n} → {class}  (conf 0.X)
+     ...
+
+Какие применить? (y all / n / список номеров «1 3» / per item «1y 2n 3m»)
+```
+
+**Per-item handling.**
+
+| Owner input | Action |
+|---|---|
+| `y` (whole batch) or `1,2,3` (numbers) | For each selected: enter Class B diff gate → owner confirms diff → write file → append entry to `extracted_artefacts[]` log with `decision: approved`. On diff-stage `N` → drop without retry, log `decision: declined_at_diff` |
+| `n` (whole batch) | Drop all proposals, log each as `decision: declined` |
+| `{n}m` (modify one item) | Owner provides 1-line edit instruction (e.g. «не decision, а insight; domain career не work»). Re-draft in place → re-show updated proposal in same batch (next iteration). Further `m` allowed once; second `n` drops |
+| Mixed (`1y 2n 3m`) | Process each per its letter |
+
+**No recursive sub-menus.** `m` is bounded — owner gives one-line
+edit, skill re-drafts once, re-presents. If still wrong → `n` drop.
+Owner can always recreate artefact manually if a complex case needs
+attention.
+
+**Atomicity ordering per approved item.**
+1. Class B diff render.
+2. Owner confirms `[y/N]`.
+3. Write file to disk (knowledge note / SOUL edit / people update).
+4. Append entry to `extracted_artefacts[]` accumulator.
+5. Proceed to next item.
+
+A crash between (3) and (4) leaves the artefact on disk without a log
+entry — recoverable (file is the truth; log is the audit). A crash
+between (1) and (3) leaves nothing on disk. The ordering guarantees
+no «log says written but file missing» state.
+
+**Counter tracking for Step 9 refresh.**
+
+Step 6.5 writes feed into Class C counters from Step 6:
+- `knowledge-note` create → `registry_writes++` (new file under PARA
+  → INDEX needs regen via `/ztn:maintain`)
+- `knowledge-note` append-section → `registry_writes++` (content
+  changed → concept registry needs rebuild)
+- `soul-update` → no counter (SOUL is read directly by other skills;
+  not a derived view)
+- `people-update` → `registry_writes++` (PEOPLE.md changed → INDEX
+  surfaces the row delta on regen)
+
+Step 9.3 then runs `/ztn:maintain` as usual when counter > 0.
+
 ---
 
 ## Step 7: Archive and Clean
@@ -1212,6 +1389,24 @@ If clean → print «Working tree clean — nothing to commit». Exit.
 - **Lock released before any 9.2/9.3/9.5 step.** `/ztn:save` checks
   `.resolve.lock` and would refuse if held; releasing in 9.1 keeps
   the invariant simple regardless of which sub-steps fire.
+- **Extraction evaluation is structural, not optional.** Step 6 output
+  MUST include the `## Extraction proposals` section even when no
+  candidates are surfaced (written as `(none — ...)` with reasoning).
+  This is a force-function preventing silent extraction skips across
+  model invocations.
+- **Extraction stays out of `0_constitution/` and hubs.** Principle
+  candidates flow through the global `constitution-capture` hook;
+  hub edits flow through `/ztn:maintain` linkage and lens action
+  hints. Step 6.5 owns only `knowledge-note` / `soul-update` /
+  `people-update` — three classes, no overlap with other write paths.
+- **Step 6.5 runs strictly before Step 7.** Archive ordering is
+  load-bearing for interruption safety: if owner is interrupted
+  during extraction review, CLARIFICATIONS items are still open and
+  re-running the round re-evaluates with anti-dedup catching
+  already-written artefacts.
+- **Extraction `m` (modify) is bounded — one edit cycle.** Owner gives
+  a 1-line correction, skill re-drafts once. Second wrong answer →
+  drop (`n`). No recursive sub-menus inside the batch UI.
 
 ---
 
@@ -1227,6 +1422,22 @@ Direct writes by this skill (Steps 1–8):
 - `5_meta/mocs/{hub}.md` — open questions / current understanding edits when thread-closure
 - `_system/state/OPEN_THREADS.md` — thread state moves
 - `0_constitution/{type}/{domain}/{slug}.md` — principle accepts (creates only)
+
+Step 6.5 extraction writes (when owner approves a proposal at diff gate):
+- `1_projects/{slug}.md`, `2_areas/{domain}/{slug}.md`,
+  `3_resources/{kind}/{slug}.md` — new `knowledge-note` artefacts
+  created from extraction proposals. PARA routing follows the
+  artefact's domain and project / area / resource nature
+- Existing knowledge notes — append-section when anti-dedup found a
+  close match (`## Update {today}` block at end of body)
+- `_system/SOUL.md` — `soul-update` extraction edits (Identity, Focus,
+  Active Goals zones; never the Values auto-zone)
+- `3_resources/people/{id}.md` — `people-update` profile body edits
+  for EXISTING profiles only (role, org, biographical facts). Never
+  creates new profile files; new-person path stays the
+  `people-bare-name` / `person-identity` CLARIFICATION flow
+- `3_resources/people/PEOPLE.md` — `people-update` row changes (Org,
+  Notes, Recent contexts) for existing rows
 
 Step A direct writes (lens-action handlers + session log):
 - `_system/state/resolve-sessions/{date}-{sid}.md` — per-session log
@@ -1274,3 +1485,16 @@ the pipeline.)
   rollback mechanism.
 - Does not auto-invoke `/ztn:check-content` — content review is a
   separate owner gesture; Step 9.4 only suggests it.
+- Does not write extraction artefacts (knowledge-note / soul-update /
+  people-update) without the Class B diff gate — every Step 6.5
+  approval still shows the full draft before commit.
+- Does not propose principle candidates from owner conversation —
+  global `constitution-capture` hook owns that path; Step 6.5 only
+  surfaces hook fires as transparency, never duplicates capture.
+- Does not edit hubs from extraction — `/ztn:maintain` linkage and
+  lens action hints are the single source of hub writes.
+- Does not loop modify-after-diff. Extraction `m` (modify) accepts
+  one 1-line edit instruction; second wrong answer drops the proposal
+  without recursive sub-menus.
+- Does not run extraction in `--auto-mode` (no owner conversation),
+  `--dry-run` (preview only), or `--no-extraction` (explicit opt-out).
