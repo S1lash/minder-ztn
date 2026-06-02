@@ -69,6 +69,12 @@ Saves the current session as a transcript under
 `/ztn:process`. Suggest after sessions with important decisions or context
 worth preserving.
 
+Adaptive: when a session produced a **verbatim artifact** the owner will reuse
+as-is (toast, speech, letter, post, proposal, spec), the skill can also save it
+exactly to `_sources/inbox/crafted/` — on request (`--crafted` / `--crafted-only`)
+or proactively, with a bidirectional link to the recap. Crafted-only (no recap)
+is valid when only the original matters.
+
 ## Decision check — `/ztn:check-decision` (suggest, do NOT auto-invoke)
 
 Surface this skill when the owner explicitly frames a decision in **values

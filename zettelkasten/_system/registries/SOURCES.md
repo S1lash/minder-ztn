@@ -79,7 +79,7 @@ For metric-day family the filename is canonical `YYYY-MM-DD.md` — one file per
 | voice-notes | `_sources/inbox/voice-notes/` | transcript | dir-per-item | auto | — | Generic voice-note transcripts from any recorder/app. Catch-all for users without a brand-specific source. | active |
 | claude-sessions | `_sources/inbox/claude-sessions/` | transcript | dir-per-item | work | — | Claude Code session recaps captured via `/ztn-recap`. Almost always work-context. | active |
 | notes | `_sources/inbox/notes/` | transcript | flat-md | auto | — | Plain Markdown notes dropped manually into the folder. | active |
-| crafted | `_sources/inbox/crafted/` | transcript | flat-md | auto | describe-me | Hand-written long-form documents processed through the same pipeline. The `describe-me/` subdir holds reference profile material consumed only by `/ztn:bootstrap` — never by `/ztn:process`. | active |
+| crafted | `_sources/inbox/crafted/` | transcript | flat-md | auto | describe-me | Hand-written long-form documents processed through the same pipeline; also the target for verbatim artifacts saved by `/ztn-recap --crafted`. The `describe-me/` subdir holds reference profile material consumed only by `/ztn:bootstrap` — never by `/ztn:process`. | active |
 | garmin | `_sources/inbox/garmin/` | metric-day | flat-md | health | raw | Garmin daily biometric snapshots. One file per calendar day; `raw/` holds full minute-level JSON payloads (skipped by /ztn:process; available as escape hatch for biometric lenses). Inactive until owner wires a Garmin collector — pipeline lies dormant otherwise. | active |
 
 ---

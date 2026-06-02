@@ -64,7 +64,9 @@ universal starter set of sources defined in
 - `claude-sessions/` — Claude Code session recaps captured via
   `/ztn-recap`
 - `notes/` — plain Markdown notes you drop in by hand
-- `crafted/` — hand-written long-form documents
+- `crafted/` — hand-written long-form documents (also where
+  `/ztn-recap --crafted` saves verbatim artifacts like toasts, letters,
+  posts)
 
 If your input does not match any of the starter sources, run
 `/ztn:source-add` after install — it registers a new source-type

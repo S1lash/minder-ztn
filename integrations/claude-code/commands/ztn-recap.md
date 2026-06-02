@@ -1,43 +1,84 @@
 ---
 name: ztn:recap
-description: Summarize current Claude Code session and save as raw source for Zettelkasten processing. Use at end of important sessions.
+description: Summarize current Claude Code session and save as raw source for Zettelkasten processing. Can also save verbatim artifacts (toasts, letters, posts, specs) to crafted/. Use at end of important sessions.
 ---
 
 # /ztn:recap — Session Recap to ZTN
 
-Summarize the current conversation and save it as a raw source file for later processing by `/ztn:process`.
+Capture the current conversation into ZTN raw sources for later processing by `/ztn:process`.
+
+Two kinds of output, chosen adaptively:
+
+- **Recap** → `_sources/inbox/claude-sessions/` — a structured *summary* of the session (decisions, work, insights). Never verbatim.
+- **Crafted artifact** → `_sources/inbox/crafted/` — a *verbatim* standalone piece the owner co-authored and will reuse as-is (toast, speech, letter, post/thread, proposal, manifesto, spec, poem, cover letter). Exact wording is preserved.
+
+The skill picks the right combination for the situation. It never forces an output the user did not ask for or agree to.
 
 ## Arguments: $ARGUMENTS
 
-Optional: topic override or extra tags. If empty, auto-detect from conversation.
+Free-form. Recognised intents (natural language works too — match meaning, not exact flags):
+
+- *(empty)* — recap, and **propose** a crafted artifact only if one clearly exists (see Step 0).
+- `--crafted` / "save the original too" / "и оригинал положи" — recap **plus** crafted artifact.
+- `--crafted-only` / "just save the original" / "только оригинал, без рекапа" — crafted artifact **only**, no recap.
+- `--no-crafted` / "recap only" — recap only; do not propose crafted even if one exists.
+- Anything else — treat as topic override / extra tags.
 
 ## Execution
 
-### 1. Analyze Current Session
+### 0. Decide mode (adaptive)
 
-Review the entire conversation and extract:
-- **Main topic** — what was this session about (1-3 words for folder name)
-- **Category** — Work / Career / Personal (can be multiple)
-- **Key decisions** — what was decided and why
-- **Work done** — code written, files created/modified, research completed
-- **Insights & ideas** — non-obvious things learned or brainstormed
-- **Tasks created** — any follow-ups or TODOs identified
-- **People mentioned** — if any people were discussed
-- **Projects touched** — which projects were worked on
+First honour any explicit intent in `$ARGUMENTS`. If none, decide proactively:
 
-### 2. Determine Metadata
+1. Scan the session for a **crafted artifact**: a self-contained piece of writing whose *exact wording matters* and that the owner will reuse outside this chat. Signals: the owner pasted or iterated on a finished text; asked to "craft / write me a …"; the piece reads as deliverable, not as conversation. Drafts the owner explicitly discarded do not count.
+2. Resolve to one of three modes:
+   - **recap** — no qualifying artifact (default).
+   - **recap + crafted** — a qualifying artifact exists alongside substantial session work.
+   - **crafted-only** — the session was essentially *just* producing the artifact, or the user asked for original-only.
+3. When you detected the artifact yourself (not asked), **state the choice and proceed** — e.g. "Session produced a finished toast; saving it verbatim to crafted/ and a recap alongside." If the user is present and it's ambiguous, ask one short question. Never silently drop a verbatim artifact the owner clearly wants kept, and never silently fabricate one.
 
-- **Date**: today's date (YYYY-MM-DD)
-- **Folder name**: `{YYYY-MM-DD}_{semantic-topic}` (e.g., `2026-04-01_ztn-skills-setup`)
-- **Category tags**: based on content (#Work, #Career, #Personal, #AI, #Coding, etc.)
+**Rule of thumb:** if losing the exact wording would be a loss → crafted. If only the gist matters → recap.
 
-### 3. Create Raw Source File
+### 1. Analyze the session
 
-**Path:** `{{MINDER_ZTN_BASE}}/_sources/inbox/claude-sessions/{folder_name}/transcript.md`
+Extract: main topic (1-3 words for slug), category (Work / Career / Personal — may be multiple), key decisions + rationale, work done (files, research), insights & ideas, tasks / follow-ups, people mentioned, projects touched. For any crafted artifact, also capture its **exact text** and a one-line **context** (what it is, for whom, on what it's grounded).
 
-Create the directory and file.
+### 2. Determine metadata
 
-**Format** (matches other raw_sources):
+- **Date**: today (`YYYY-MM-DD`).
+- **Recap folder**: `{YYYY-MM-DD}_{semantic-topic}` (e.g. `2026-04-01_ztn-skills-setup`).
+- **Crafted file**: `{YYYY-MM-DD}_{semantic-slug}.md` (flat in `crafted/`).
+- **Category tags**: from content (`#Work`, `#Career`, `#Personal`, `#AI`, `#Coding`, …).
+
+### 3. Write the crafted artifact (if mode includes crafted)
+
+**Path:** `{{MINDER_ZTN_BASE}}/_sources/inbox/crafted/{YYYY-MM-DD}_{slug}.md`
+
+**Format** (matches existing crafted sources — header block, no YAML, then the verbatim body):
+
+```markdown
+# {Artifact Title}
+
+**Date**: YYYY-MM-DD
+**Category**: {Personal|Work|Ideas_and_Concepts|…}
+**Tags**: #tag1 #tag2
+**Source session**: `_sources/inbox/claude-sessions/{recap_folder}/transcript.md`   ← omit this line in crafted-only mode
+**Context**: {1-2 sentences — what this is, who it's for, what it's grounded on}
+
+---
+
+{The artifact, VERBATIM. Preserve the owner's exact wording, spelling, punctuation,
+line breaks. If the owner pasted source originals, keep them byte-for-byte. Separate
+distinct pieces with `## ` section headers. Do NOT clean up, paraphrase, or "improve".}
+```
+
+If the artifact draws on existing ZTN notes, add `[[wikilinks]]` in the **Context** line only — never edit the verbatim body.
+
+### 4. Write the recap (if mode includes recap)
+
+**Path:** `{{MINDER_ZTN_BASE}}/_sources/inbox/claude-sessions/{recap_folder}/transcript.md`
+
+**Format:**
 
 ```markdown
 # Claude Session: {Descriptive Title}
@@ -47,60 +88,59 @@ Create the directory and file.
 **Tags**: #claude-session #tag1 #tag2
 **Source**: Claude Code CLI session
 **Project**: {working directory or project name}
-**Duration**: ~{estimated duration}
+**Crafted artifacts**: `_sources/inbox/crafted/{file}.md` — {one line}   ← include only when a crafted file was written this run
 
 ---
 
 ## Summary
 
-{2-3 sentence overview of the entire session}
+{2-3 sentence overview of the session}
 
 ## Key Decisions
 
-- {Decision 1}: {rationale}
-- {Decision 2}: {rationale}
+- {Decision}: {rationale}
 
 ## Work Done
 
-- {What was accomplished — files, features, research}
-- {Concrete outputs with paths if applicable}
+- {What was accomplished — files, features, research, with paths}
 
 ## Insights & Ideas
 
 - 💡 {Non-obvious insight or idea that emerged}
-- 💡 {Another insight}
 
 ## Tasks & Follow-ups
 
-- [ ] {Follow-up task 1}
-- [ ] {Follow-up task 2}
+- [ ] {Follow-up}
 
 ## Key Exchanges
 
-{3-5 most important moments from the conversation — paraphrased, not verbatim.
-Focus on decisions, problems solved, and creative ideas.
-Include enough context for ztn:process to create a rich ZTN note.}
+{3-5 most important moments — paraphrased, not verbatim. Enough context for /ztn:process
+to author a rich note. The verbatim artifact lives in the crafted file, not here.}
 ```
 
-### 4. Confirm
+### 5. Confirm
 
-After creating the file:
-- Show the file path
-- Show a brief preview (first 10 lines)
-- Remind: "Run `/ztn:process` in ZTN session to convert this into a Zettelkasten note"
+- Show the path(s) written (crafted and/or recap).
+- Show a brief preview (first ~10 lines of each).
+- If a crafted+recap pair was written, confirm the **bidirectional link** is present (recap `Crafted artifacts:` ↔ crafted `Source session:`).
+- Remind: "Run `/ztn:process` to convert these into Zettelkasten notes."
 
 ## Important Rules
 
-- **Language**: Content in the same language as the session (Russian if session was in Russian)
-- **No verbatim dumps**: Summarize and structure, don't copy the entire conversation
-- **Focus on value**: Only include what would be useful to find/recall later
-- **Be honest about what happened**: Include failures, pivots, and dead ends — they have learning value
-- **One file per session**: Even if session covered multiple topics, create ONE recap
+- **Language**: same language as the session (Russian if the session was in Russian).
+- **Verbatim split**: crafted = exact wording preserved; recap = summarized, never a verbatim dump. Keep them on the right sides.
+- **Bidirectional link**: whenever both are written in one run, each points at the other. Reason: the two files may be processed in different `/ztn:process` batches; a one-way pointer breaks if only one side is processed.
+- **Don't restrict the user**: crafted-only with no recap is valid; recap-only is valid; both is valid.
+- **Sensitivity**: do not redact — `/ztn:process` assigns the privacy trio (`is_sensitive`, `audience_tags`). Just preserve and let downstream classify.
+- **Be honest about what happened**: include failures, pivots, dead ends — they have learning value.
+- **One recap per session**: even across multiple topics. Multiple crafted files are fine if the session produced several distinct artifacts.
 
 ## Examples
 
 ```
-/ztn:recap
-/ztn:recap workspace reorganization
-/ztn:recap --tags #project #refactoring
+/ztn:recap                          # recap; proposes crafted if a finished piece exists
+/ztn:recap --crafted                # recap + save the verbatim artifact
+/ztn:recap --crafted-only           # just save the original, no recap
+/ztn:recap --no-crafted             # recap only, suppress proposal
+/ztn:recap workspace reorganization # topic override
 ```

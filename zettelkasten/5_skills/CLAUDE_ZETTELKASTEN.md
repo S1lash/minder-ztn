@@ -119,7 +119,7 @@ modified: '2026-04-26'
 | `/ztn:maintain` | After-batch integrator: threads, hub linkage, CURRENT_CONTEXT regen |
 | `/ztn:lint` | Nightly consistency, dedup, profile gen, Lint Context Store |
 | `/ztn:bootstrap` | One-shot populator системных файлов. Disposable. Три режима: established / fresh-onboarding / mixed |
-| `/ztn:recap` | Session recap → raw source в `_sources/inbox/claude-sessions/` |
+| `/ztn:recap` | Session recap → `_sources/inbox/claude-sessions/`; адаптивно сохраняет verbatim-артефакты (тост/письмо/пост) в `_sources/inbox/crafted/` (`--crafted` / `--crafted-only`), двусторонняя связь |
 | `/ztn:search` | Поиск по базе |
 | `/ztn:check-content` | Review контент-кандидатов, кластеризация, drafts, CONTENT_OVERVIEW |
 | `/ztn:resolve-clarifications` | Interactive разбор очереди CLARIFICATIONS — кластеризация по темам, numbered questions, hypothesis pre-forming против constitution-core, archive resolved |

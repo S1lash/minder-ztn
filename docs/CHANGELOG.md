@@ -2,6 +2,31 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.29.0 — `/ztn:recap` can save verbatim artifacts to `crafted/`
+
+### What changed
+
+`/ztn:recap` is now adaptive. Besides the usual session *summary* into
+`_sources/inbox/claude-sessions/`, it can also save a **verbatim
+artifact** — a self-contained piece you'll reuse as-is (a toast, speech,
+letter, post, proposal, spec) — into `_sources/inbox/crafted/`, with the
+exact wording preserved.
+
+Three modes, never forced on you:
+
+- **recap** (default) — summary only. If a finished piece is detected,
+  the skill *proposes* saving it; it never fabricates or drops one
+  silently.
+- **recap + crafted** (`--crafted`, "save the original too") — summary
+  plus the verbatim artifact.
+- **crafted-only** (`--crafted-only`, "just save the original") — the
+  artifact alone, no recap.
+
+When both are written they carry a **bidirectional link** (recap
+`Crafted artifacts:` ↔ crafted `Source session:`), so `/ztn:process`
+connects them even if they land in different batches. Verbatim text
+lives only in `crafted/`; the recap stays a summary.
+
 ## 0.27.0 — Source naming tolerance (universal)
 
 ### What changed
