@@ -128,18 +128,19 @@ Record the choice in log_maintenance.md.
 
 ### 0.3 Profile check (fresh / mixed only)
 
-Read `_sources/inbox/crafted/describe-me/*.md` (recursive) and
-`_sources/processed/crafted/describe-me/*.md`. Apply the
+Read `_sources/inbox/describe-me/*.md` (recursive) and
+`_sources/processed/describe-me/*.md`. Apply the
 template-default detection from Step 2.1. If no non-template profile
 file found:
 
 > **No describe-me profile found.** Bootstrap can either:
 >
-> 1. **Pause** so you can fill
->    `_sources/inbox/crafted/describe-me/PROFILE.template.md`
->    (or paste an AI-generated draft per the template's prompt). Re-
->    invoke when ready. This is the highest-quality path — the profile
->    is the primary source for SOUL.md.
+> 1. **Pause** so you can copy
+>    `_sources/inbox/describe-me/PROFILE.template.md` to `PROFILE.md`
+>    (same folder) and fill the copy (or paste an AI-generated draft
+>    per the template's prompt). Re-invoke when ready. This is the
+>    highest-quality path — the profile is the primary source for
+>    SOUL.md.
 > 2. **Run a short interview now** — I'll ask 3–5 questions to seed
 >    SOUL.md Identity / Values / Working Style. Faster but lower
 >    fidelity than a written profile.
@@ -368,7 +369,7 @@ For each transcript in the raw globs above:
      repeated across ≥ 2 distinct transcripts, explicit phrases like
      «проект X», «инициатива Y».
    - Normalize to kebab-case candidate id.
-   - **Cross-check with PROJECTS.md / `_sources/inbox/crafted/describe-me/`
+   - **Cross-check with PROJECTS.md / `_sources/inbox/describe-me/`
      PROFILE.md projects table** — if friend pre-declared a project, raw
      scan matches and increments mention count rather than creating a
      duplicate candidate.
@@ -484,7 +485,7 @@ Source priority for Identity / Values / Working Style / Active Goals.
 SOUL.md is the canonical owner-profile source; the user's global
 `~/.claude/CLAUDE.md` is advisory only.
 
-1. **Crafted profile in `_sources/inbox/crafted/describe-me/`** (primary
+1. **Owner profile in `_sources/inbox/describe-me/`** (primary
    when present and non-template).
 
    **File discovery.** Read every `*.md` in the directory (recursive).
@@ -523,14 +524,16 @@ SOUL.md is the canonical owner-profile source; the user's global
      (each bullet becomes a `principle-candidates.jsonl` entry with
      `origin: bootstrap-profile` and `session_id: bootstrap-{date}`)
 
-   **After read:** move the entire `_sources/inbox/crafted/describe-me/`
-   directory to `_sources/processed/crafted/describe-me/` so
-   `/ztn:process` doesn't re-process the profile as a knowledge note.
-   The maintainer's existing layout uses processed-side describe-me as
-   reference; this matches. If `_sources/processed/crafted/describe-me/`
-   already has files (re-run, or owner's pre-existing reference set),
-   merge directories — never overwrite existing files; collisions
-   surface as CLARIFICATIONS.
+   **After read:** move the consumed (non-template) files from
+   `_sources/inbox/describe-me/` to `_sources/processed/describe-me/`,
+   marking them consumed — `/ztn:process` scans `describe-me` as a
+   regular source and must not re-ingest the SOUL-consumed profile as
+   knowledge notes. Keep the folder itself and `PROFILE.template.md`
+   in place: the folder is a registered source row in SOURCES.md, and
+   the template is excluded from processing engine-wide (`*.template.md`
+   rule). If `_sources/processed/describe-me/` already has files
+   (re-run, or owner's pre-existing reference set), merge — never
+   overwrite existing files; collisions surface as CLARIFICATIONS.
 
 2. **Bootstrap interview** (primary fallback when (1) is absent or
    template-default, or to fill gaps left by (1)). Ask 3-5 short
@@ -1037,9 +1040,10 @@ Write to `_system/state/CLARIFICATIONS.md` under `## bootstrap YYYY-MM-DD` heade
 - Не запускает `/ztn:process`
 - **Не перемещает транскрипты из inbox в processed** — это ответственность `/ztn:process`.
   Raw scan читает транскрипты read-only.
-- **Исключение:** консумированный `_sources/inbox/crafted/describe-me/` каталог
-  ПЕРЕМЕЩАЕТСЯ в `_sources/processed/crafted/describe-me/` после Step 2 — это reference
-  материал, не транскрипт; matches owner's existing layout
+- **Исключение:** консумированные (non-template) файлы из `_sources/inbox/describe-me/`
+  ПЕРЕМЕЩАЮТСЯ в `_sources/processed/describe-me/` после Step 2 — отметка «consumed»,
+  чтобы `/ztn:process` (для которого `describe-me` — обычный source) не заинжестил
+  профиль повторно. Сам каталог и `PROFILE.template.md` остаются на месте
 - **Не парсит транскрипт на structured records/notes** — bootstrap извлекает signal classes
   (people, projects, hub-candidates, principle-candidates, threads, focus), а не полный content.
   Для onboarding друга: он запускает bootstrap для seed registries → потом `/ztn:process` для
@@ -1057,7 +1061,7 @@ Write to `_system/state/CLARIFICATIONS.md` under `## bootstrap YYYY-MM-DD` heade
 - **SOUL.md** — если `--skip-soul` или пользователь вручную редактировал → не перезаписывается. Иначе перезапись с сохранением Working Style + Context for Agents секций при наличии текста
 - **PROJECTS.md** — candidate rows added by id; existing rows never overwritten. If a candidate id matches an existing row, increment mention count surfaced via CLARIFICATION rather than rewrite the row
 - **principle-candidates.jsonl** — append-only buffer. Re-running bootstrap appends new candidates only when their `(situation, observation, hypothesis)` triple is not already present in the buffer (dedup against last 30 days of entries)
-- **describe-me/ move** — happens once. On re-run, source is already in `_sources/processed/crafted/describe-me/`; bootstrap re-reads from there with no further move
+- **describe-me/ move** — per file, happens once. On re-run, consumed files are already in `_sources/processed/describe-me/`; bootstrap re-reads from there with no further move. New inbox-side files added since the previous run are consumed (and moved) the same way
 
 ---
 
@@ -1075,4 +1079,4 @@ Write to `_system/state/CLARIFICATIONS.md` under `## bootstrap YYYY-MM-DD` heade
 | `_system/state/principle-candidates.jsonl` | append | One record per harvested principle; `origin: bootstrap-raw-scan` |
 | `3_resources/people/PEOPLE.md` | rewrite | New columns: Tier, Mentions, Last |
 | `1_projects/PROJECTS.md` | append rows | Candidate rows added in fresh-onboarding mode (`Status: candidate`) |
-| `_sources/inbox/crafted/describe-me/` | move to processed | After consumption, dir relocates to `_sources/processed/crafted/describe-me/` (matches owner's reference layout) |
+| `_sources/inbox/describe-me/` | move consumed files to processed | After consumption, non-template files relocate to `_sources/processed/describe-me/`; folder + `PROFILE.template.md` stay in place (registered source row) |

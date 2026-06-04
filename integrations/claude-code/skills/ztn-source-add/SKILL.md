@@ -69,7 +69,7 @@ For each argument that was not passed via flag, prompt the owner with one focuse
 
 - **ID** — kebab-case (`^[a-z][a-z0-9-]*[a-z0-9]$`), 3–32 chars. Reject if:
   - already present (case-insensitive) in any of `## Active Sources`, `## Reserved Sources`, `## Deprecated Sources`
-  - matches a reserved system name: `inbox`, `processed`, `crafted/describe-me` segment, `.gitkeep`, `.lint.lock`, `.maintain.lock`, `.processing.lock`, `.resolve.lock`
+  - matches a reserved system name: `inbox`, `processed`, `.gitkeep`, `.lint.lock`, `.maintain.lock`, `.processing.lock`, `.resolve.lock` (`describe-me` is already a registered row, caught by the duplicate check above)
 - **Family** — must be one of `transcript`, `metric-day`, `recap`. Default `transcript` if not provided. Reject any other value.
 - **Layout** — must be one of the three documented types. No free-form input.
 - **Default Domain** — accept owner-provided string; reject only if empty / contains pipe characters. The whitelist (`personal`, `work`, `mixed`, `auto`, `health`, …) lives on SOURCES.template.md and is informational, not enforced.

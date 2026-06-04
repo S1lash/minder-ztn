@@ -55,6 +55,15 @@ engine:
   # Pure spec; ships as-is to skeleton so friends inherit the contract.
   - zettelkasten/_system/state/batches/README.md
 
+  # Onboarding profile seed — pristine template shipped VERBATIM (keeps
+  # the `.template.md` suffix, so /ztn:process never ingests it via the
+  # engine-wide `*.template.md` exclusion). Friends copy it to PROFILE.md
+  # in the same folder and fill the copy; /ztn:bootstrap reads the filled
+  # profile as PRIMARY source for SOUL.md and moves consumed files to
+  # _sources/processed/describe-me/. Listed under engine (not template)
+  # so spec updates to the template keep syncing.
+  - zettelkasten/_sources/inbox/describe-me/PROFILE.template.md
+
   # Engine spec — folder routing
   - zettelkasten/_system/registries/FOLDERS.md
 
@@ -137,12 +146,6 @@ template:
 
   # Public README (ships as README.md in the skeleton)
   - README.template.md
-
-  # Onboarding profile seed — read by /ztn:bootstrap as PRIMARY source for
-  # SOUL.md when present and non-template. After consumption, bootstrap
-  # moves the consumed describe-me/ dir to _sources/processed/crafted/
-  # describe-me/ as reference (matches owner's pattern).
-  - zettelkasten/_sources/inbox/crafted/describe-me/PROFILE.template.md
 
   # Registries
   - zettelkasten/_system/registries/TAGS.template.md

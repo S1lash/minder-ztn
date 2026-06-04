@@ -46,7 +46,7 @@ Surface all three readings with their distinguishing markers. The owner decides 
 - Your own past outputs at `_system/agent-lens/stated-vs-lived/` — as an index of **gap recurrence**, not as evidence (see Self-history). On first run no past outputs exist — say so; recurrence claim is impossible on the first run.
 
 **Excluded from lived-side evidence:**
-- `_sources/processed/crafted/describe-me/**` — bootstrap input INTO the system, written once during onboarding. Mentioning a topic / project name there is a SEED, not lived attention — do not count it as a record-side signal.
+- `_sources/processed/describe-me/**` — bootstrap input INTO the system, written once during onboarding. Mentioning a topic / project name there is a SEED, not lived attention — do not count it as a record-side signal.
 - `_sources/processed/` raw transcripts — covered by their derived `_records/` notes; don't double-count.
 
 ## Health goal adherence (when biometric layer is active)

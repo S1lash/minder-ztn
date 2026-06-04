@@ -16,9 +16,9 @@ _sources/                             # ВСЕ сырые данные (внут
 │                                     # и Skip Subdirs объявлены на row of source.
 │                                     # Добавить новый source: /ztn:source-add.
 └── processed/                        # Обработанные (зеркальная иерархия)
-    └── {source-id}/{id}/...          # Mirrors inbox layout. Reference-подкаталоги
-                                      # (Skip Subdirs) переезжают сюда после
-                                      # консумации /ztn:bootstrap (например crafted/describe-me/).
+    └── {source-id}/{id}/...          # Mirrors inbox layout. Сюда двигают консумированные
+                                      # файлы оба консумера: /ztn:process (Step 2.4) и
+                                      # /ztn:bootstrap (describe-me профиль после Step 2).
 ```
 
 ---

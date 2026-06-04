@@ -20,7 +20,7 @@ on this row.
 | `Family` | yes | Processing family — drives which `/ztn:process` branch consumes files. One of: `transcript`, `metric-day`, `recap`. See **Family routing** below. Default `transcript` for backwards compatibility (older registries lacking the column are treated as transcript). |
 | `Layout` | yes | One of: `flat-md`, `dir-per-item`, `dir-with-summary`. See **Layout types** below. |
 | `Default Domain` | yes | Hint for cross-domain classification when content is ambiguous. Free-form (`personal`, `work`, `mixed`, `auto`, `health`, …). `auto` = let the LLM decide per-file; concrete values short-circuit classification. |
-| `Skip Subdirs` | optional | Comma-separated list of subdirectory names (relative to `Inbox Path`) that the processor MUST ignore. Empty / `—` = scan everything. Used for reference material that lives alongside transcripts (e.g. `describe-me/` under `crafted`, `raw/` under `garmin`). |
+| `Skip Subdirs` | optional | Comma-separated list of subdirectory names (relative to `Inbox Path`) that the processor MUST ignore. Empty / `—` = scan everything. Used for reference material that lives alongside transcripts (e.g. `raw/` under `garmin`). |
 | `Description` | yes | One-line human description of what lives in this source. |
 | `Status` | yes | `active` / `reserved` / `deprecated`. Reserved = whitelisted but inbox empty by design (no error if no files). Deprecated = retain row for audit, skip during scan. |
 | `Reason` | required when `Status: deprecated` | Free-form one-sentence rationale per Archive Contract Form B (`SYSTEM_CONFIG.md`). Empty cell on a row in `## Deprecated Sources` is a contract violation — surfaces as `archive-reason-missing` CLARIFICATION on next `/ztn:lint`. |
@@ -79,7 +79,8 @@ For metric-day family the filename is canonical `YYYY-MM-DD.md` — one file per
 | voice-notes | `_sources/inbox/voice-notes/` | transcript | dir-per-item | auto | — | Generic voice-note transcripts from any recorder/app. Catch-all for users without a brand-specific source. | active |
 | claude-sessions | `_sources/inbox/claude-sessions/` | transcript | dir-per-item | work | — | Claude Code session recaps captured via `/ztn-recap`. Almost always work-context. | active |
 | notes | `_sources/inbox/notes/` | transcript | flat-md | auto | — | Plain Markdown notes dropped manually into the folder. | active |
-| crafted | `_sources/inbox/crafted/` | transcript | flat-md | auto | describe-me | Hand-written long-form documents processed through the same pipeline; also the target for verbatim artifacts saved by `/ztn-recap --crafted`. The `describe-me/` subdir holds reference profile material consumed only by `/ztn:bootstrap` — never by `/ztn:process`. | active |
+| crafted | `_sources/inbox/crafted/` | transcript | flat-md | auto | — | Hand-written long-form documents processed through the same pipeline; also the target for verbatim artifacts saved by `/ztn-recap --crafted`. | active |
+| describe-me | `_sources/inbox/describe-me/` | transcript | flat-md | identity | — | Owner self-descriptions and identity reference material. Primary seed for `/ztn:bootstrap` SOUL.md draft; files added after bootstrap flow through `/ztn:process` as regular content. `PROFILE.template.md` is excluded by the engine-wide `*.template.md` rule. | active |
 | garmin | `_sources/inbox/garmin/` | metric-day | flat-md | health | raw | Garmin daily biometric snapshots. One file per calendar day; `raw/` holds full minute-level JSON payloads (skipped by /ztn:process; available as escape hatch for biometric lenses). Inactive until owner wires a Garmin collector — pipeline lies dormant otherwise. | active |
 
 ---
@@ -121,4 +122,6 @@ After either route, `/ztn:process` picks up the new source on the next run. No S
 - `Family` column drives processing branch (see Family routing above). Default `transcript` if column absent (migration `002-sources-family-column.sh` populates).
 - Reserved sources may have empty inbox folders. That is expected and never reported as an error.
 - Deprecation protocol: retire a source by moving its row to `## Deprecated Sources` and populate the `Reason` cell. Do not delete rows. (Archive Contract Form B — `SYSTEM_CONFIG.md`.)
-- The `crafted/describe-me/` exclusion is encoded declaratively via `Skip Subdirs: describe-me`. Bootstrap reads the same path through its own contract; `/ztn:process` simply skips it. Same pattern for `garmin/raw/`.
+- Files named `*.template.md` are never processing candidates in ANY source — engine-wide rule (`/ztn:process` §2.2). They are spec/seed material shipped by the engine (e.g. `describe-me/PROFILE.template.md`).
+- `describe-me` is dual-consumed: `/ztn:bootstrap` reads it (inbox + processed sides) as the primary SOUL.md seed and moves consumed inbox files to the processed-side mirror; `/ztn:process` picks up whatever the bootstrap has not consumed — both consumers move files to `processed/` before use, so nothing is ingested twice.
+- Reference subdirs that must never reach the processing queue are declared via `Skip Subdirs` (e.g. `garmin/raw/`).

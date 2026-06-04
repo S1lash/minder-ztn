@@ -8,6 +8,10 @@
 > standards, `/ztn:capture-candidate` calibrates principle detection
 > against your real value system.
 >
+> **How to use.** Copy this file to `PROFILE.md` in the same folder
+> and fill the copy — keep this template pristine (files named
+> `*.template.md` are engine seed material, never processed).
+>
 > **You don't have to write it from scratch.** A common workflow:
 >
 > 1. Open Claude (or ChatGPT) in a separate session.
@@ -16,7 +20,8 @@
 > 3. Ask: «Fill in the template below as if you were me — quote me
 >    where you can, hypothesize where you can't, and mark hypotheses
 >    explicitly.»
-> 4. Paste the result here, then read through and edit anything wrong.
+> 4. Paste the result into your `PROFILE.md`, then read through and
+>    edit anything wrong.
 >
 > **You don't have to fill every section.** Empty sections become
 > CLARIFICATIONS during bootstrap — you'll be asked specific
@@ -27,11 +32,12 @@
 > reaches Claude through your local skills. It is NOT shared with the
 > upstream `minder-ztn` skeleton.
 >
-> **After bootstrap reads this file, the entire `describe-me/`
-> directory moves to `_sources/processed/crafted/describe-me/`** —
-> kept as reference, not re-processed by `/ztn:process`. You can
-> add more profile files there over time (career updates, value
-> shifts, new context); re-running `/ztn:bootstrap` will re-read them.
+> **After bootstrap reads your profile, the consumed files move to
+> `_sources/processed/describe-me/`** — kept as reference for re-runs.
+> You can drop more self-description files into this folder over time
+> (career updates, value shifts, new context); `/ztn:process` picks
+> them up as regular content, and a re-run of `/ztn:bootstrap` re-reads
+> both sides.
 
 ---
 

@@ -170,7 +170,9 @@ operates on local working-tree only; pulled commits won't be lost).
 **FIRST action — before lock, context, or pre-scan.**
 
 Quick-scan `_sources/inbox/` subdirectories for any transcript files
-(`transcript*.md` or `.md` in `crafted/`). Use Glob, not full reads.
+(`transcript*.md` in dir-layout sources, or top-level `*.md` in flat-md
+sources). `*.template.md` files never count as candidates (§2.2). Use
+Glob, not full reads.
 
 - If `--file` or `--reprocess` flag: skip this check (files come from elsewhere).
 - If `--reprocess-corpus`: skip this check; instead glob the corpus per Step 2.1's reprocess-corpus branch and exit early only when the corpus walk yields zero in-scope files.
@@ -397,17 +399,29 @@ filesystem IS the primary filter. PROCESSED.md serves three roles:
 3. **Audit log** — historical record of all processing operations.
 
 > **Reference material under sources.** Some sources expose reference content
-> (identity drafts, policies, AI-generated profiles) inside a subfolder that
-> must NEVER reach the processing queue. The mechanism is the `Skip Subdirs`
-> column on SOURCES.md. Example: `crafted` declares `Skip Subdirs: describe-me`,
-> so `_sources/inbox/crafted/describe-me/` and its mirror under `processed/`
-> are invisible to this SKILL. `/ztn:bootstrap` reads that path through its own
-> contract and is responsible for moving consumed inbox-side describe-me content
-> to the processed-side mirror.
+> (raw payloads, escape-hatch data) inside a subfolder that must NEVER reach
+> the processing queue. The mechanism is the `Skip Subdirs` column on
+> SOURCES.md. Example: `garmin` declares `Skip Subdirs: raw`, so
+> `_sources/inbox/garmin/raw/` and its mirror under `processed/` are invisible
+> to this SKILL.
+>
+> **Dual-consumed sources.** The `describe-me` source is also read by
+> `/ztn:bootstrap` (inbox + processed sides) as the primary SOUL.md seed;
+> bootstrap moves consumed inbox files to the processed-side mirror through
+> its own contract. This SKILL treats `describe-me` as a regular flat-md
+> source — whatever bootstrap has not consumed is processed normally. Both
+> consumers move files to `processed/` before use, so nothing is ingested
+> twice.
 
 ### 2.2 File Selection
 
 All files in `_sources/inbox/` are candidates for processing.
+
+**Template exclusion (engine-wide).** Files named `*.template.md` are NEVER
+processing candidates — in any source, any layout, any mode (including
+`--reprocess` / `--reprocess-corpus` and the Early Exit Check glob). They are
+spec/seed material shipped by the engine (e.g. `describe-me/PROFILE.template.md`),
+not owner content. Skip silently, no CLARIFICATION.
 
 If `--file <path>`: process only that file (can be in inbox or processed).
 If `--reprocess`: also scan `_sources/processed/` and re-process specified files.

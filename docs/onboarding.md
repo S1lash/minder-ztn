@@ -73,8 +73,9 @@ If your input does not match any of the starter sources, run
 declaratively (one row in SOURCES.md + paired inbox/processed
 folders). No code changes required.
 
-If you want a high-quality identity seed, edit
-`_sources/inbox/crafted/describe-me/PROFILE.template.md` in place. The
+If you want a high-quality identity seed, copy
+`_sources/inbox/describe-me/PROFILE.template.md` to `PROFILE.md`
+(same folder) and fill the copy — keep the template pristine. The
 template suggests a workflow of pasting your transcripts into a
 separate ChatGPT/Claude session and asking it to fill the template
 for you.

@@ -10,7 +10,7 @@
 
 ## Overview
 
-Это персональная система управления знаниями. Claude Code автоматически обрабатывает source-файлы из `_sources/inbox/` (whitelist живёт в `_system/registries/SOURCES.md` — voice-recorder transcripts, hand-written notes, Claude session recaps, и любые источники, которые owner добавил через `/ztn:source-add`), создавая структурированные Zettelkasten-заметки с богатыми метаданными для автоматизаций. После обработки исходные файлы перемещаются в `_sources/processed/`. Reference-материал (AI-generated profiles, policies, identity drafts) живёт в подкаталогах, помеченных колонкой `Skip Subdirs` в SOURCES.md — пайплайном не обрабатывается; читается отдельным контрактом `/ztn:bootstrap`.
+Это персональная система управления знаниями. Claude Code автоматически обрабатывает source-файлы из `_sources/inbox/` (whitelist живёт в `_system/registries/SOURCES.md` — voice-recorder transcripts, hand-written notes, Claude session recaps, и любые источники, которые owner добавил через `/ztn:source-add`), создавая структурированные Zettelkasten-заметки с богатыми метаданными для автоматизаций. После обработки исходные файлы перемещаются в `_sources/processed/`. Reference-материал, который не должен попадать в очередь обработки (raw payloads, escape-hatch данные), живёт в подкаталогах, помеченных колонкой `Skip Subdirs` в SOURCES.md. Self-descriptions / identity-материал — отдельный source `describe-me`: его читает и `/ztn:bootstrap` (как primary seed для SOUL.md, через свой контракт), и `/ztn:process` (как обычный контент). Файлы `*.template.md` не обрабатываются нигде — engine-wide правило (`/ztn:process` §2.2).
 
 ### Будущие автоматизации (контекст)
 - Психолог / эдвайзер по жизни

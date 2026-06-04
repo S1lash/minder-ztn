@@ -2,6 +2,27 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.30.0 — `describe-me` is a first-class source
+
+### What changed
+
+Self-descriptions now have their own inbox: `_sources/inbox/describe-me/`
+(previously a hidden subfolder under `crafted/` that `/ztn:process` skipped).
+
+- **Drop identity material there anytime** — profile updates, "how I think"
+  notes, AI-generated self-portraits. `/ztn:process` picks them up as
+  regular content and they become knowledge notes like everything else.
+- **`/ztn:bootstrap` still reads it first** as the primary seed for SOUL.md
+  during onboarding; files it consumes are moved to
+  `_sources/processed/describe-me/` so nothing is ingested twice.
+- **`PROFILE.template.md` stays put** — files named `*.template.md` are now
+  excluded from processing engine-wide, in every source. Templates are
+  seed material, not content.
+
+Migration `006-describe-me-top-level-source.sh` runs automatically on
+`/ztn:update`: it moves the old `crafted/describe-me/` folders (inbox and
+processed sides) to the new location and updates your SOURCES.md registry.
+
 ## 0.29.0 — `/ztn:recap` can save verbatim artifacts to `crafted/`
 
 ### What changed
