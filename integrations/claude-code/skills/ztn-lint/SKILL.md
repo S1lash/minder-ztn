@@ -691,6 +691,40 @@ create `_system/scripts/lint_hub_integrity.py` — TBD when first ship
 runs against accumulated drift. Initial implementation may be deferred
 until /ztn:maintain Step 7.7 proves stable in production use.
 
+**A.10 Portable filename backstop:**
+
+Defence-in-depth behind the two primary gates (`/ztn:process` §0.0
+pre-scan, `/ztn:save` Step 0.5 pre-pass). Catches non-portable names —
+Windows-illegal characters (`< > : " / \ | ? *`, control chars),
+trailing dots/spaces, reserved device basenames — that slipped into the
+tree, e.g. via a raw `git add` bypassing `/ztn:save` or a producer
+writing outside inbox. Single SoT:
+`_common.py::is_portable_name` / `normalize_portable_name`.
+
+Walk git-tracked paths plus `_sources/inbox/` untracked entries; check
+every path segment:
+
+1. **`_sources/inbox/` entries** — rename to the normalised form
+   (`strong` floor → silent autofix, fix-id `portable-name-autofix`).
+   No references exist yet for unprocessed inbox items, so the rename
+   is reference-safe. Collision with an existing name or normalisation
+   returning None → `weak`, CLARIFICATION `portable-name-collision`
+   (never guess a suffix).
+2. **`_sources/processed/` entries listed in PROCESSED.md** —
+   grandfathered legacy (pre-portable-convention data, references point
+   at them as-is). Skip silently; renaming would break `source:`
+   pointers.
+3. **Any other non-portable tracked path** (processed entry NOT in
+   PROCESSED.md, records, PARA, state) — something escaped both gates
+   AND was never registered; an autofix rename here could break
+   references the engine can't enumerate cheaply. `weak`, CLARIFICATION
+   `portable-name-escape` with the offending path; owner resolves via
+   `/ztn:resolve-clarifications` (rename + reference rewrite as a
+   deliberate, reviewed action).
+
+A.10 never rewrites references — only inbox renames (reference-free by
+construction) are autonomous.
+
 ### Scan B — Thread Lifecycle
 
 **B.1 Stale thread detection per-status:**
@@ -1911,6 +1945,8 @@ The skill clusters items by theme, reminds context + verbatim quotes inline, and
 - `index-missing` — `_system/views/INDEX.md` does not exist (A.6)
 - `index-stale` — INDEX.generated > 7 days behind newest knowledge note modified (A.6)
 - `index-frontmatter-malformed` — INDEX frontmatter missing `generated:` or `generator:` (A.6)
+- `portable-name-collision` — non-portable inbox name whose normalised form already exists in the same directory, or normalisation returned None (A.10 — no autofix, owner resolves)
+- `portable-name-escape` — non-portable tracked path outside inbox and not grandfathered via PROCESSED.md (A.10 — surfaced only; rename + reference rewrite is an owner-reviewed action)
 
 **Thread lifecycle:**
 - `thread-stale-warn` — past warn threshold, no activity (reviewed — no apply, CLARIFICATION)
@@ -1969,6 +2005,9 @@ takes no action.
   coerced to bool (`"true"`/`"True"` → `true`, anything else → `false`)
 - `origin-coerce-autofix` — out-of-enum `origin` value coerced to
   `personal`
+- `portable-name-autofix` — non-portable `_sources/inbox/` entry renamed
+  via `normalize_portable_name()` (A.10 — reference-safe by construction:
+  unprocessed inbox items have no inbound references)
 
 (Manifest concept and audience fields are conformant by upstream
 construction in `/ztn:process` §4.7 and `/ztn:maintain` Step 4 hub

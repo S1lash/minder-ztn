@@ -77,6 +77,8 @@ migrating existing open items.
 | `biometric-baseline-cold-start` | `/ztn:process` metric-day branch | First metric-day file processed AND `_system/state/biometric/baselines.json` does not exist | Initialize empty baselines; emit informational CLARIFICATION (one-time, expected). Resolution: dismiss as resolved with note "expected cold-start". No further action needed |
 | `biometric-threshold-drift` | `/ztn:maintain` Tier II calibration check | ≥3 consecutive weeks observed/expected fire-rate ratio outside [0.5, 2.0] for a metric × severity pair | Skip auto-tune; surface proposal with current vs proposed σ; owner approves via resolve action `threshold_tune_proposal` (Class C) |
 | `biometric-affect-lexicon-empty` | `/ztn:maintain` Tier II Phase 2 | Lexicon overlay loaded successfully but produces zero affect tags across the entire 56-day window | Skip Phase 2; surface so owner can audit lexicon entries (may indicate non-RU/EN owner needs lexicon localisation via `affect_lexicon.local.yaml`) |
+| `portable-name-collision` | `/ztn:process` §0.0, `/ztn:save` Step 0.5, `/ztn:lint` A.10 | Non-portable (Windows-illegal) inbox name whose `normalize_portable_name()` form already exists in the same directory, or normalisation returned None | Skip the item this run (process) / exclude from staging (save); never guess a suffix |
+| `portable-name-escape` | `/ztn:lint` A.10 | Non-portable tracked path outside `_sources/inbox/` and not grandfathered via PROCESSED.md — slipped past both ingestion gates | Surface only; rename + reference rewrite happens as an owner-reviewed resolve action, never autonomously |
 
 Per-skill SKILL.md may add narrower types for skill-internal flows;
 this table covers the cross-skill canonical set referenced in

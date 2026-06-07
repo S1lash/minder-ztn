@@ -60,9 +60,34 @@ what to write in the message, did I push, should I rebase first.
    - `_sources/.resolve.lock`
 
 This skill does NOT take its own lock — it does not write to ZTN
-content files, only to git.
+content files, only to git, plus the rename-only portable-name
+pre-pass in Step 0.5 (file names, never file contents).
 
 ## Pipeline
+
+### Step 0.5 — Portable-name pre-pass (inbox only)
+
+Before snapshotting, walk `_sources/inbox/{id}/` (immediate children of
+every source folder, plus files one level inside per-item folders). Any
+entry whose name fails `_system/scripts/_common.py::is_portable_name` is
+renamed to `normalize_portable_name(name)` — same SoT and same rules as
+`/ztn:process` §0.0. This keeps Windows-illegal names (colons in Plaud
+ISO timestamps, etc.) out of git entirely: a raw inbox drop committed
+from a phone or a Mac would otherwise break `git checkout` on a Windows
+device pulling it.
+
+- Renames are autonomous and silent per-item (deterministic pure
+  function — ENGINE_DOCTRINE §3.1 autonomous-resolution layer); list
+  them in the Step 3 summary under a `renamed:` line when any happened.
+- Collision with an existing name, or normalisation returning None →
+  do NOT rename, do NOT guess; leave the entry uncommitted (exclude
+  from staging), append a `portable-name-collision` CLARIFICATION, and
+  continue with the rest of the save.
+- Scope is `_sources/inbox/` only — `_sources/processed/` legacy names
+  are grandfathered and referenced as-is; renaming them would break
+  `source:` pointers.
+- In `--auto` mode behaviour is identical (silent rename, CLARIFICATION
+  on collision) — never blocks.
 
 ### Step 1 — Snapshot working tree
 

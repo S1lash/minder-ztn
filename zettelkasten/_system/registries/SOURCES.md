@@ -48,10 +48,34 @@ sections (e.g. `records`, `records.biometric`).
 
 The processor parses the leading timestamp from the folder name. Forms supported and may coexist within a single source:
 
-1. **Pure ISO** — `2026-04-29T14:09:30Z`
-2. **ISO + topic suffix** — `2026-04-29T14:09:30Z_short topic`
-3. **Date + topic** — `2026-04-29_short-topic`
-4. **Legacy / free-form** — `04-29 short topic`, `14-05-2026 19:40`, `2026-05-06_ctp-tms-passkey-tech-recap`, or any other layout an owner / producer creates. Best-effort parse first; if it fails, fall back to file mtime silently. mtime is a safe lower bound for chronological order.
+1. **Portable ISO** (canonical) — `2026-04-29T14-09-30Z` (hyphens in the time part — Windows-safe; what new items look like after ingestion normalisation, see below)
+2. **Pure ISO** — `2026-04-29T14:09:30Z` (producer-native form; remains parseable forever for already-processed paths)
+3. **ISO + topic suffix** — `2026-04-29T14-09-30Z_short topic` / `2026-04-29T14:09:30Z_short topic`
+4. **Date + topic** — `2026-04-29_short-topic`
+5. **Legacy / free-form** — `04-29 short topic`, `14-05-2026 19:40`, `2026-05-06_ctp-tms-passkey-tech-recap`, or any other layout an owner / producer creates. Best-effort parse first; if it fails, fall back to file mtime silently. mtime is a safe lower bound for chronological order.
+
+### Portable names (Windows compatibility)
+
+NTFS forbids `< > : " / \ | ? *` in path segments, trailing dots/spaces, and
+reserved device basenames (`CON`, `PRN`, `COM1`…). Some producers (Plaud and
+similar recorders) name export folders with pure-ISO timestamps whose colons
+make the path uncreatable on Windows and break `git checkout` on any Windows
+clone pulling such a path. The engine therefore normalises **new** inbox item
+names at two gates, via the single SoT
+`_system/scripts/_common.py::normalize_portable_name` (deterministic,
+idempotent — autonomous-resolution layer per ENGINE_DOCTRINE §3.1):
+
+- `/ztn:process` pre-scan (§0.0 in the SKILL) — renames before anything reads
+  the path, so every downstream reference (`source:`, PROCESSED.md, manifests)
+  is born with the safe name;
+- `/ztn:save` inbox pre-pass — renames before staging, so a raw inbox drop
+  committed from one device never breaks checkout on a Windows device;
+- `/ztn:lint` Scan A.10 — backstop for paths that slipped past both gates.
+
+Already-processed paths are **grandfathered**: names under
+`_sources/processed/` listed in PROCESSED.md keep their original form, and
+references to them are never rewritten. Rename collisions are never resolved
+by guessing — they surface as `portable-name-collision` CLARIFICATIONs.
 
 ### Naming tolerance (universal across all source-types)
 

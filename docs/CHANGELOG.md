@@ -2,6 +2,30 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.31.0 — Windows-safe filenames
+
+### What changed
+
+Some recorder tools — Plaud in particular — name their export folders
+with ISO timestamps like `2026-04-29T14:09:30Z`. Colons are illegal in
+file names on Windows, so such a folder couldn't be created in your
+inbox on a Windows machine, and pulling it from another device (a Mac
+or a phone) broke `git checkout` on the Windows clone.
+
+The engine now keeps every new name Windows-safe automatically:
+
+- **`/ztn:process`** renames non-portable inbox items before processing
+  (`2026-04-29T14:09:30Z` → `2026-04-29T14-09-30Z`), so every link the
+  engine writes is born with the safe name — nothing ever breaks.
+- **`/ztn:save`** does the same rename before committing, so a raw inbox
+  drop from one device never breaks checkout on your Windows device.
+- **`/ztn:lint`** backstops both nightly.
+
+Nothing to migrate and nothing to do by hand: your existing processed
+files keep their names (old colon-named folders remain readable
+forever), only new arrivals are normalised. Windows users can now
+onboard without workarounds.
+
 ## 0.30.0 — `describe-me` is a first-class source
 
 ### What changed

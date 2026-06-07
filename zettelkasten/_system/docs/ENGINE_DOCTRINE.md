@@ -192,6 +192,12 @@ Layers currently qualifying:
   AUDIENCES.md whitelist check.
 - **Privacy-trio backfill + hub derivation** — `recompute_hub_trio`,
   trio backfill in `lint_concept_audit.py`.
+- **Portable filename normalisation** — `normalize_portable_name` /
+  `is_portable_name` (single SoT: `_common.py`). Applied to new
+  `_sources/inbox/` names by `/ztn:process` §0.0 pre-scan and
+  `/ztn:save` Step 0.5 pre-pass; `/ztn:lint` A.10 is the backstop.
+  Collisions are NOT covered by the exception — they surface as
+  `portable-name-collision` CLARIFICATIONs.
 
 Any new layer added to the engine MUST be tested against the three
 properties before claiming the exception. If even one property fails,

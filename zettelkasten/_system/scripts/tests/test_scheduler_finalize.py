@@ -447,9 +447,20 @@ def test_routines_mode_gh_missing_fails_gracefully(tmp_path: Path) -> None:
 
     (work / "zettelkasten/_records/r1.md").write_text("rec1\n")
 
-    empty_bin = tmp_path / "empty-bin"
-    empty_bin.mkdir()
-    minimal_path = f"{empty_bin}:/usr/bin:/bin"
+    # Build a PATH that genuinely lacks `gh`: on GitHub runners gh lives in
+    # /usr/bin, so just dropping homebrew dirs is not enough. Symlink every
+    # system tool except gh into a sandbox dir and use it as the sole PATH.
+    sandbox_bin = tmp_path / "sandbox-bin"
+    sandbox_bin.mkdir()
+    for bin_dir in ("/usr/bin", "/bin"):
+        for tool in Path(bin_dir).iterdir():
+            if tool.name == "gh":
+                continue
+            try:
+                (sandbox_bin / tool.name).symlink_to(tool)
+            except FileExistsError:
+                pass  # same tool present in both dirs
+    minimal_path = str(sandbox_bin)
 
     result = subprocess.run(
         ["bash", "scripts/scheduler/finalize-tick.sh", "scheduler/process"],

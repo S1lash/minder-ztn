@@ -327,6 +327,64 @@ class NormalizeAudienceTagTests(unittest.TestCase):
                          "team-platform")
 
 
+class NormalizePortableNameTests(unittest.TestCase):
+    def test_iso_timestamp_colons_to_hyphens(self):
+        self.assertEqual(c.normalize_portable_name("2026-04-29T14:09:30Z"),
+                         "2026-04-29T14-09-30Z")
+
+    def test_iso_with_topic_suffix(self):
+        self.assertEqual(
+            c.normalize_portable_name("2026-04-29T14:09:30Z_short topic"),
+            "2026-04-29T14-09-30Z_short topic")
+
+    def test_portable_name_passthrough(self):
+        for name in ("2026-04-29T14-09-30Z", "2026-04-29_short-topic",
+                     "transcript_with_summary.md", "20260408-meeting.md"):
+            self.assertEqual(c.normalize_portable_name(name), name)
+
+    def test_idempotent(self):
+        once = c.normalize_portable_name("2026-04-29T14:09:30Z*?")
+        self.assertEqual(c.normalize_portable_name(once), once)
+
+    def test_all_illegal_chars_replaced(self):
+        self.assertEqual(c.normalize_portable_name('a<b>c:d"e/f\\g|h?i*j'),
+                         "a-b-c-d-e-f-g-h-i-j")
+
+    def test_control_chars_replaced(self):
+        self.assertEqual(c.normalize_portable_name("a\x07b"), "a-b")
+
+    def test_trailing_dots_and_spaces_stripped(self):
+        self.assertEqual(c.normalize_portable_name("note. . "), "note")
+
+    def test_reserved_basename_prefixed(self):
+        self.assertEqual(c.normalize_portable_name("con"), "_con")
+        self.assertEqual(c.normalize_portable_name("CON.md"), "_CON.md")
+        self.assertEqual(c.normalize_portable_name("lpt3"), "_lpt3")
+
+    def test_reserved_prefix_is_idempotent(self):
+        self.assertEqual(c.normalize_portable_name("_con.md"), "_con.md")
+
+    def test_non_reserved_lookalike_untouched(self):
+        self.assertEqual(c.normalize_portable_name("console.md"),
+                         "console.md")
+
+    def test_unicode_preserved(self):
+        # portability targets the filesystem, not ASCII — Cyrillic stays
+        self.assertEqual(c.normalize_portable_name("Идея: сервер"),
+                         "Идея- сервер")
+
+    def test_empty_and_none_dropped(self):
+        self.assertIsNone(c.normalize_portable_name(None))
+        self.assertIsNone(c.normalize_portable_name(""))
+        self.assertIsNone(c.normalize_portable_name(" . "))
+        self.assertIsNone(c.normalize_portable_name("..."))
+
+    def test_is_portable_name(self):
+        self.assertTrue(c.is_portable_name("2026-04-29T14-09-30Z"))
+        self.assertFalse(c.is_portable_name("2026-04-29T14:09:30Z"))
+        self.assertFalse(c.is_portable_name(None))
+
+
 class RecomputeHubTrioTests(unittest.TestCase):
     """Hub privacy derivation: dominant origin / audience intersection /
     sensitivity contagion. Owner-set fields ALWAYS preserved."""

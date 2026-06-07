@@ -411,6 +411,55 @@ def normalize_audience_tag(raw: str | None) -> str | None:
 
 
 # -----------------------------------------------------------------------------
+# Portable filename normalisation (Windows-safe inbox names)
+# -----------------------------------------------------------------------------
+#
+# NTFS forbids  < > : " / \ | ? *  and control chars in path segments,
+# trailing dots/spaces, and reserved device basenames (CON, PRN, …).
+# Producer tools (Plaud and other voice recorders) emit per-item folders
+# named with pure-ISO timestamps (`2026-04-29T14:09:30Z`) whose colons make
+# the path uncreatable on Windows and break `git checkout` on any Windows
+# clone that pulls such a path. New inbox items are therefore normalised at
+# ingestion (`/ztn:process` pre-scan) and before commit (`/ztn:save`
+# pre-pass); `/ztn:lint` Scan A.10 is the backstop. Existing already-
+# processed paths are grandfathered — references to them never rewrite.
+
+WINDOWS_RESERVED_BASENAMES: frozenset[str] = frozenset(
+    {"con", "prn", "aux", "nul"}
+    | {f"com{i}" for i in range(1, 10)}
+    | {f"lpt{i}" for i in range(1, 10)}
+)
+_PORTABLE_ILLEGAL_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def normalize_portable_name(raw: str | None) -> str | None:
+    """Return a Windows/POSIX-portable file or folder name, or None to drop.
+
+    Pure function; no side effects; idempotent (f(f(x)) == f(x)).
+    - illegal characters (< > : " / \\ | ? * and control chars) → `-`
+    - trailing dots / spaces stripped (NTFS forbids them at segment end)
+    - reserved device basenames (CON, PRN, AUX, NUL, COM1-9, LPT1-9 —
+      any case, with or without extension) → prefixed with `_`
+    - empty result → None; the caller skips or surfaces, never substitutes
+    """
+    if raw is None:
+        return None
+    s = _PORTABLE_ILLEGAL_RE.sub("-", str(raw))
+    s = s.rstrip(" .")
+    if not s:
+        return None
+    stem = s.split(".", 1)[0]
+    if stem.lower() in WINDOWS_RESERVED_BASENAMES:
+        s = "_" + s
+    return s
+
+
+def is_portable_name(raw: str | None) -> bool:
+    """True when the name is already portable (normalisation is a no-op)."""
+    return raw is not None and normalize_portable_name(raw) == raw
+
+
+# -----------------------------------------------------------------------------
 # Domain normalisation per `_system/registries/DOMAINS.md`
 # -----------------------------------------------------------------------------
 #

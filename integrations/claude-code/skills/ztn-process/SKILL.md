@@ -227,6 +227,39 @@ Partial derived views would poison downstream reasoning.
 
 Before any processing begins, scan ALL new transcripts to build shared context.
 
+### 0.0 Portable-name normalisation
+
+Runs FIRST — before Quick Read touches any inbox path. Walk
+`_sources/inbox/{id}/` for every Active + Reserved source: each immediate
+child (folder or file, plus files one level inside per-item folders) whose
+name fails `_common.py::is_portable_name` is renamed to
+`normalize_portable_name(name)`. Rationale: producer tools (Plaud and
+similar) name export folders with pure-ISO timestamps
+(`2026-04-29T14:09:30Z`) whose colons are illegal on Windows/NTFS; renaming
+BEFORE anything reads or references the path guarantees every downstream
+artefact (pre-scan briefing, `source:` frontmatter, `**Transcript:**`
+lines, PROCESSED.md, manifests) is born with the safe name — nothing ever
+needs rewriting. Spec: `_system/registries/SOURCES.md` template →
+«Portable names».
+
+Rules:
+
+- **Autonomous, silent per-rename** — qualifies for the
+  autonomous-resolution exception (ENGINE_DOCTRINE §3.1): deterministic
+  pure function, conservative failure mode, high-volume surface. No
+  CLARIFICATION per rename.
+- **Collision** — if the target name already exists in the same directory,
+  do NOT rename and do NOT guess a suffix: surface a
+  `portable-name-collision` CLARIFICATION and skip the item this run
+  (conservative default: item stays in inbox, processed next run after
+  owner resolves).
+- **`normalize_portable_name` returns None** (name empty after
+  normalisation) — same treatment as collision: skip + CLARIFICATION.
+- **Audit** — list every rename (`old → new`) in the batch report and in
+  the `log_process.md` run entry. Zero renames → no mention needed.
+- **Scope** — inbox only. Never touch `_sources/processed/` (legacy names
+  there are grandfathered; references point at them as-is).
+
 ### 0.1 Quick Read
 
 For each new file selected by §2.1 (layout-aware), read a cheap preview:
@@ -434,11 +467,12 @@ the file name / mtime (for `flat-md`).
 
 Folder-name forms accepted (all may coexist within one source):
 
-1. **Pure ISO** — `2026-04-29T14:09:30Z` → use as-is.
-2. **ISO + topic suffix** — `2026-04-29T14:09:30Z_short topic` → split on first `_`, parse left side.
-3. **Date + topic** — `2026-04-29_short-topic` → midnight UTC of that date.
-4. **Legacy short date + topic** — `04-29 short topic` → assume current year, midnight UTC. No CLARIFICATION; mtime is the secondary anchor if parsing later turns out wrong.
-5. **No parseable date** → fall back to file mtime silently. Never drop the file. No CLARIFICATION — the naming-tolerance principle (see §2.1) applies: owners and producers may create folders in any layout, the processor proceeds best-effort.
+1. **Portable ISO** (canonical for new items, post-§0.0) — `2026-04-29T14-09-30Z` → hyphens in the time part map back to `HH:MM:SS`; use as-is.
+2. **Pure ISO** — `2026-04-29T14:09:30Z` → use as-is. Legacy form: appears only under `_sources/processed/` (grandfathered) — §0.0 normalises it away in inbox.
+3. **ISO + topic suffix** — `2026-04-29T14-09-30Z_short topic` (or the colon variant) → split on first `_`, parse left side.
+4. **Date + topic** — `2026-04-29_short-topic` → midnight UTC of that date.
+5. **Legacy short date + topic** — `04-29 short topic` → assume current year, midnight UTC. No CLARIFICATION; mtime is the secondary anchor if parsing later turns out wrong.
+6. **No parseable date** → fall back to file mtime silently. Never drop the file. No CLARIFICATION — the naming-tolerance principle (see §2.1) applies: owners and producers may create folders in any layout, the processor proceeds best-effort.
 
 The engine surfaces a `source-folder-naming` CLARIFICATION ONLY when both parsing fails AND mtime is unreliable (e.g. mtime is in the future, or noticeably older than file contents would suggest because the file was moved/copied with metadata reset). Pure naming non-canonicity is not a CLARIFICATION-worthy event — it is a hint about quality, not a blocker.
 

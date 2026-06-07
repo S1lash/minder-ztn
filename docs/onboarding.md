@@ -34,6 +34,17 @@ git remote add upstream https://github.com/<maintainer>/minder-ztn.git
 
 See `docs/upstream-sync.md` for the full engine-update flow.
 
+> **Windows note.** Windows filesystems forbid colons (and a few other
+> characters) in file names, and some recorder tools — Plaud in
+> particular — name their export folders with ISO timestamps like
+> `2026-04-29T14:09:30Z`. The engine handles this for you: any
+> non-portable name dropped into `_sources/inbox/` is automatically
+> renamed to a Windows-safe form (`2026-04-29T14-09-30Z`) when
+> `/ztn:process` or `/ztn:save` runs, before any links to it are
+> created. You don't need to rename anything by hand. If an export tool
+> refuses to unpack a colon-named folder on Windows, let your unzip tool
+> rename it however it wants — the engine normalises it on pickup.
+
 ## 2. Install the Claude Code integration
 
 ```bash
