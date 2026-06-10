@@ -172,6 +172,38 @@ class ConceptNormalisationTests(unittest.TestCase):
             self.assertIn("concept-format-autofix", err)
         clear_ztn_env()
 
+    def test_type_prefixed_concept_names_kept_verbatim(self):
+        # The engine does NOT strip type prefixes — names are kept verbatim
+        # (only mechanical normalisation applies). Covers both the foreign
+        # compound case (`event_loop_blocking` + type=theme) and the welded
+        # own-type case (`skill_python` + type=skill): both are preserved,
+        # because a blind strip cannot tell them apart and a wrong strip
+        # corrupts identity (these WERE the real corpus corruptions).
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["concepts"]["upserts"] = [
+                {"name": "skill_based_tournament_calibration",
+                 "type": "theme", "related_concepts": []},
+                {"name": "event_loop_blocking", "type": "theme",
+                 "related_concepts": []},
+                {"name": "skill_python", "type": "skill",
+                 "related_concepts": []},
+                {"name": "decision_making", "type": "theme",
+                 "related_concepts": []},
+            ]
+            rc, _, _ = _run(data, tmp / "out.json", audiences)
+            self.assertEqual(rc, 0)
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
+            names = [u["name"] for u in written["concepts"]["upserts"]]
+            self.assertEqual(names, [
+                "skill_based_tournament_calibration",
+                "event_loop_blocking",
+                "skill_python",
+                "decision_making",
+            ])
+
     def test_concepts_upserts_subtype_and_related_normalised(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)

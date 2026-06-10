@@ -1,7 +1,7 @@
 """Tests for lint_concept_audit.py — Scan A.7 + Step 1.D.
 
 Coverage:
-- concept format autofix (kebab → snake, case, type-prefix strip)
+- concept format autofix (kebab → snake, case; type prefixes kept verbatim)
 - concept drop (non-ASCII, type-only)
 - audience-tag whitelist enforcement (canonical + extensions)
 - audience-tag normalise + drop

@@ -2,6 +2,33 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.32.0 — Concept names kept verbatim + fewer false project warnings
+
+### What changed
+
+Two correctness fixes, nothing to migrate.
+
+**Concept names that begin with a category-like word are no longer
+mangled.** The engine used to strip a leading "type word" from concept
+names — so `decision_making` silently became `making`, `value_chain`
+became `chain`, and `skill_based_...` lost its `skill_`. That split one
+concept into wrong pieces and quietly merged unrelated notes. The problem:
+a bare name can't tell a redundant label (`skill_python`) from a compound
+where the word belongs (`decision_making`), and guessing corrupts the very
+thing the knowledge graph is built on — stable identity. So the engine now
+keeps every concept name **exactly as written**. The "no type prefix in a
+name" guideline is still honoured where it can be done safely — at
+extraction, where the model knows the concept's type — never by a blind
+rewrite. (A name that *is* nothing but a bare category word, like `theme`
+or `skill` alone, is still dropped — that's too broad to be a concept.)
+
+**The nightly check stopped false-alarming about real projects.** A record
+tagged with a project that is registered in `PROJECTS.md` but doesn't have a
+hub page yet was wrongly flagged as an "unknown project" every night
+(hub pages only appear once a topic accumulates enough notes). The check
+now treats a project as valid if it's in `PROJECTS.md` **or** has a hub —
+so registered-but-young projects stop generating noise.
+
 ## 0.31.0 — Windows-safe filenames
 
 ### What changed

@@ -227,11 +227,42 @@ class NormalizeConceptNameTests(unittest.TestCase):
     def test_drops_non_ascii_residue(self):
         self.assertIsNone(c.normalize_concept_name("тема"))
 
-    def test_strips_forbidden_type_prefix(self):
-        self.assertEqual(c.normalize_concept_name("theme_queue_prioritization"),
-                         "queue_prioritization")
+    def test_type_prefix_is_not_stripped(self):
+        # No mechanical type-prefix strip: a name that merely STARTS with a
+        # type word is kept verbatim. The blind helper cannot tell a
+        # redundant label from a compound, so it never guesses (a wrong
+        # strip would corrupt graph identity).
+        for name in (
+            "theme_queue_prioritization",
+            "skill_python",
+            "tool_qdrant",
+        ):
+            self.assertEqual(c.normalize_concept_name(name), name)
 
-    def test_drops_when_only_type_prefix(self):
+    def test_compound_concepts_kept_intact(self):
+        # The whole point: type-word + anything is preserved. These were the
+        # real corruptions before the fix (`decision_making`→`making`,
+        # `value_chain`→`chain`, `event_loop_blocking`→`loop_blocking`).
+        for name in (
+            "decision_making",
+            "value_chain",
+            "goal_setting",
+            "skill_set",
+            "skill_based_tournament_calibration",
+            "value_added_reseller",
+            "event_driven_architecture",
+            "event_loop_blocking",
+            "project_status_update",
+            "fact_checking",
+            "idea_generation",
+        ):
+            self.assertEqual(c.normalize_concept_name(name), name)
+
+    def test_drops_bare_reserved_type_word(self):
+        # Rule 8: a name that IS exactly a type word drops (too broad to be
+        # a concept). `theme_` trims to `theme` and drops the same way.
+        self.assertIsNone(c.normalize_concept_name("theme"))
+        self.assertIsNone(c.normalize_concept_name("skill"))
         self.assertIsNone(c.normalize_concept_name("theme_"))
 
     def test_drops_when_empty_after_strip(self):

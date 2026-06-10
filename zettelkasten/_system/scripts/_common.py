@@ -83,12 +83,18 @@ _CONCEPT_SEP_RE = re.compile(
 )
 _CONCEPT_RUN_US = re.compile(r"_+")
 
-FORBIDDEN_TYPE_PREFIXES: tuple[str, ...] = (
-    "theme_", "decision_", "person_", "project_", "tool_", "idea_",
-    "event_", "goal_", "value_", "fact_", "organization_", "skill_",
-    "location_", "emotion_", "preference_", "constraint_", "algorithm_",
-    "other_",
-)
+# NOTE: there is deliberately NO mechanical "type-prefix strip" here. A
+# bare string cannot tell a redundant type label (`skill_python` = type
+# `skill` welded onto `python`) from a compound where the type-word is part
+# of the name (`skill_based`, `decision_making`, `value_chain`,
+# `event_loop_blocking`). Guessing corrupts graph identity, the one thing
+# the concept layer exists to protect — so the engine never guesses. Names
+# are normalised mechanically (charset / case / separators / length) and
+# kept verbatim otherwise; the only semantic drop is a BARE reserved
+# type-word (rule 8, unambiguous — see RESERVED_TYPE_WORDS). Rule 5 ("no
+# type prefix in the name") is enforced upstream at extraction by the
+# `/ztn:process` prompt; a slipped weld is preserved (a cosmetic redundant
+# prefix is safe and recoverable) rather than blindly amputated.
 
 # Frozen mirror of Minder's `ConceptType` enum (18 values).
 # Source of truth: minder/.../domain/graph/ConceptType.java.
@@ -179,11 +185,13 @@ def normalize_concept_name(raw: str | None) -> str | None:
     Pure function; no side effects. Mirrors CONCEPT_NAMING.md normalisation
     algorithm with autonomous fallbacks:
     - non-ASCII residue after diacritic-fold → drop (None)
-    - empty after type-prefix strip → drop (None)
+    - bare reserved type-word (`theme`, `tool`, …) → drop (None, rule 8)
     - over-length → truncate at last `_` boundary `≤ 64`; hard-cut otherwise
 
-    The caller is responsible for emitting the returned value verbatim or
-    skipping the entry on None — never substitute, never raise.
+    Type prefixes are NOT stripped — the name is kept verbatim after
+    mechanical normalisation (see the module note above for why). The caller
+    is responsible for emitting the returned value verbatim or skipping the
+    entry on None — never substitute, never raise.
     """
     if raw is None:
         return None
@@ -199,18 +207,14 @@ def normalize_concept_name(raw: str | None) -> str | None:
         return None
     if not CONCEPT_NAME_RE.match(s):
         return None
-    for prefix in FORBIDDEN_TYPE_PREFIXES:
-        if s.startswith(prefix):
-            s = s[len(prefix):].lstrip("_")
-            break
-    if not s:
-        return None
     # Bare type-enum words (`theme`, `tool`, `decision`, `person`,
     # `project`, …) collapse via Rule 8 — broad classifiers belong in
-    # domains/tags, not as concepts. Covers both `theme_` (which trims
-    # to `theme`) and bare inputs like `theme` directly. People and
-    # projects are first-class entities with their own slots, never
-    # routed through the concept channel.
+    # domains/tags, not as concepts. This is the ONE semantic drop: a name
+    # that IS exactly a type word, not one that merely starts with one
+    # (`theme_park`, `decision_making` are kept). `theme_` trims to `theme`
+    # via the separator pass and drops here; bare `theme` drops directly.
+    # People and projects are first-class entities with their own slots,
+    # never routed through the concept channel.
     if s in RESERVED_TYPE_WORDS:
         return None
     if len(s) > CONCEPT_NAME_MAX_LEN:

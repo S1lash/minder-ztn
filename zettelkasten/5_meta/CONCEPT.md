@@ -299,7 +299,8 @@ labels) и не с **domains** (tiny closed set: `work`, `identity`,
 | `concepts.upserts[]` | top-level манифест | Дедуплицированный реестр концептов batch'a с `name` / `type` / `subtype` / `related_concepts` / `previous_slugs` |
 
 **Format**: snake_case `[a-z0-9_]`, ASCII, English-only, length ≤ 64,
-no forbidden type prefix. Spec: `_system/registries/CONCEPT_NAMING.md`.
+no type prefix in the name (enforced at extraction, not mechanically
+stripped). Spec: `_system/registries/CONCEPT_NAMING.md`.
 
 **Type enum** (lowercase, в манифесте только): `theme`, `tool`,
 `decision`, `idea`, `event`, `organization`, `skill`, `location`,

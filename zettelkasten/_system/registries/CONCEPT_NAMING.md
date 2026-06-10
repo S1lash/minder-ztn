@@ -97,6 +97,18 @@ error — translation didn't happen, fix the upstream extraction.
 | 8 | Concrete enough — broad categories belong in `domains:` | `team_restructuring` | `work`, `team`, `general` |
 | 9 | Stable — renames cost; chain via `previous_slugs[]` when unavoidable | — | — |
 
+The ✗ column is **authoring guidance** — what not to coin — not a list of
+strings the normaliser rewrites. Rules 1–4 and 7 are mechanically enforced
+(the normaliser fixes or drops). Rules 5, 6, 9 are editorial, enforced at
+extraction: the normaliser does **not** strip a type prefix or a role suffix
+(`theme_queue_prioritization` and `anna_smith_cto` are kept verbatim if
+authored) — it cannot tell a redundant label from a compound, and guessing
+would corrupt identity. Rule 8 is mixed: a name that **is** a bare concept-type word
+(`theme`, `skill`, `decision`) is dropped mechanically; other broad
+classifiers (`work`, `team`, `general`) are kept by the normaliser and only
+caught editorially at extraction. See "Normalisation algorithm" and Rule 5
+below.
+
 ---
 
 ## Normalisation algorithm
@@ -109,13 +121,30 @@ error — translation didn't happen, fix the upstream extraction.
 3. Collapse runs of `_` into one.
 4. Trim leading and trailing `_`.
 
-Validate: `^[a-z0-9_]+$`, length in `[1, 64]`, does not start with a
-forbidden type prefix.
+Validate: `^[a-z0-9_]+$`, length in `[1, 64]`. Then drop if the result is
+a **bare reserved type-word** (rule 8 — see below).
 
-Forbidden type prefixes (rule 5): `theme_`, `decision_`, `person_`,
-`project_`, `tool_`, `idea_`, `event_`, `goal_`, `value_`, `fact_`,
-`organization_`, `skill_`, `location_`, `emotion_`, `preference_`,
-`constraint_`, `algorithm_`, `other_`.
+**Type prefixes are NOT mechanically stripped.** The normaliser keeps the
+name verbatim after the mechanical steps above; it never removes a leading
+type-word. A bare string cannot distinguish a redundant type label
+(`skill_python` = type `skill` welded onto the concept `python`) from a
+compound where the type-word is genuinely part of the name (`skill_based`,
+`decision_making`, `value_chain`, `goal_setting`, `event_loop_blocking`).
+The two are syntactically identical; only meaning separates them, and the
+normaliser has no `type` field and no lexicon. Guessing would corrupt graph
+identity — the one thing the concept layer exists to protect — by
+collapsing `decision_making` into `making`. So the engine does not guess:
+rule 5 ("no type prefix in the name") is enforced **upstream at
+extraction**, in the `/ztn:process` prompt, where the model knows the
+concept's type and meaning. If a weld nonetheless slips through, the name
+is preserved — a redundant prefix is cosmetic, safe, and recoverable;
+a wrong strip is silent identity loss.
+
+The single semantic drop the normaliser does perform is the bare
+reserved-word collapse: a name that **is** exactly a type-enum word
+(`theme`, `skill`, `decision`, …) drops, because such a broad classifier
+belongs in `domains:`/`tags:`, not as a concept (rule 8). A name that
+merely *starts with* a type word (`theme_park`, `decision_making`) is kept.
 
 ---
 
@@ -140,6 +169,18 @@ every reference to it. If the type is welded into the name
 means cascading every link that ever pointed at the old name.
 Identity stays in the name; type lives in a field that can change
 freely.
+
+**This rule is enforced at extraction, not by the normaliser.** Whoever
+*assigns* the name (the `/ztn:process` model, which knows the type) keeps
+the type out of it. The mechanical normaliser does **not** strip type
+prefixes, because it cannot safely tell a redundant label from a compound:
+`skill_based`, `decision_making`, `value_chain`, `goal_setting`,
+`event_loop_blocking` all start with a type word, yet the type word is part
+of the concept, not a label. A blind strip would corrupt these
+(`decision_making` → `making`), and corruption of identity is far worse
+than a cosmetically redundant prefix. So the normaliser keeps the name
+verbatim; a slipped weld is tolerated (and can be renamed later under rule
+9 if it ever actually misleads), never silently amputated.
 
 ### Rule 6 — no role suffix on people
 Same principle, narrower case. Roles change (developer → lead → CTO);
@@ -182,11 +223,11 @@ CLARIFICATION for owner action. The single source of truth is
 | Condition | Engine action |
 |---|---|
 | Raw value differs from its normalised form (case / hyphens / dashes / whitespace / punctuation / diacritics) | **Silent autofix** — rewrite to the canonical form. Fix-id `concept-format-autofix` logged in `log_lint.md`. |
-| Starts with a forbidden type prefix (`theme_`, `decision_`, …) | **Silent autofix** — strip the prefix; if empty after strip, drop the entry. Fix-id `concept-format-autofix` or `concept-drop-autofix`. |
 | Length > 64 after normalisation | **Silent autofix** — truncate at the last `_` boundary `≤ 64`; hard-cut otherwise. Fix-id `concept-format-autofix`. |
 | Contains non-ASCII residue after diacritic-fold (e.g. Cyrillic) | **Silent drop** — entry not emitted. Fix-id `concept-drop-autofix` with reason `unnormalisable`. |
-| Equals a bare type-enum word (`theme`, `decision`, …) — Rule 5 + 8 collapse | **Silent drop** (broad classifier belongs in `domains:`/tags). |
+| Equals a bare type-enum word (`theme`, `decision`, …) — Rule 8 collapse | **Silent drop** (broad classifier belongs in `domains:`/tags). |
 | Translation-impossible non-English term (Q15 fallback) | **Silent drop** at extraction time. Never transliterate. |
+| Starts with a type word but is a compound (`decision_making`, `skill_based`, `value_chain`) | **No action — kept verbatim.** The normaliser never strips a type prefix (see "Type prefixes are NOT mechanically stripped"). Rule 5 is enforced at extraction, not here. |
 
 The normaliser is invoked at every emission point: capture-candidate
 helper (write-time), `/ztn:process` Step 3.4 Q15 + Step 3.6
@@ -286,7 +327,9 @@ back to these.
 | `team-restructuring` | `team_restructuring` | autofix |
 | `Node.js (v18)` | `node_js_v18` | autofix |
 | `team — restructuring` (em dash) | `team_restructuring` | autofix |
-| `theme_queue_prioritization` | `queue_prioritization` | autofix — type prefix stripped |
+| `decision_making` | `decision_making` | pass-through — type prefixes are never stripped |
+| `skill_based_tournament_calibration` | `skill_based_tournament_calibration` | pass-through — compound, kept verbatim |
+| `theme` (bare type word) | — | drop (rule 8 — broad classifier) |
 | `тема` | — | drop (`concept-drop-autofix`, reason `unnormalisable`) |
 | 70-char string | truncated at last `_` ≤ 64 | autofix |
 

@@ -246,14 +246,19 @@ manifest.
 `concepts.upserts[].name`, `subtype`, every entry in `related_concepts`,
 every entry in `previous_slugs`) MUST conform to
 `_system/registries/CONCEPT_NAMING.md` — snake_case `[a-z0-9_]`, ≤64
-chars, no forbidden type prefix, English-only. Non-English source terms
-MUST be translated upstream (in `/ztn:process` Step 3.4 Q15) BEFORE
-emission. Any non-conformant value is silently autofixed or dropped
-by the autonomous-resolution helpers in `_system/scripts/_common.py` —
-at producer side (`emit_batch_manifest.py`) and again at lint Scan A.7
-(`lint_concept_audit.py`) as defence-in-depth. The owner sees no
-queue; see `_system/registries/CONCEPT_NAMING.md` "On violation" for
-the full action table.
+chars, no type prefix in the name, English-only. The "no type prefix"
+rule is enforced **upstream at extraction** (`/ztn:process`), not by a
+mechanical strip — the normaliser keeps names verbatim because a blind
+strip cannot tell a redundant label from a compound (`decision_making`)
+and would corrupt identity. Non-English source terms MUST be translated
+upstream (in `/ztn:process` Step 3.4 Q15) BEFORE emission. Mechanical
+non-conformance (case / separators / diacritics / over-length, and
+non-ASCII or bare-type-word drops) is silently autofixed or dropped by
+the autonomous-resolution helpers in `_system/scripts/_common.py` — at
+producer side (`emit_batch_manifest.py`) and again at lint Scan A.7
+(`lint_concept_audit.py`) as defence-in-depth. The owner sees no queue;
+see `_system/registries/CONCEPT_NAMING.md` "On violation" for the full
+action table.
 
 **Audience-tag format.** All `audience_tags[]` values MUST be either one
 of the canonical five (`family`, `friends`, `work`,
@@ -267,14 +272,14 @@ post-write safety net.
 
 **Autonomous resolution — no CLARIFICATIONs for the concept layer.**
 The concept and audience layers are 100% autonomous: every format issue
-(non-snake_case concept name, forbidden type prefix, over-length name,
-non-canonical audience tag, reserved-keyword conflict) is resolved
+(non-snake_case concept name, over-length name, non-canonical audience
+tag, reserved-keyword conflict) is resolved
 deterministically by `_system/scripts/_common.py` helpers
 (`normalize_concept_name`, `normalize_concept_list`,
 `normalize_audience_tag`). On unresolvable input (non-ASCII residue,
-empty after strip, audience tag not in whitelist that cannot be mapped
-to canonical) the helpers return `None` and callers drop the entry
-silently. The owner sees no CLARIFICATION queue for these issues —
+bare reserved type-word, audience tag not in whitelist that cannot be
+mapped to canonical) the helpers return `None` and callers drop the
+entry silently. The owner sees no CLARIFICATION queue for these issues —
 heuristic resolution is the contract. Violations that DO surface
 (format issues persisting after autofix at write-time, e.g. due to a
 helper bug) are caught by lint A.7's defence-in-depth pass and logged

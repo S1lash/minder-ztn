@@ -1054,16 +1054,18 @@ Be specific and cite evidence from the transcript.
     **Normalisation (autonomous, run on every emitted name).** Apply
     `_system/scripts/_common.py::normalize_concept_name()` heuristic:
     diacritic-fold → lowercase → separator→`_` → collapse runs → trim
-    `_` → drop if non-ASCII residue → drop if charset fails → strip
-    forbidden type prefix → drop if empty after strip → truncate at
+    `_` → drop if non-ASCII residue → drop if charset fails → drop if
+    the result is a bare reserved type-word (rule 8) → truncate at
     last `_` boundary `≤ 64`. The function returns `None` when
     normalisation cannot produce a valid identifier; callers MUST
-    treat `None` as «skip silently». Forbidden type prefixes (auto-
-    stripped, not raised): `theme_`, `decision_`, `person_`,
-    `project_`, `tool_`, `idea_`, `event_`, `goal_`, `value_`, `fact_`,
-    `organization_`, `skill_`, `location_`, `emotion_`, `preference_`,
-    `constraint_`, `algorithm_`, `other_`. Type lives in metadata,
-    not in name.
+    treat `None` as «skip silently». **Type prefixes are NOT
+    stripped** — the name is kept verbatim. A bare string cannot tell
+    a redundant label (`skill_python`) from a compound where the type
+    word is part of the name (`decision_making`, `skill_based`,
+    `value_chain`), and a wrong strip corrupts identity. Rule 5 ("no
+    type prefix in name") is YOUR job at this step — do not weld the
+    type into the name. Type lives in metadata, not in name; a slipped
+    weld is preserved, never amputated.
 
     **Selectivity (Rule 8).** Reject broad classifiers — if a name
     would match half the corpus (`work`, `general`, `meetings`), it's

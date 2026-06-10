@@ -9,8 +9,11 @@ Three checks per note (records + PARA knowledge):
   2. Hub-kind: each project must point to a hub with `hub_kind: project`
      (or absent — backward-compat default `project`); `trajectory` /
      `domain` are flagged
-  3. Existence: project ID must resolve to a hub file under
-     `5_meta/mocs/hub-{slug}.md`
+  3. Existence: project ID must resolve to a row in PROJECTS.md OR a hub
+     file under `5_meta/mocs/hub-{slug}.md`. Only when NEITHER exists is
+     the ID flagged. A registered project need not yet own a hub — hubs
+     are created at a topic-volume threshold — so hub-presence alone is
+     not the existence gate.
 
 Output: JSONL on stdout, one event per violation; exit 0 always.
 
@@ -76,6 +79,63 @@ def _hub_kind(root: Path, project_id: str) -> tuple[str | None, bool]:
     return str(kind).strip().lower(), True
 
 
+# Section headers in PROJECTS.md whose table rows are NOT eligible project
+# IDs and must be excluded from the existence set: trajectories are
+# explicitly ineligible for the `projects:` axis; consolidated / superseded
+# rows are deprecated IDs (using one should still surface); the template
+# section is documentation, not data. Active / Completed / Archived
+# projects all count — a record about a finished or dropped project is a
+# legitimate historical reference.
+_NON_PROJECT_SECTION_RE = re.compile(
+    r"trajector|consolidat|supersed|template", re.IGNORECASE
+)
+# A registry ID: lowercase slug, hyphen/underscore allowed, digit-or-alpha
+# start. Filters header rows ("ID", "Old ID"), separator rows ("---"), and
+# placeholders ("_(empty)_", "-").
+_PROJECT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+
+def _load_project_ids(root: Path) -> set[str]:
+    """Parse PROJECTS.md → set of registered project IDs.
+
+    Reads markdown table rows under project-semantic sections (Active /
+    Completed / Archived projects). Trajectory, consolidated/superseded,
+    and template sections are skipped — their IDs are not eligible for the
+    `projects:` axis, so a record pointing at one must still surface
+    (caught here as unknown, or via the hub-kind check when a hub exists).
+
+    Safe degradation: a missing or unreadable registry yields an empty set,
+    which falls the existence check back to hub-only resolution — the prior
+    behaviour, no regression.
+    """
+    path = root / "1_projects" / "PROJECTS.md"
+    if not path.exists():
+        return set()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return set()
+
+    ids: set[str] = set()
+    in_excluded_section = False
+    for line in text.splitlines():
+        if line.lstrip().startswith("#"):
+            in_excluded_section = bool(_NON_PROJECT_SECTION_RE.search(line))
+            continue
+        if in_excluded_section:
+            continue
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        first_cell = stripped.strip("|").split("|", 1)[0].strip()
+        # strip wrapping markdown emphasis from placeholder cells, e.g.
+        # `_(empty)_` → `(empty)` — still rejected by the slug regex.
+        candidate = first_cell.strip("*_`").strip()
+        if _PROJECT_ID_RE.match(candidate):
+            ids.add(candidate)
+    return ids
+
+
 def _has_boundary_marker(fm: dict, body: str) -> bool:
     if fm.get("boundary") is True:
         return True
@@ -87,7 +147,7 @@ def _emit(event: dict) -> None:
     sys.stdout.write(json.dumps(event, ensure_ascii=False) + "\n")
 
 
-def _scan_note(path: Path, root: Path) -> None:
+def _scan_note(path: Path, root: Path, project_ids: set[str]) -> None:
     fm_body = read_frontmatter(path)
     if fm_body is None:
         return
@@ -146,20 +206,23 @@ def _scan_note(path: Path, root: Path) -> None:
 
     # Check 2 + 3: per-entry hub-kind / existence
     for project_id in projects:
-        kind, exists = _hub_kind(root, project_id)
-        if not exists:
+        kind, hub_exists = _hub_kind(root, project_id)
+        in_registry = project_id in project_ids
+        if not hub_exists and not in_registry:
             _emit({
                 **base_event,
                 "kind": "projects-array-unknown-id",
                 "severity": "weak",
                 "project_id": project_id,
                 "reason": (
-                    f"projects entry `{project_id}` does not resolve to a "
-                    f"hub file at 5_meta/mocs/hub-{project_id}.md."
+                    f"projects entry `{project_id}` resolves to neither a "
+                    f"row in PROJECTS.md nor a hub file at "
+                    f"5_meta/mocs/hub-{project_id}.md."
                 ),
                 "to_resolve": (
-                    f"Verify project ID; either fix the slug, create "
-                    f"hub-{project_id}.md, or drop the entry."
+                    f"Verify project ID; either fix the slug, register the "
+                    f"project in PROJECTS.md, create hub-{project_id}.md, or "
+                    f"drop the entry."
                 ),
             })
             continue
@@ -204,8 +267,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: root does not exist: {root}", file=sys.stderr)
         return 1
 
+    project_ids = _load_project_ids(root)
     for path in _iter_notes(root):
-        _scan_note(path, root)
+        _scan_note(path, root, project_ids)
     return 0
 
 

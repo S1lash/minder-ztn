@@ -256,8 +256,10 @@ class AppendCandidateTests(unittest.TestCase):
             )
         clear_ztn_env()
 
-    def test_applies_in_concepts_strips_type_prefix(self):
-        """Autonomous-pipeline: forbidden type prefix stripped silently."""
+    def test_applies_in_concepts_keeps_type_prefixed_name(self):
+        """Autonomous-pipeline: type-prefixed names are kept verbatim — the
+        engine never strips a type prefix from a bare string (it cannot tell
+        a redundant label from a compound, and guessing corrupts identity)."""
         with tempfile.TemporaryDirectory() as tmp:
             fx = make_fixture(Path(tmp))
             buf = fx.system / "state" / "principle-candidates.jsonl"
@@ -271,7 +273,7 @@ class AppendCandidateTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertEqual(
                 _read_buffer(buf)[-1]["applies_in_concepts"],
-                ["delegation"],
+                ["theme_delegation"],
             )
         clear_ztn_env()
 
@@ -314,7 +316,9 @@ class AppendCandidateTests(unittest.TestCase):
         clear_ztn_env()
 
     def test_applies_in_concepts_dedups_after_normalisation(self):
-        """Autonomous-pipeline: two raw forms collapsing to same canonical → one entry."""
+        """Autonomous-pipeline: raw forms collapsing to the same canonical →
+        one entry. A type-prefixed form is a DISTINCT concept (no strip), so
+        it survives as its own entry."""
         with tempfile.TemporaryDirectory() as tmp:
             fx = make_fixture(Path(tmp))
             buf = fx.system / "state" / "principle-candidates.jsonl"
@@ -322,12 +326,12 @@ class AppendCandidateTests(unittest.TestCase):
                 "--situation", "x",
                 "--suggested-type", "principle",
                 "--suggested-domain", "tech",
-                "--applies-in-concepts", "Delegation-Pattern,delegation_pattern,theme_delegation_pattern",
+                "--applies-in-concepts", "Delegation-Pattern,delegation_pattern,DELEGATION-PATTERN,theme_delegation_pattern",
                 "--buffer", str(buf),
             ])
             self.assertEqual(
                 _read_buffer(buf)[-1]["applies_in_concepts"],
-                ["delegation_pattern"],
+                ["delegation_pattern", "theme_delegation_pattern"],
             )
         clear_ztn_env()
 

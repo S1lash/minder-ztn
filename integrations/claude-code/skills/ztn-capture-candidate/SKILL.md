@@ -78,12 +78,13 @@ from the owner's own corpus, not from this skill's prompt.
   `delegation_pattern` or `code_review_quality`). When uncertain, leave
   the list empty `[]`. Format target: `_system/registries/CONCEPT_NAMING.md`
   — snake_case ASCII, English-only (translate non-English source terms),
-  ≤64 chars, no forbidden type prefix. The capture helper auto-normalises
+  ≤64 chars, no type prefix in the name. The capture helper auto-normalises
   silently per the autonomous-pipeline policy: case / kebab→snake,
-  diacritic-fold, type-prefix strip, length truncate. Entries that
-  cannot be normalised (non-ASCII residue, empty after stripping) are
-  dropped silently. **The helper never rejects the append for concept
-  format issues**; the engine resolves heuristically without owner
+  diacritic-fold, length truncate. Names are kept verbatim — type prefixes
+  are not stripped. Entries that cannot be normalised (non-ASCII residue,
+  bare reserved type-word) are dropped silently. **The helper never rejects
+  the append for concept format issues**; the engine resolves heuristically
+  without owner
   action.
 - No proper nouns of real people in any field except `record_ref`.
   Names belong to `/ztn:process` → PEOPLE.md.
@@ -131,10 +132,10 @@ from the owner's own corpus, not from this skill's prompt.
    `--applies-in-concepts` is optional and accepts a comma-separated
    list of concept names (e.g. `delegation_pattern,code_review_quality`).
    The helper auto-normalises each entry per CONCEPT_NAMING.md
-   (case / kebab→snake / diacritic-fold / type-prefix strip / length
-   truncate) and dedupes the result. Entries that cannot be normalised
-   are dropped. The helper does NOT reject the append for concept
-   format — autonomous resolution is the contract.
+   (case / kebab→snake / diacritic-fold / length truncate; type prefixes
+   kept verbatim, not stripped) and dedupes the result. Entries that
+   cannot be normalised are dropped. The helper does NOT reject the append
+   for concept format — autonomous resolution is the contract.
 
    `origin` is resolved automatically from `CLAUDE_CONTEXT`:
    - `personal` (or unset) → `personal`

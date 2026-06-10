@@ -186,14 +186,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--applies-in-concepts", default=None,
                         help="comma-separated concept names. Each entry "
                              "auto-normalised per CONCEPT_NAMING.md "
-                             "(snake_case ASCII, English-only, ≤64 chars, "
-                             "no forbidden type prefix). Format violations "
-                             "are resolved silently by the normaliser; "
-                             "entries that cannot be normalised (non-ASCII "
-                             "residue after diacritic-fold, empty after "
-                             "type-prefix strip) are dropped. Helper "
-                             "never rejects the append for concept format. "
-                             "Empty / omitted → [].")
+                             "(snake_case ASCII, English-only, ≤64 chars; "
+                             "names kept verbatim — type prefixes are not "
+                             "stripped). Format violations are resolved "
+                             "silently by the normaliser; entries that "
+                             "cannot be normalised (non-ASCII residue after "
+                             "diacritic-fold, bare reserved type-word) are "
+                             "dropped. Helper never rejects the append for "
+                             "concept format. Empty / omitted → [].")
     parser.add_argument("--buffer", type=Path, default=None,
                         help=f"override buffer path (default: "
                              f"_system/state/{BUFFER_FILENAME})")

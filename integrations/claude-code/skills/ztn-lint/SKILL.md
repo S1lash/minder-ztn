@@ -506,7 +506,7 @@ explicitly (`test_clean_state_zero_events`,
      `{path}` + `{raw}` + `{normalised}` in `log_lint.md`. Frontmatter
      value rewritten in place.
    - `result is None` (cannot normalise — non-ASCII residue,
-     forbidden-type-prefix-only, empty after strip) → `strong` floor,
+     bare reserved type-word) → `strong` floor,
      **silent drop** of that entry; fix-id reason `concept-drop-autofix`
      with `{path}` + `{raw}` + reason. The `concepts:` list shrinks;
      other entries preserved.
@@ -605,9 +605,15 @@ For each note's `projects:` array:
      drop the entry from `projects:`; if the signal is meaningful, add
      `tags: [trajectory/{slug}]` or `domains: [{slug}]` instead.
 
-3. **Existence check:** project ID must resolve to a row in PROJECTS.md
-   AND a hub file under `5_meta/mocs/hub-{slug}.md` (any `hub_kind`).
-   If neither exists → `weak`, CLARIFICATION `projects-array-unknown-id`.
+3. **Existence check:** project ID must resolve to **either** a row in
+   PROJECTS.md **or** a hub file under `5_meta/mocs/hub-{slug}.md` (any
+   `hub_kind`). Only when **neither** exists → `weak`, CLARIFICATION
+   `projects-array-unknown-id`. A registered project need not yet own a
+   hub — hubs are created at a topic-volume threshold — so hub-presence is
+   not required for existence. PROJECTS.md resolution counts rows under the
+   Active / Completed / Archived project sections; trajectory,
+   consolidated/superseded, and template rows are excluded (a trajectory
+   used in `projects:` is still caught by the hub-kind check above).
 
 CLARIFICATION format:
 
@@ -1987,11 +1993,11 @@ takes no action.
 
 - `concept-format-autofix` — concept-name rewritten in place by
   `normalize_concept_name()` (case / kebab→snake / diacritic-fold /
-  type-prefix strip / length truncate)
+  length truncate). Type prefixes are NOT stripped — names are kept
+  verbatim (see CONCEPT_NAMING.md).
 - `concept-drop-autofix` — concept-name entry dropped silently
-  (non-ASCII residue, empty after type-prefix strip, bare type-enum
-  word, or otherwise unnormalisable). The `concepts:` list shrinks;
-  other entries kept.
+  (non-ASCII residue, bare type-enum word, or otherwise
+  unnormalisable). The `concepts:` list shrinks; other entries kept.
 - `audience-tag-normalise-autofix` — audience-tag rewritten to
   normalised form when normalised version is in canonical 5 or
   AUDIENCES.md Extensions
