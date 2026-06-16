@@ -2,6 +2,30 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.33.0 — PROJECTS.md is the single source of truth for projects
+
+### What changed
+
+The nightly project check (Scan A.8) now treats `PROJECTS.md` as the one
+authoritative list of your projects. Before, a project hub page could
+silently stand in for a registry entry — so a project that had a hub but
+was never written into `PROJECTS.md` (registry drift) passed unnoticed.
+A hub is a view over your notes, not proof that a project exists; only the
+registry is.
+
+Each `projects:` entry on a note is now resolved against the registry and
+gets a precise, actionable message instead of a generic "unknown":
+
+- **registered project** → fine (with or without a hub yet);
+- **a trajectory** used as a project → "use `tags: [trajectory/…]`";
+- **a consolidated/retired ID** → "point at its successor";
+- **a hub with no registry row** → "register it, or remove the hub";
+- **a real typo** → "fix the slug or register it".
+
+If `PROJECTS.md` is missing or empty (e.g. mid-setup), the check now stays
+quiet instead of flagging every note — it has no source of truth to judge
+against. Nothing to migrate; your existing notes are unaffected.
+
 ## 0.32.0 — Concept names kept verbatim + fewer false project warnings
 
 ### What changed

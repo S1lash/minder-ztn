@@ -595,32 +595,43 @@ For each note's `projects:` array:
      `projects-array-overcount`. Fix-suggestion: pick primary, demote
      others to `tags: [project/{slug}]`.
 
-2. **Hub-kind check:**
-   For each entry in `projects:`, look up the corresponding hub
-   `5_meta/mocs/hub-{slug}.md`. Read frontmatter:
-   - `hub_kind: project` (or absent — backward-compat default `project`)
-     → OK.
-   - `hub_kind: trajectory` or `hub_kind: domain` → `weak` floor,
-     CLARIFICATION `projects-array-non-project-hub`. Fix-suggestion:
-     drop the entry from `projects:`; if the signal is meaningful, add
-     `tags: [trajectory/{slug}]` or `domains: [{slug}]` instead.
+2. **Identity resolution — PROJECTS.md is the single source of truth.**
+   Resolve each `projects:` entry against the registry's categories
+   (Active/Completed/Archived → `project`; Trajectories → `trajectory`;
+   Consolidated/superseded → `consolidated`; Template → skipped). A hub is
+   **never** an existence authority — it is consulted only to refine the
+   diagnostic for an ID that is absent from the registry entirely. Per
+   entry, first match wins:
+   - **registered project** → OK, no action. (A registered project needs
+     no hub — hubs appear at a topic-volume threshold; registration alone
+     proves existence.)
+   - **registered trajectory** → `weak`, CLARIFICATION
+     `projects-array-non-project`. Fix: drop from `projects:`; use
+     `tags: [trajectory/{slug}]`.
+   - **consolidated / superseded ID** → `weak`, CLARIFICATION
+     `projects-array-consolidated`. Fix: replace with the successor
+     project ID (see PROJECTS.md Consolidated table).
+   - **absent from the registry** → consult the hub:
+     - `hub_kind: project` (or absent → default) exists → `weak`,
+       CLARIFICATION `projects-array-orphan-hub`: a hub vouches for nothing;
+       the project is unregistered drift. Fix: register it in PROJECTS.md,
+       or remove the hub and drop the entry.
+     - other-kind hub (`trajectory` / `domain` / …) exists → `weak`,
+       CLARIFICATION `projects-array-non-project-hub`. Fix: drop from
+       `projects:`; add `tags: [{kind}/{slug}]` or `domains: [{slug}]`.
+     - no hub → `weak`, CLARIFICATION `projects-array-unknown-id`. Fix:
+       verify the slug, register it, or drop the entry.
 
-3. **Existence check:** project ID must resolve to **either** a row in
-   PROJECTS.md **or** a hub file under `5_meta/mocs/hub-{slug}.md` (any
-   `hub_kind`). Only when **neither** exists → `weak`, CLARIFICATION
-   `projects-array-unknown-id`. A registered project need not yet own a
-   hub — hubs are created at a topic-volume threshold — so hub-presence is
-   not required for existence. PROJECTS.md resolution counts rows under the
-   Active / Completed / Archived project sections; trajectory,
-   consolidated/superseded, and template rows are excluded (a trajectory
-   used in `projects:` is still caught by the hub-kind check above).
+   **Degradation:** if PROJECTS.md is absent or empty, the SoT is missing —
+   identity resolution is skipped entirely (a friend mid-setup must not be
+   flooded). The length check (1) is registry-independent and still runs.
 
 CLARIFICATION format:
 
 ```markdown
 ### YYYY-MM-DD — projects-array drift in {note-id}
 
-**Type:** projects-array-{overcount|2-without-boundary|non-project-hub|unknown-id}
+**Type:** projects-array-{overcount|2-without-boundary|non-project|consolidated|orphan-hub|non-project-hub|unknown-id}
 **Subject:** {note-id}
 **Source:** {note-path}
 **File path:** {absolute path}
@@ -631,11 +642,15 @@ CLARIFICATION format:
 **To resolve:** {specific suggestion based on check}
 ```
 
-This scan is **autofix-eligible only for `projects-array-non-project-hub`
-when the hub frontmatter explicitly carries `hub_kind: trajectory` AND
-the note is a record (not a knowledge note)** — `medium` floor autofix,
-fix-id `projects-array-trajectory-demote`. All other cases require owner
-review (no silent semantic change).
+This scan is **autofix-eligible only for `projects-array-non-project` when
+the entry is a registry-confirmed trajectory AND the note is a record (not
+a knowledge note)** — `medium` floor autofix, fix-id
+`projects-array-trajectory-demote` (demote `projects: [slug]` →
+`tags: [trajectory/slug]`). The registry is the SoT here, so the
+classification is certain. All other cases — including `orphan-hub`,
+`consolidated`, and hub-only `non-project-hub` (classification inferred
+from a hub, not the registry) — require owner review (no silent semantic
+change).
 
 Implementation: `_system/scripts/lint_projects_array.py` —
 single-pass scanner reading note frontmatter + hub frontmatter; emits

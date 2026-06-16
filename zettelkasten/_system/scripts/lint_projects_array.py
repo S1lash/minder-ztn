@@ -4,16 +4,21 @@
 Enforces the primary-topic-only semantic for `projects:` frontmatter
 arrays defined in `5_meta/PROCESSING_PRINCIPLES.md` §9.
 
-Three checks per note (records + PARA knowledge):
-  1. Length: 0 OK; 1 OK; 2 requires body boundary marker; 3+ overcount
-  2. Hub-kind: each project must point to a hub with `hub_kind: project`
-     (or absent — backward-compat default `project`); `trajectory` /
-     `domain` are flagged
-  3. Existence: project ID must resolve to a row in PROJECTS.md OR a hub
-     file under `5_meta/mocs/hub-{slug}.md`. Only when NEITHER exists is
-     the ID flagged. A registered project need not yet own a hub — hubs
-     are created at a topic-volume threshold — so hub-presence alone is
-     not the existence gate.
+Per note (records + PARA knowledge):
+  1. Length: 0 OK; 1 OK; 2 requires body boundary marker; 3+ overcount.
+  2. Identity resolution — PROJECTS.md is the single source of truth.
+     Each `projects:` entry is resolved against the registry's categories:
+       - registered project (Active/Completed/Archived) → OK
+       - registered trajectory → `non-project` (wrong axis; use tags:)
+       - consolidated / superseded ID → `consolidated` (migrate to successor)
+       - absent from the registry → consult the hub only to refine:
+           * hub_kind=project exists → `orphan-hub` (registry drift:
+             a hub vouches for nothing; register it or remove the hub)
+           * other-kind hub exists → `non-project-hub` (use tags:/domains:)
+           * no hub → `unknown-id` (typo or unregistered)
+     A hub is never an existence authority — a registered project needs no
+     hub (hubs are created at a topic-volume threshold), and a hub without
+     a registry row is drift, not proof of existence.
 
 Output: JSONL on stdout, one event per violation; exit 0 always.
 
@@ -79,50 +84,69 @@ def _hub_kind(root: Path, project_id: str) -> tuple[str | None, bool]:
     return str(kind).strip().lower(), True
 
 
-# Section headers in PROJECTS.md whose table rows are NOT eligible project
-# IDs and must be excluded from the existence set: trajectories are
-# explicitly ineligible for the `projects:` axis; consolidated / superseded
-# rows are deprecated IDs (using one should still surface); the template
-# section is documentation, not data. Active / Completed / Archived
-# projects all count — a record about a finished or dropped project is a
-# legitimate historical reference.
-_NON_PROJECT_SECTION_RE = re.compile(
-    r"trajector|consolidat|supersed|template", re.IGNORECASE
-)
 # A registry ID: lowercase slug, hyphen/underscore allowed, digit-or-alpha
 # start. Filters header rows ("ID", "Old ID"), separator rows ("---"), and
 # placeholders ("_(empty)_", "-").
 _PROJECT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
+# Empty categorised registry — the safe-degradation value and the schema.
+REGISTRY_CATEGORIES: tuple[str, ...] = ("project", "trajectory", "consolidated")
 
-def _load_project_ids(root: Path) -> set[str]:
-    """Parse PROJECTS.md → set of registered project IDs.
 
-    Reads markdown table rows under project-semantic sections (Active /
-    Completed / Archived projects). Trajectory, consolidated/superseded,
-    and template sections are skipped — their IDs are not eligible for the
-    `projects:` axis, so a record pointing at one must still surface
-    (caught here as unknown, or via the hub-kind check when a hub exists).
+def _section_category(header: str) -> str | None:
+    """Map a PROJECTS.md `#`-header to a registry category, or None to skip.
 
-    Safe degradation: a missing or unreadable registry yields an empty set,
-    which falls the existence check back to hub-only resolution — the prior
+    `Template` sections are documentation (skip). `Trajectories` and
+    `Consolidated / superseded` are their own categories. Everything else —
+    Active / Completed / Archived projects, and the registry title — is a
+    project section.
+    """
+    h = header.lower()
+    if "template" in h:
+        return None
+    if "trajector" in h:
+        return "trajectory"
+    if "consolidat" in h or "supersed" in h:
+        return "consolidated"
+    return "project"
+
+
+def _load_project_registry(root: Path) -> dict[str, set[str]]:
+    """Parse PROJECTS.md into categorised ID sets — the single source of
+    truth for project identity.
+
+    Returns `{"project": {...}, "trajectory": {...}, "consolidated": {...}}`.
+    A.8 resolves every `projects:` entry against these sets; a hub is never
+    an existence authority, only consulted to refine the diagnostic for an
+    ID absent from the registry entirely.
+
+    Section → category via `_section_category` (Active/Completed/Archived →
+    project; Trajectories → trajectory; Consolidated/superseded →
+    consolidated; Template → skipped).
+
+    Safe degradation: a missing or unreadable registry yields all-empty
+    sets, which falls the resolution back to hub-only — the prior
     behaviour, no regression.
     """
+    cats: dict[str, set[str]] = {c: set() for c in REGISTRY_CATEGORIES}
     path = root / "1_projects" / "PROJECTS.md"
     if not path.exists():
-        return set()
+        return cats
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
-        return set()
+        return cats
 
-    ids: set[str] = set()
-    in_excluded_section = False
+    category = "project"  # rows before the first section header default here
+    skip = False
     for line in text.splitlines():
         if line.lstrip().startswith("#"):
-            in_excluded_section = bool(_NON_PROJECT_SECTION_RE.search(line))
+            cat = _section_category(line)
+            skip = cat is None
+            if cat is not None:
+                category = cat
             continue
-        if in_excluded_section:
+        if skip:
             continue
         stripped = line.strip()
         if not stripped.startswith("|"):
@@ -132,8 +156,8 @@ def _load_project_ids(root: Path) -> set[str]:
         # `_(empty)_` → `(empty)` — still rejected by the slug regex.
         candidate = first_cell.strip("*_`").strip()
         if _PROJECT_ID_RE.match(candidate):
-            ids.add(candidate)
-    return ids
+            cats[category].add(candidate)
+    return cats
 
 
 def _has_boundary_marker(fm: dict, body: str) -> bool:
@@ -147,7 +171,7 @@ def _emit(event: dict) -> None:
     sys.stdout.write(json.dumps(event, ensure_ascii=False) + "\n")
 
 
-def _scan_note(path: Path, root: Path, project_ids: set[str]) -> None:
+def _scan_note(path: Path, root: Path, registry: dict[str, set[str]]) -> None:
     fm_body = read_frontmatter(path)
     if fm_body is None:
         return
@@ -204,29 +228,77 @@ def _scan_note(path: Path, root: Path, project_ids: set[str]) -> None:
             ),
         })
 
-    # Check 2 + 3: per-entry hub-kind / existence
+    # PROJECTS.md is the source of truth; if it is absent or empty we cannot
+    # resolve identity at all. Skip resolution rather than flag every entry —
+    # a friend mid-setup legitimately has notes before a populated registry.
+    # (Length check above is registry-independent and still applies.)
+    if not any(registry.values()):
+        return
+
+    # Check 2 + 3: per-entry resolution against the registry (single SoT).
+    # PROJECTS.md is authoritative for both existence and classification of
+    # every projects: entry. A hub never vouches for a project's existence —
+    # it is consulted only to refine the diagnostic for an ID that is absent
+    # from the registry entirely (orphan hub vs non-project hub vs typo).
     for project_id in projects:
-        kind, hub_exists = _hub_kind(root, project_id)
-        in_registry = project_id in project_ids
-        if not hub_exists and not in_registry:
+        if project_id in registry["project"]:
+            continue  # registered project — valid
+        if project_id in registry["trajectory"]:
             _emit({
                 **base_event,
-                "kind": "projects-array-unknown-id",
+                "kind": "projects-array-non-project",
                 "severity": "weak",
                 "project_id": project_id,
                 "reason": (
-                    f"projects entry `{project_id}` resolves to neither a "
-                    f"row in PROJECTS.md nor a hub file at "
-                    f"5_meta/mocs/hub-{project_id}.md."
+                    f"projects entry `{project_id}` is a registered "
+                    f"trajectory, not a project. The projects: axis is "
+                    f"reserved for actual projects (PROCESSING_PRINCIPLES §9)."
                 ),
                 "to_resolve": (
-                    f"Verify project ID; either fix the slug, register the "
-                    f"project in PROJECTS.md, create hub-{project_id}.md, or "
-                    f"drop the entry."
+                    f"Drop `{project_id}` from projects: ; use "
+                    f"`tags: [trajectory/{project_id}]` instead."
                 ),
             })
             continue
-        if kind in ("trajectory", "domain"):
+        if project_id in registry["consolidated"]:
+            _emit({
+                **base_event,
+                "kind": "projects-array-consolidated",
+                "severity": "weak",
+                "project_id": project_id,
+                "reason": (
+                    f"projects entry `{project_id}` is a consolidated / "
+                    f"superseded ID in PROJECTS.md. Records should point at "
+                    f"its successor, not the retired ID."
+                ),
+                "to_resolve": (
+                    f"Replace `{project_id}` with its successor project ID "
+                    f"(see the Consolidated / superseded table in PROJECTS.md)."
+                ),
+            })
+            continue
+        # Absent from the registry — consult the hub only to refine.
+        kind, hub_exists = _hub_kind(root, project_id)
+        if hub_exists and kind == "project":
+            _emit({
+                **base_event,
+                "kind": "projects-array-orphan-hub",
+                "severity": "weak",
+                "project_id": project_id,
+                "hub_kind": kind,
+                "reason": (
+                    f"projects entry `{project_id}` has a hub_kind=project "
+                    f"hub but no row in PROJECTS.md. PROJECTS.md is the source "
+                    f"of truth for project existence; the orphan hub is "
+                    f"registry drift."
+                ),
+                "to_resolve": (
+                    f"Register `{project_id}` in PROJECTS.md, or — if it is "
+                    f"not a real project — remove hub-{project_id}.md and drop "
+                    f"the entry."
+                ),
+            })
+        elif hub_exists:
             _emit({
                 **base_event,
                 "kind": "projects-array-non-project-hub",
@@ -234,14 +306,31 @@ def _scan_note(path: Path, root: Path, project_ids: set[str]) -> None:
                 "project_id": project_id,
                 "hub_kind": kind,
                 "reason": (
-                    f"projects entry `{project_id}` points to a "
-                    f"hub_kind={kind} hub. Only hub_kind=project hubs are "
-                    "eligible for the projects: axis (PROCESSING_PRINCIPLES §9)."
+                    f"projects entry `{project_id}` is unregistered and "
+                    f"resolves to a hub_kind={kind} hub. Only registered "
+                    f"projects are eligible for the projects: axis "
+                    f"(PROCESSING_PRINCIPLES §9)."
                 ),
                 "to_resolve": (
                     f"Drop `{project_id}` from projects: ; if the signal "
-                    f"matters, add `tags: [{kind}/{project_id}]` "
-                    f"({'or `domains:`' if kind == 'domain' else ''}) instead."
+                    f"matters, add `tags: [{kind}/{project_id}]`"
+                    f"{' or `domains:`' if kind == 'domain' else ''} instead."
+                ),
+            })
+        else:
+            _emit({
+                **base_event,
+                "kind": "projects-array-unknown-id",
+                "severity": "weak",
+                "project_id": project_id,
+                "reason": (
+                    f"projects entry `{project_id}` resolves to neither a row "
+                    f"in PROJECTS.md nor a hub file at "
+                    f"5_meta/mocs/hub-{project_id}.md."
+                ),
+                "to_resolve": (
+                    f"Verify project ID; fix the slug, register the project "
+                    f"in PROJECTS.md, or drop the entry."
                 ),
             })
 
@@ -267,9 +356,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: root does not exist: {root}", file=sys.stderr)
         return 1
 
-    project_ids = _load_project_ids(root)
+    registry = _load_project_registry(root)
     for path in _iter_notes(root):
-        _scan_note(path, root, project_ids)
+        _scan_note(path, root, registry)
     return 0
 
 
