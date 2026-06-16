@@ -69,16 +69,26 @@ def _load_accept_sets(
 
 def retrofit_manifest(
     data: dict, audience_accept: set[str], domain_accept: set[str],
+    filename: str | None = None,
 ) -> tuple[dict, list[dict]]:
     """Run the data dict through the emit normaliser pipeline. Returns
     (mutated_data, events). The data dict is mutated in place; the
     return is a convenience for the caller.
+
+    Unlike live emission, the retrofit passes `fill_sections=True` to the
+    identity/section synthesiser so structurally-incomplete historical
+    manifests (missing timestamp / processor / required sections, or
+    early-dialect key names) become schema-valid. The filename supplies
+    the processor and batch_id when the manifest body lacks them.
     """
     events: list[dict] = []
     if not isinstance(data.get("stats"), dict):
         data["stats"] = {}
     stats = data["stats"]
     # Mirror of emit_batch_manifest.main() pipeline — keep in sync.
+    e.synthesise_required_fields(
+        data, events, filename=filename, fill_sections=True,
+    )
     e.coerce_sources_processed(data, events, stats)
     e.normalise_empty_section_shapes(data, events, stats)
     e.relocate_tier2_misplaced_sections(data, events, stats)
@@ -109,12 +119,19 @@ def process_file(
         return False, 0, "root is not an object"
 
     before_text = json.dumps(data, ensure_ascii=False, sort_keys=True)
-    _, events = retrofit_manifest(data, audience_accept, domain_accept)
+    _, events = retrofit_manifest(
+        data, audience_accept, domain_accept, filename=str(path),
+    )
     after_text = json.dumps(data, ensure_ascii=False, sort_keys=True)
     changed = before_text != after_text
 
     try:
         e.validate_manifest(data)
+        deep_errors = e.deep_validate_manifest(data)
+        if deep_errors:
+            raise e.ManifestValidationError(
+                "deep schema validation failed: " + "; ".join(deep_errors)
+            )
     except e.ManifestValidationError as exc:
         return False, len(events), f"post-retrofit validation error: {exc}"
 

@@ -64,6 +64,7 @@ def _domains_file(root: Path, extensions: list[str] | None = None) -> Path:
 
 def _run(input_data: dict, output: Path, audiences: Path,
          dry_run: bool = False, *, domains: Path | None = None,
+         deep_validate: bool = False,
          ) -> tuple[int, str, str]:
     with tempfile.NamedTemporaryFile(
         suffix=".json", delete=False, mode="w", encoding="utf-8"
@@ -79,6 +80,12 @@ def _run(input_data: dict, output: Path, audiences: Path,
     err_buf = io.StringIO()
     args = ["--input", str(in_path), "--output", str(output),
             "--audiences", str(audiences), "--domains", str(domains)]
+    # Most tests probe a single coercion with an intentionally-partial
+    # manifest; the deep JSON-Schema gate (a production-only end-to-end
+    # check) is off by default here and exercised explicitly by
+    # DeepValidationGateTests + the retrofit over real batches.
+    if not deep_validate:
+        args.append("--no-deep-validate")
     if dry_run:
         args.append("--dry-run")
     with redirect_stdout(out_buf), redirect_stderr(err_buf):
@@ -966,12 +973,18 @@ class Tier2SubsectionBareArrayTests(unittest.TestCase):
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
             written = json.loads((tmp / "out.json").read_text())
-            self.assertEqual(
-                written["tier2_objects"]["tasks"],
-                {"upserts": [{"id": "task-foo", "type": "action",
-                              "name": "Foo task",
-                              "note": "20260507-foo"}]},
-            )
+            upserts = written["tier2_objects"]["tasks"]["upserts"]
+            self.assertEqual(len(upserts), 1)
+            entry = upserts[0]
+            # Original fields preserved …
+            self.assertEqual(entry["id"], "task-foo")
+            self.assertEqual(entry["type"], "action")
+            self.assertEqual(entry["name"], "Foo task")
+            self.assertEqual(entry["note"], "20260507-foo")
+            # … and the privacy trio injected (tier2 entries require it).
+            self.assertEqual(entry["origin"], "personal")
+            self.assertEqual(entry["audience_tags"], [])
+            self.assertEqual(entry["is_sensitive"], False)
             self.assertIn("tier2-nonempty-shape-autofix", err)
         clear_ztn_env()
 
@@ -1041,7 +1054,7 @@ class LegacyConceptTypeAliasTests(unittest.TestCase):
                 self.assertIn("concept-type-legacy-alias-autofix", err)
             clear_ztn_env()
 
-    def test_unknown_concept_type_NOT_silently_remapped(self):
+    def test_unknown_concept_type_failsafe_to_other(self):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             audiences = _audiences_file(tmp)
@@ -1051,19 +1064,19 @@ class LegacyConceptTypeAliasTests(unittest.TestCase):
                 "type": "totally_unknown_type",
             })
             rc, _, err = _run(data, tmp / "out.json", audiences)
-            # validate_manifest does not enforce concept enum — schema
-            # does. The emitter passes the unknown type through and
-            # writes a coercion warning.
+            # Unmapped, non-enum type fail-safes to `other` so the
+            # manifest is concept-type-valid by construction. Original
+            # preserved under section_extras.legacy_type for audit.
             self.assertEqual(rc, 0)
             written = json.loads((tmp / "out.json").read_text())
             entry = written["concepts"]["upserts"][0]
-            self.assertEqual(entry["type"], "totally_unknown_type")
-            self.assertNotIn(
-                "legacy_type",
-                entry.get("section_extras", {}) or {},
+            self.assertEqual(entry["type"], "other")
+            self.assertEqual(
+                entry["section_extras"]["legacy_type"],
+                "totally_unknown_type",
             )
             self.assertIn(
-                "concept-type-unknown-coercion-warning", err,
+                "concept-type-unknown-coerced-to-other", err,
             )
         clear_ztn_env()
 
@@ -1154,7 +1167,7 @@ class SensitiveEntitiesCoercionTests(unittest.TestCase):
             )
         clear_ztn_env()
 
-    def test_sensitive_entities_unknown_legacy_shape_warned(self):
+    def test_sensitive_entities_missing_kind_injected(self):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             audiences = _audiences_file(tmp)
@@ -1164,15 +1177,16 @@ class SensitiveEntitiesCoercionTests(unittest.TestCase):
             ]
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
+            # `kind` is required by schema — inject the inferred default
+            # (`note` when nothing in id/path hints otherwise) so the
+            # entry validates; unknown keys are preserved untouched.
             self.assertIn(
-                "sensitive-entities-unknown-shape-warning", err,
+                "sensitive-entities-kind-inject-autofix", err,
             )
             written = json.loads((tmp / "out.json").read_text())
-            self.assertEqual(
-                written["sensitive_entities"][0]["weird_field"],
-                "value",
-            )
-            self.assertIn("coercion_warnings", written["stats"])
+            entry = written["sensitive_entities"][0]
+            self.assertEqual(entry["weird_field"], "value")
+            self.assertEqual(entry["kind"], "note")
         clear_ztn_env()
 
 
@@ -1487,14 +1501,20 @@ class Phase4LowFindingsTests(unittest.TestCase):
 
 class LegacyConceptTypeAliasCompletenessTests(unittest.TestCase):
     def test_legacy_concept_type_aliases_complete_set(self):
-        # All 16 alias keys map to a value in the canonical enum.
-        self.assertEqual(len(e.LEGACY_CONCEPT_TYPE_ALIASES), 16)
+        # Every alias key maps to a value in the canonical enum. The map
+        # covers the full long-tail of historically-emitted non-enum
+        # types; unmapped types fail-safe to `other` in the emitter.
+        self.assertGreaterEqual(len(e.LEGACY_CONCEPT_TYPE_ALIASES), 16)
         for legacy_key, mapped in e.LEGACY_CONCEPT_TYPE_ALIASES.items():
             self.assertIn(
                 mapped, e.CONCEPT_TYPE_ENUM,
                 msg=f"alias {legacy_key!r} maps to {mapped!r}, "
                     f"not in CONCEPT_TYPE_ENUM",
             )
+        # Regression guard: representative long-tail keys are mapped.
+        for key in ("product", "technical_architecture", "practice",
+                    "business_strategy", "principle", "ai"):
+            self.assertIn(key, e.LEGACY_CONCEPT_TYPE_ALIASES)
 
 
 class Tier1NullShapeTests(unittest.TestCase):
@@ -1543,6 +1563,229 @@ class DegenerateTaskIdTests(unittest.TestCase):
             e._derive_task_title_from_id("task-pay-the-bill"),
             "Pay the bill",
         )
+
+
+class _NormaliserHelper:
+    AUD = set(e.AUDIENCE_CANONICAL)
+    DOM = set(e.ALLOWED_DOMAINS)
+
+    @staticmethod
+    def walk(node):
+        events: list = []
+        e.walk_and_normalise(
+            node, _NormaliserHelper.AUD, _NormaliserHelper.DOM, events,
+        )
+        return events
+
+
+class SynthesiseRequiredFieldsTests(unittest.TestCase):
+    def test_timestamp_derived_from_batch_id(self):
+        data = {"batch_id": "20260519-150515", "processor": "ztn:process"}
+        e.synthesise_required_fields(data, [], fill_sections=False)
+        self.assertEqual(data["timestamp"], "2026-05-19T15:05:15Z")
+        self.assertEqual(data["format_version"], "2.0")
+
+    def test_processor_derived_from_filename(self):
+        data = {"batch_id": "20260519-150515", "format_version": "2.1"}
+        e.synthesise_required_fields(
+            data, [], filename="20260519-150515-maintain.json",
+        )
+        self.assertEqual(data["processor"], "ztn:maintain")
+
+    def test_batch_id_conformed_from_batch_suffix(self):
+        data = {"batch_id": "20260531-030000-batch3"}
+        e.synthesise_required_fields(
+            data, [], filename="20260531-030000-batch3.json",
+        )
+        self.assertEqual(data["batch_id"], "20260531-030000-3")
+        self.assertEqual(
+            data["section_extras"]["legacy_batch_id"],
+            "20260531-030000-batch3",
+        )
+
+    def test_fill_sections_recovers_alias_and_empties(self):
+        data = {
+            "batch_id": "20260528-000000", "processor": "ztn:process",
+            "format_version": "2.1", "timestamp": "2026-05-28T00:00:00Z",
+            "sources": [{"path": "_sources/processed/plaud/x.md"}],
+            "records": 2,
+        }
+        e.synthesise_required_fields(data, [], fill_sections=True)
+        self.assertEqual(
+            data["sources_processed"],
+            [{"path": "_sources/processed/plaud/x.md"}],
+        )
+        self.assertEqual(data["records"], {"created": [], "updated": []})
+        self.assertEqual(
+            data["section_extras"]["legacy_scalar_sections"]["records"], 2,
+        )
+        self.assertIn("concepts", data)
+        self.assertIn("knowledge_notes", data)
+
+
+class LegacyShapeCoercionTests(unittest.TestCase):
+    def test_stringified_array_parsed(self):
+        node = {"people": "[]", "audience_tags": "[professional-network]"}
+        _NormaliserHelper.walk(node)
+        self.assertEqual(node["people"], [])
+        self.assertEqual(node["audience_tags"], ["professional-network"])
+
+    def test_plain_string_array_field_wrapped(self):
+        node = {"supersedes": "20260603-decision-x"}
+        _NormaliserHelper.walk(node)
+        self.assertEqual(node["supersedes"], ["20260603-decision-x"])
+
+    def test_tier_int_coerced_to_string(self):
+        node = {"tier1_objects": {"people": {"upserts": [
+            {"id": "x", "tier": 1,
+             "origin": "work", "audience_tags": [], "is_sensitive": False},
+        ]}}}
+        _NormaliserHelper.walk(node)
+        self.assertEqual(
+            node["tier1_objects"]["people"]["upserts"][0]["tier"], "1",
+        )
+
+    def test_invalid_hub_kind_dropped(self):
+        node = {"hubs": {"updated": [
+            {"id": "hub-x", "hub_kind": "theme",
+             "origin": "work", "audience_tags": [], "is_sensitive": False},
+        ]}}
+        _NormaliserHelper.walk(node)
+        self.assertNotIn("hub_kind", node["hubs"]["updated"][0])
+
+    def test_hub_id_field_renamed_and_path_derived(self):
+        node = {"hubs": {"updated": [
+            {"hub_id": "hub-ai-team-adoption",
+             "origin": "work", "audience_tags": [], "is_sensitive": False},
+        ]}}
+        _NormaliserHelper.walk(node)
+        entry = node["hubs"]["updated"][0]
+        self.assertEqual(entry["id"], "hub-ai-team-adoption")
+        self.assertEqual(entry["path"], "5_meta/mocs/hub-ai-team-adoption.md")
+
+    def test_bare_string_record_entry_wrapped(self):
+        node = {"records": {"created": ["20260519-meeting-x"]}}
+        _NormaliserHelper.walk(node)
+        entry = node["records"]["created"][0]
+        self.assertEqual(entry["path"], "_records/meetings/20260519-meeting-x.md")
+        self.assertEqual(entry["origin"], "personal")
+
+    def test_tier1_task_title_derived(self):
+        node = {"tier1_objects": {"tasks": {"updated": [
+            {"id": "task-team-announce",
+             "origin": "work", "audience_tags": [], "is_sensitive": False},
+        ]}}}
+        _NormaliserHelper.walk(node)
+        self.assertEqual(
+            node["tier1_objects"]["tasks"]["updated"][0]["title"],
+            "Team announce",
+        )
+
+    def test_lens_observation_is_hypothesis_forced_true(self):
+        node = {"tier2_objects": {"lens_observation": {"upserts": [
+            {"id": "lens-obs-1", "lens_name": "stalled", "observed_on": "x",
+             "is_hypothesis": False,
+             "origin": "personal", "audience_tags": [], "is_sensitive": False},
+        ]}}}
+        _NormaliserHelper.walk(node)
+        self.assertIs(
+            node["tier2_objects"]["lens_observation"]["upserts"][0][
+                "is_hypothesis"], True,
+        )
+
+    def test_concept_null_type_failsafe_to_other(self):
+        events: list = []
+        out = e.process_concepts_upserts(
+            [{"name": "x", "type": None}], events, "$.concepts.upserts",
+        )
+        self.assertEqual(out[0]["type"], "other")
+
+    def test_tier2_misplaced_ideas_relocated_to_tier1(self):
+        data = {"tier2_objects": {"ideas": {"upserts": [
+            "20260601-idea-a", "20260601-idea-b",
+        ]}}}
+        e.relocate_tier2_misplaced_sections(data, [], {})
+        self.assertNotIn("ideas", data["tier2_objects"])
+        created = data["tier1_objects"]["ideas"]["created"]
+        self.assertEqual({c["id"] for c in created},
+                         {"20260601-idea-a", "20260601-idea-b"})
+
+    def test_genuine_tier2_ideas_kept(self):
+        data = {"tier2_objects": {"ideas": {"upserts": [
+            {"id": "i1", "type": "kind", "name": "X"},
+        ]}}}
+        e.relocate_tier2_misplaced_sections(data, [], {})
+        self.assertIn("ideas", data["tier2_objects"])
+
+    def test_sensitive_entities_bare_string_wrapped(self):
+        data = {"sensitive_entities": ["20260531-observation-x"]}
+        e.coerce_sensitive_entities(data, [], {})
+        entry = data["sensitive_entities"][0]
+        self.assertEqual(entry["id"], "20260531-observation-x")
+        self.assertEqual(entry["kind"], "record")
+
+    def test_scalar_threads_coerced_to_array(self):
+        data = {"threads_opened": 0, "threads_resolved": 0}
+        e.normalise_empty_section_shapes(data, [], {})
+        self.assertEqual(data["threads_opened"], [])
+        self.assertEqual(data["threads_resolved"], [])
+
+
+class DeepValidationGateTests(unittest.TestCase):
+    def test_clean_manifest_passes_deep_gate(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            out = tmp / "out.json"
+            rc, _, err = _run(data, out, audiences, deep_validate=True)
+            self.assertEqual(rc, 0, msg=err)
+            self.assertTrue(out.exists())
+
+    def test_deep_gate_rejects_shallow_valid_deep_invalid(self):
+        # Valid top-level shape (passes the shallow gate) but a batch_id
+        # that violates the schema pattern (the deep gate must catch it).
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["batch_id"] = "not a valid batch id"
+            out = tmp / "out.json"
+            rc, _, err = _run(data, out, audiences, deep_validate=True)
+            self.assertEqual(rc, 3)
+            self.assertIn("deep schema validation failed", err)
+            self.assertFalse(out.exists())  # refused — not written
+
+    def test_no_deep_validate_flag_lets_it_through(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            data["batch_id"] = "not a valid batch id"
+            out = tmp / "out.json"
+            rc, _, _ = _run(data, out, audiences, deep_validate=False)
+            self.assertEqual(rc, 0)  # shallow gate only — written
+
+    def test_tier2_entry_trio_injected_passes_deep_gate(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            audiences = _audiences_file(tmp)
+            data = _minimal_manifest()
+            # tier2 typed-object with id/type/name but NO privacy trio —
+            # the normaliser must inject the trio so the gate passes.
+            data["tier2_objects"] = {
+                "inventory": {"upserts": [
+                    {"id": "inv-1", "type": "thing", "name": "Lamp"},
+                ]},
+            }
+            out = tmp / "out.json"
+            rc, _, err = _run(data, out, audiences, deep_validate=True)
+            self.assertEqual(rc, 0, msg=err)
+            written = json.loads(out.read_text())
+            entry = written["tier2_objects"]["inventory"]["upserts"][0]
+            self.assertEqual(entry["origin"], "personal")
+            self.assertIn("audience_tags", entry)
+            self.assertIn("is_sensitive", entry)
 
 
 if __name__ == "__main__":

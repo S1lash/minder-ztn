@@ -80,6 +80,91 @@ update.
 
 ---
 
+## Producer-side conformance — valid by construction
+
+A manifest is **schema-valid by construction, or it is not written**. The
+producer in `_system/scripts/emit_batch_manifest.py` applies two gates before
+write:
+
+1. **The normaliser** — absorbs every representational quirk the (LLM-driven)
+   accumulator emits and coerces it to the shape `v2.json` expects.
+2. **The deep gate** (`deep_validate_manifest`) — runs the *full* JSON-Schema
+   validation (the same one the nightly lint runs) right after the
+   normaliser. If anything still violates the schema — a shape the normaliser
+   didn't cover — the producer **refuses to write and exits non-zero (rc=3)**
+   with the exact errors, instead of emitting a manifest that only the nightly
+   lint would catch days later.
+
+So a normaliser gap surfaces *at emit time, loudly*, never as a silently
+written bad batch. The schema (`v2.json`) stays strict — it is the consumer
+contract; the normaliser absorbs the quirks so consumers never have to, and
+the deep gate guarantees the normaliser actually succeeded.
+
+What the normaliser guarantees on the way out:
+
+- **Concept type is always in the enum.** Values are mapped via
+  `LEGACY_CONCEPT_TYPE_ALIASES` to the closest canonical type; anything
+  unmapped (or null / non-string) **fail-safes to `other`**, with the
+  original kept under `section_extras.legacy_type`. The producer therefore
+  cannot emit a non-enum concept type, whatever vocabulary the upstream
+  accumulator invents.
+- **Every list section is the object shape the schema expects.** Bare arrays
+  become `{created, updated}` / `{upserts}`; bare-string record / note / hub /
+  people entries become objects (paths derived by id convention); stringified
+  arrays (`"[]"`, `"[a, b]"`) and plain scalars on array fields are parsed
+  back into arrays.
+- **The privacy trio** (`origin`, `audience_tags`, `is_sensitive`) is injected
+  with conservative-safe defaults on every entity-list entry that lacks it.
+- **Tier discipline.** Tier 1 types misrouted under `tier2_objects`
+  (tasks / ideas / decisions / content) relocate to their tier1 home;
+  genuine tier2 typed-objects (`{id, type, name}`) stay. Integer `tier`,
+  legacy `hub_kind` (e.g. pre-ARCH-B `theme`), and scalar-count array slots
+  (`threads_opened: 0`) are coerced or dropped.
+
+Nothing is discarded silently: every coercion appends a fix-event (emitted on
+stderr, ingested into the batch audit log), and original values survive under
+`section_extras.legacy_*`.
+
+### Backfilling historical batches
+
+`_system/scripts/rewrite_manifest_violations.py` re-runs historical manifests
+through the **same** normaliser, so a batch written before a coercion existed
+is brought up to the current contract in place (atomic write, idempotent —
+re-running a conformant batch is a no-op). The retrofit additionally runs a
+**retrofit-only** identity/section synthesiser (`synthesise_required_fields`,
+`fill_sections=True`) that recovers `timestamp` / `processor` / `batch_id` /
+`format_version` from the filename and batch_id and recovers early-dialect
+section aliases (`sources` → `sources_processed`, `notes` →
+`knowledge_notes`). Live emission keeps that synthesis **off** so a genuine
+"process produced no records" still fails loudly rather than being masked.
+
+Run after any normaliser change:
+
+```bash
+python3 _system/scripts/rewrite_manifest_violations.py --batches-dir _system/state/batches --apply
+python3 _system/scripts/lint_manifest_schema.py --batches-dir _system/state/batches --schemas-dir _system/docs/manifest-schema --all   # expect 0 violations
+```
+
+### Preventing recurrence — when the producer's vocabulary grows
+
+1. **Extend the normaliser, never the consumers.** A new emission shape is the
+   producer's problem to absorb. Add the coercion (or alias) in
+   `emit_batch_manifest.py` and a regression test; the schema and every
+   consumer stay untouched.
+2. **Prefer aliasing to enum growth.** A new concept type maps into
+   `LEGACY_CONCEPT_TYPE_ALIASES`. Only promote a type into the enum (additive
+   MINOR bump + a SemVer-log row above) when it is a genuinely new *canonical*
+   category, not a synonym of an existing one.
+3. **One normaliser, two callers.** `emit_batch_manifest.py` (live) and
+   `rewrite_manifest_violations.py` (retrofit) share the same coercion
+   functions — keep them in sync; the retrofit's pipeline mirrors
+   `main()`'s.
+4. **Backfill in the same change.** Whenever you add a coercion that historical
+   batches need, run the retrofit + lint above so the whole batch corpus stays
+   at 0 violations. State is kept current, not left to drift.
+
+---
+
 ## What is in the manifest
 
 Per ARCHITECTURE.md §4.5 (the long-form sample) and §8.11 (per-skill

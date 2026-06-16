@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -92,6 +93,41 @@ PROCESSOR_REQUIRED_SECTIONS: dict[str, tuple[str, ...]] = {
     "ztn:agent-lens": ("stats",),
 }
 
+# Filename skill suffix → processor, longest suffix first so
+# `-agent-lens` is matched before `-lint` would ever shadow it.
+FILENAME_SKILL_SUFFIXES: tuple[tuple[str, str], ...] = (
+    ("-agent-lens", "ztn:agent-lens"),
+    ("-process", "ztn:process"),
+    ("-maintain", "ztn:maintain"),
+    ("-lint", "ztn:lint"),
+)
+
+# Early-dialect manifests carried the run timestamp under these keys
+# before `timestamp` was the contract field. Checked in order when
+# `timestamp` is absent or malformed.
+LEGACY_TIMESTAMP_KEYS: tuple[str, ...] = (
+    "processed_at", "completed_at", "started_at", "processed_on", "run_at",
+)
+
+# Early-dialect section names → canonical schema slot. Recovered only
+# when the canonical key is absent (retrofit section-fill path).
+LEGACY_SECTION_ALIASES: dict[str, tuple[str, ...]] = {
+    "sources_processed": ("sources",),
+    "knowledge_notes": ("notes",),
+}
+
+# Empty-but-valid envelope per required section — used to backfill a
+# structurally-incomplete historical manifest. The original idiosyncratic
+# keys remain on the manifest (the schema tolerates additional top-level
+# properties), so this is lossless: no data is removed, only the required
+# canonical slot is added.
+EMPTY_REQUIRED_SECTION: dict[str, object] = {
+    "sources_processed": [],
+    "records": {"created": [], "updated": []},
+    "knowledge_notes": {"created": [], "updated": []},
+    "concepts": {"upserts": []},
+}
+
 # Empty-shorthand reconciliation. The accumulator inside Claude-driven
 # /ztn:process sometimes emits `tier1_objects.tasks: []` (and friends) as
 # a literal empty list when no entities exist, instead of the canonical
@@ -118,28 +154,107 @@ TIER2_SUBSECTION_KEYS: frozenset[str] = frozenset({
 })
 
 # Legacy concept-type aliases — historical /ztn:process emissions used
-# wider vocabulary than the schema's 17-value enum. Owner-confirmed
-# mapping; original value is preserved under section_extras.legacy_type
-# so the audit chain stays recoverable. Types NOT in this map and NOT
-# in the enum pass through untouched — the schema validator will flag
-# them so visibility is preserved (no silent re-mapping).
+# wider vocabulary than the schema's 17-value enum. Mapping to the
+# closest canonical value; the original is preserved under
+# section_extras.legacy_type so the audit chain stays recoverable.
+# Types NOT in this map and NOT in the enum fail-safe to `other` (see
+# process_concepts_upserts) — the producer never emits a non-enum
+# concept type, so a manifest is concept-type-valid by construction.
 LEGACY_CONCEPT_TYPE_ALIASES: dict[str, str] = {
+    # → technical: architecture / system / protocol / data / integration
+    #   / security / infra concepts
     "technical_concept": "technical",
-    "pattern": "technical",
-    "process": "theme",
-    "concept": "theme",
-    "technique": "skill",
-    "system": "theme",
-    "policy": "decision",
-    "decision_pattern": "decision",
-    "engineering_pattern": "technical",
-    "engineering_task": "technical",
-    "project_concept": "theme",
-    "personal_insight": "idea",
-    "career_pattern": "theme",
-    "tech_component": "tool",
+    "technical_architecture": "technical",
+    "technical_term": "technical",
+    "technical_concern": "technical",
+    "technical_issue": "technical",
+    "technical_standard": "technical",
+    "technical_pattern": "technical",
+    "technical_fix": "technical",
+    "tech": "technical",
     "tech_concept": "technical",
     "tech_standard": "technical",
+    "technology": "technical",
+    "pattern": "technical",
+    "architectural_pattern": "technical",
+    "architecture_pattern": "technical",
+    "architecture": "technical",
+    "architecture_principle": "technical",
+    "architectural_component": "technical",
+    "system_component": "technical",
+    "system_design": "technical",
+    "component": "technical",
+    "integration": "technical",
+    "integration_pattern": "technical",
+    "engineering_pattern": "technical",
+    "engineering_task": "technical",
+    "security_pattern": "technical",
+    "protocol": "technical",
+    "protocol_field": "technical",
+    "authentication_method": "technical",
+    "data_model": "technical",
+    "data_pipeline": "technical",
+    "data_pattern": "technical",
+    "data": "technical",
+    "payment_attribute": "technical",
+    "routing_concept": "technical",
+    "quality_attribute": "technical",
+    "resilience_pattern": "technical",
+    "mechanism": "technical",
+    "feature": "technical",
+    "capability": "technical",
+    "ai_capability": "technical",
+    "ai": "technical",
+    # → theme: process / practice / strategy / business / product / domain
+    "process": "theme",
+    "business_process": "theme",
+    "concept": "theme",
+    "core_concept": "theme",
+    "business_concept": "theme",
+    "strategic_concept": "theme",
+    "system": "theme",
+    "project_concept": "theme",
+    "career_pattern": "theme",
+    "practice": "theme",
+    "work_practice": "theme",
+    "social_practice": "theme",
+    "workflow": "theme",
+    "operational": "theme",
+    "strategy": "theme",
+    "business_strategy": "theme",
+    "distribution_tactic": "theme",
+    "adoption_pattern": "theme",
+    "work": "theme",
+    "domain": "theme",
+    "financial": "theme",
+    "product": "theme",
+    "product_concept": "theme",
+    "artifact": "theme",
+    "business_artifact": "theme",
+    "use_case": "theme",
+    "problem": "theme",
+    # → skill
+    "technique": "skill",
+    # → tool
+    "tech_component": "tool",
+    "tool_concept": "tool",
+    # → decision
+    "policy": "decision",
+    "decision_pattern": "decision",
+    # → idea
+    "personal_insight": "idea",
+    "insight": "idea",
+    # → value (a behavioural / constitution principle)
+    "principle": "value",
+    # → goal
+    "intent": "goal",
+    # → event
+    "business_event": "event",
+    # → constraint (a blocker)
+    "psychological_barrier": "constraint",
+    # → other (genuinely unclassifiable in the 17-value enum)
+    "task": "other",
+    "setting": "other",
 }
 
 # Legacy tier2.tasks → tier1.tasks relocation. Owner tasks belong in
@@ -203,6 +318,106 @@ ENTITY_LIST_PARENT_PATHS: frozenset[str] = frozenset({
     "$.tier1_objects.projects.upserts",
     "$.tier1_objects.projects.created", "$.tier1_objects.projects.updated",
 })
+
+
+# Array-typed entity fields the early accumulator sometimes emitted as a
+# stringified list (`"[]"`, `"[professional-network]"`) instead of a real
+# JSON array. walk_and_normalise parses these back into arrays.
+STRING_ARRAY_COERCE_KEYS: frozenset[str] = frozenset({
+    "people", "projects", "audience_tags", "domains", "concept_hints",
+    "member_concepts", "member_notes", "concept_ids", "related_concepts",
+    "previous_slugs", "applies_in_concepts", "participants", "types",
+    "scopes", "supersedes", "merged_from", "evidence_record_paths",
+    "evidence_concept_ids", "alternatives",
+})
+
+# Top-level array slots the early accumulator sometimes emitted as a
+# scalar `0` (count) instead of `[]`.
+SCALAR_TO_EMPTY_ARRAY_KEYS: frozenset[str] = frozenset({
+    "threads_opened", "threads_resolved", "sensitive_entities",
+})
+
+# Entry-list paths whose items must be objects — bare strings (an id or
+# a path) are wrapped into the minimal object shape.
+RECORD_NOTE_ENTRY_PATHS: frozenset[str] = frozenset({
+    "$.records.created", "$.records.updated",
+    "$.knowledge_notes.created", "$.knowledge_notes.updated",
+})
+HUB_ENTRY_PATHS: frozenset[str] = frozenset({
+    "$.hubs.created", "$.hubs.updated",
+})
+
+# Tier 1 people / projects entry lists whose items must be objects with
+# at least `id` — bare-string ids are wrapped into `{"id": <string>}`.
+TIER1_ID_ENTRY_PATHS: frozenset[str] = frozenset({
+    "$.tier1_objects.people.upserts",
+    "$.tier1_objects.people.created", "$.tier1_objects.people.updated",
+    "$.tier1_objects.projects.upserts",
+    "$.tier1_objects.projects.created", "$.tier1_objects.projects.updated",
+})
+
+# Tier 1 task entry lists — the schema requires `title` (unlike other
+# Tier 1 types which require only `id`); a missing title is derived.
+TIER1_TASK_ENTRY_PATHS: frozenset[str] = frozenset({
+    "$.tier1_objects.tasks.created", "$.tier1_objects.tasks.updated",
+})
+
+LENS_OBSERVATION_UPSERTS_PATH = "$.tier2_objects.lens_observation.upserts"
+
+# Tier 2 typed-object entries (inventory / wardrobe / lens_observation /
+# owner-extensible) also carry the privacy trio — match their `.upserts`
+# list path generically since the type names are open-ended.
+_TIER2_UPSERTS_PATH_RE = re.compile(r"^\$\.tier2_objects\.[a-z0-9_-]+\.upserts$")
+
+# Tier 1 typed sections that the early accumulator sometimes misrouted
+# under tier2_objects. Relocated wholesale to their tier1 home (tasks
+# have their own richer relocation with title + ownership derivation).
+TIER2_MISPLACED_TIER1_KEYS: tuple[str, ...] = (
+    "ideas", "decisions", "content",
+)
+
+VALID_HUB_KINDS: frozenset[str] = frozenset({
+    "project", "trajectory", "domain",
+})
+
+
+def _parse_string_array(value: str) -> list | None:
+    """Parse a stringified list — `"[]"`, `"[a, b]"`,
+    `"['x', \"y\"]"` — into a real list. Returns None when the string is
+    not a bracketed list.
+    """
+    text = value.strip()
+    if not (text.startswith("[") and text.endswith("]")):
+        return None
+    inner = text[1:-1].strip()
+    if not inner:
+        return []
+    parts = [p.strip().strip("'\"").strip() for p in inner.split(",")]
+    return [p for p in parts if p]
+
+
+def _wrap_bare_entry(value: str, is_hub: bool) -> dict:
+    """Wrap a bare-string record / note / hub entry (an id or a path)
+    into the minimal object the schema requires (`path` + later the
+    privacy trio). Record paths are derived from the id convention; hub
+    paths from `5_meta/mocs/{id}.md`.
+    """
+    if is_hub:
+        if value.endswith(".md") or "/" in value:
+            slug = value.rsplit("/", 1)[-1]
+            slug = slug[: -len(".md")] if slug.endswith(".md") else slug
+            path = value if value.endswith(".md") else f"5_meta/mocs/{slug}.md"
+            return {"id": slug, "path": path}
+        return {"id": value, "path": f"5_meta/mocs/{value}.md"}
+    if value.endswith(".md") or "/" in value:
+        return {"path": value}
+    if "-meeting-" in value:
+        return {"id": value, "path": f"_records/meetings/{value}.md"}
+    if "-observation-" in value:
+        return {"id": value, "path": f"_records/observations/{value}.md"}
+    # Knowledge-note id with no recoverable PARA path — id doubles as the
+    # path placeholder (schema requires a string, not an existing file).
+    return {"id": value, "path": value}
 
 
 class ManifestValidationError(Exception):
@@ -431,8 +646,13 @@ def process_concepts_upserts(
             entry["name"] = norm_name
 
         raw_type = entry.get("type")
-        if isinstance(raw_type, str) and raw_type not in CONCEPT_TYPE_ENUM:
-            mapped = LEGACY_CONCEPT_TYPE_ALIASES.get(raw_type)
+        if not (isinstance(raw_type, str) and raw_type in CONCEPT_TYPE_ENUM):
+            # Anything that is not already a valid enum string — a
+            # non-enum string, null, empty, or a non-string — is coerced.
+            mapped = (
+                LEGACY_CONCEPT_TYPE_ALIASES.get(raw_type)
+                if isinstance(raw_type, str) else None
+            )
             if mapped is not None:
                 extras = entry.get("section_extras")
                 if not isinstance(extras, dict):
@@ -446,16 +666,24 @@ def process_concepts_upserts(
                     "before": raw_type, "after": mapped,
                 })
             else:
-                # Non-mutating: surfaces the unknown type but leaves
-                # the value as-is. Tagged `mutation: false` so
-                # idempotence tests can filter on `mutation: true`
-                # without losing visibility across passes.
+                # No explicit alias (or null / non-string) — fail-safe to
+                # `other` so the manifest is concept-type-valid by
+                # construction. A meaningful original value is preserved
+                # under section_extras.legacy_type; the event keeps it
+                # visible so the alias map can grow without ever shipping
+                # a schema violation.
+                if isinstance(raw_type, str) and raw_type:
+                    extras = entry.get("section_extras")
+                    if not isinstance(extras, dict):
+                        extras = {}
+                    extras["legacy_type"] = raw_type
+                    entry["section_extras"] = extras
+                entry["type"] = "other"
                 events.append({
-                    "fix_id": "concept-type-unknown-coercion-warning",
+                    "fix_id": "concept-type-unknown-coerced-to-other",
                     "field_path": f"{path_prefix}[{i}].type",
-                    "before": raw_type, "after": raw_type,
+                    "before": raw_type, "after": "other",
                     "reason": "not-in-enum-and-no-alias",
-                    "mutation": False,
                 })
 
         sub = entry.get("subtype")
@@ -563,6 +791,20 @@ def coerce_sources_processed(
         )
 
 
+def _infer_sensitive_kind(item: dict) -> str:
+    """Best-effort `kind` for a sensitive-entity entry from its id/path."""
+    ref = str(item.get("id") or item.get("path") or "")
+    if "hub-" in ref:
+        return "hub"
+    if "-meeting-" in ref or "-observation-" in ref:
+        return "record"
+    if "-decision-" in ref:
+        return "decision"
+    if ref.startswith("task-") or "/task-" in ref:
+        return "task"
+    return "note"
+
+
 def coerce_sensitive_entities(
     data: dict, events: list[dict], stats: dict,
 ) -> None:
@@ -579,9 +821,29 @@ def coerce_sensitive_entities(
     """
     raw = data.get("sensitive_entities")
     if not isinstance(raw, list):
+        if raw is not None and not isinstance(raw, dict):
+            # Early-dialect scalar count (e.g. `0`) → empty array.
+            data["sensitive_entities"] = []
+            events.append({
+                "fix_id": "scalar-to-empty-array-autofix",
+                "field_path": "$.sensitive_entities",
+                "before": raw, "after": [],
+            })
         return
     out: list = []
     for i, item in enumerate(raw):
+        if isinstance(item, str):
+            # Bare id/path string → canonical object with inferred kind.
+            key = "path" if ("/" in item or item.endswith(".md")) else "id"
+            wrapped = {key: item}
+            wrapped["kind"] = _infer_sensitive_kind(wrapped)
+            events.append({
+                "fix_id": "sensitive-entities-bare-string-wrap-autofix",
+                "field_path": f"$.sensitive_entities[{i}]",
+                "before": item, "after": wrapped,
+            })
+            out.append(wrapped)
+            continue
         if not isinstance(item, dict):
             out.append(item)
             continue
@@ -609,26 +871,18 @@ def coerce_sensitive_entities(
                 "reason": "legacy-note-id-field",
             })
             continue
-        if "id" not in item and "kind" not in item:
-            # Unknown legacy shape — surface coercion warning, pass
-            # through. The schema validator downstream will flag the
-            # missing `kind`, preserving visibility.
+        if "kind" not in item:
+            # `kind` is required by the schema. Infer it from the entity
+            # reference (hub / record / decision / task), defaulting to
+            # `note` — the historical implicit kind.
+            kind = _infer_sensitive_kind(item)
+            item["kind"] = kind
             events.append({
-                "fix_id": "sensitive-entities-unknown-shape-warning",
-                "field_path": f"$.sensitive_entities[{i}]",
-                "before": item, "after": item,
-                "reason": "unknown-legacy-shape",
-                "mutation": False,
+                "fix_id": "sensitive-entities-kind-inject-autofix",
+                "field_path": f"$.sensitive_entities[{i}].kind",
+                "before": None, "after": kind,
+                "reason": "kind-required-by-schema",
             })
-            warnings = stats.setdefault("coercion_warnings", [])
-            new_warning = {
-                "field_path": f"$.sensitive_entities[{i}]",
-                "shape": "unknown-keys",
-                "keys": sorted(item.keys()),
-            }
-            # Dedupe — re-running on the same input must not grow stats.
-            if new_warning not in warnings:
-                warnings.append(new_warning)
         out.append(item)
     data["sensitive_entities"] = out
 
@@ -687,18 +941,26 @@ def relocate_tier2_misplaced_sections(
             misplaced: list[dict] = []
             genuine: list = []
             for item in upserts:
-                if (
-                    isinstance(item, dict)
-                    and "id" in item
-                    and "name" not in item
-                ):
+                if isinstance(item, str):
+                    # Bare task-id string misrouted under tier2.tasks —
+                    # owner tasks belong in tier1. Relocate like the
+                    # dict-with-id-no-name case below.
+                    misplaced.append(item)
+                elif isinstance(item, dict) and "name" not in item:
+                    # Any tier2.tasks dict lacking the tier2 typed-object
+                    # marker (`name`) is an owner task → relocate. Covers
+                    # both `id`-keyed and `anchor`-keyed legacy shapes.
                     misplaced.append(item)
                 else:
                     genuine.append(item)
             if misplaced:
                 created_entries: list[dict] = []
                 for task in misplaced:
-                    task_id = task.get("id", "unknown")
+                    if isinstance(task, str):
+                        task = {"id": task}
+                    task_id = (
+                        task.get("id") or task.get("anchor") or "unknown"
+                    )
                     new_task: dict = {
                         "id": task_id,
                         "title": _derive_task_title_from_id(task_id),
@@ -844,6 +1106,71 @@ def relocate_tier2_misplaced_sections(
             "reason": "section-deprecated",
         })
 
+    # Other Tier 1 types (ideas / decisions / content) misrouted under
+    # tier2_objects. Only items lacking the tier2 typed-object marker
+    # (`name`) — bare id strings or `{id, ...}` dicts — are misplaced
+    # Tier 1 entries; relocate those to their tier1 home. Genuinely
+    # tier2-shaped items (`{id, type, name}`) stay (the schema accepts
+    # additional tier2 type sections).
+    for type_key in TIER2_MISPLACED_TIER1_KEYS:
+        section = tier2.get(type_key)
+        if not isinstance(section, dict):
+            continue
+        upserts = section.get("upserts")
+        if not (isinstance(upserts, list) and upserts):
+            continue
+        misplaced_t1: list = []
+        genuine_t2: list = []
+        for item in upserts:
+            if isinstance(item, str) or (
+                isinstance(item, dict) and "name" not in item
+            ):
+                misplaced_t1.append(item)
+            else:
+                genuine_t2.append(item)
+        if not misplaced_t1:
+            continue
+        relocated: list[dict] = []
+        for item in misplaced_t1:
+            entry: dict = {"id": item} if isinstance(item, str) else dict(item)
+            entry.setdefault("origin", PRIVACY_TRIO_DEFAULTS["origin"])
+            entry.setdefault(
+                "audience_tags", list(PRIVACY_TRIO_DEFAULTS["audience_tags"]),
+            )
+            entry.setdefault(
+                "is_sensitive", PRIVACY_TRIO_DEFAULTS["is_sensitive"],
+            )
+            extras = entry.get("section_extras")
+            if not isinstance(extras, dict):
+                extras = {}
+            extras["legacy_origin"] = f"tier2_objects.{type_key}"
+            entry["section_extras"] = extras
+            relocated.append(entry)
+        tier1 = data.setdefault("tier1_objects", {})
+        if not isinstance(tier1, dict):
+            tier1 = {}
+            data["tier1_objects"] = tier1
+        sub = tier1.get(type_key)
+        if not isinstance(sub, dict):
+            sub = {"created": [], "updated": []}
+            tier1[type_key] = sub
+        created = sub.setdefault("created", [])
+        if not isinstance(created, list):
+            created = []
+            sub["created"] = created
+        sub.setdefault("updated", [])
+        created.extend(relocated)
+        if genuine_t2:
+            section["upserts"] = genuine_t2
+        else:
+            tier2.pop(type_key, None)
+        events.append({
+            "fix_id": "tier2-tier1type-relocated-to-tier1",
+            "field_path": f"$.tier2_objects.{type_key}.upserts",
+            "before_len": len(relocated),
+            "after": {"tier1_created_added": len(relocated)},
+        })
+
 
 def _coerce_hub_array(
     items: list, events: list[dict], path_prefix: str,
@@ -982,6 +1309,16 @@ def normalise_empty_section_shapes(
     """
     if stats is None:
         stats = {}
+    # Early-dialect scalar counts (`0`) on array slots → empty array.
+    for scalar_key in ("threads_opened", "threads_resolved"):
+        sv = data.get(scalar_key)
+        if sv is not None and not isinstance(sv, (list, dict)):
+            data[scalar_key] = []
+            events.append({
+                "fix_id": "scalar-to-empty-array-autofix",
+                "field_path": f"$.{scalar_key}",
+                "before": sv, "after": [],
+            })
     tier1 = data.get("tier1_objects")
     if isinstance(tier1, list) and len(tier1) == 0:
         data["tier1_objects"] = {}
@@ -1001,13 +1338,21 @@ def normalise_empty_section_shapes(
                     "before": None,
                     "after": {"created": [], "updated": []},
                 })
-            elif isinstance(tier1.get(key), list) and len(tier1[key]) == 0:
-                tier1[key] = {"created": [], "updated": []}
-                events.append({
-                    "fix_id": "tier1-empty-shape-autofix",
-                    "field_path": f"$.tier1_objects.{key}",
-                    "before": [], "after": {"created": [], "updated": []},
-                })
+            elif isinstance(tier1.get(key), list):
+                if len(tier1[key]) == 0:
+                    tier1[key] = {"created": [], "updated": []}
+                    events.append({
+                        "fix_id": "tier1-empty-shape-autofix",
+                        "field_path": f"$.tier1_objects.{key}",
+                        "before": [],
+                        "after": {"created": [], "updated": []},
+                    })
+                else:
+                    tier1[key] = _coerce_created_updated_array(
+                        tier1[key], events,
+                        f"$.tier1_objects.{key}",
+                        "tier1-nonempty-shape-autofix",
+                    )
         for key in TIER1_UPSERT_KEYS:
             if key in tier1 and tier1[key] is None:
                 tier1[key] = {"upserts": []}
@@ -1152,6 +1497,49 @@ def walk_and_normalise(
             child_path = f"{path}.{key}"
             value = node[key]
 
+            if key in STRING_ARRAY_COERCE_KEYS and isinstance(value, str):
+                parsed = _parse_string_array(value)
+                if parsed is None and value.strip():
+                    # A plain (non-bracketed) scalar string on an array
+                    # field becomes a single-element list.
+                    parsed = [value.strip()]
+                if parsed is not None:
+                    events.append({
+                        "fix_id": "stringified-array-parse-autofix",
+                        "field_path": child_path,
+                        "before": value, "after": parsed,
+                    })
+                    node[key] = parsed
+                    value = parsed
+                    # fall through: the parsed list still needs field-
+                    # specific normalisation (audience / domain / concept)
+
+            if (
+                key in ("tier", "tier_suggested")
+                and isinstance(value, int)
+                and not isinstance(value, bool)
+            ):
+                node[key] = str(value)
+                events.append({
+                    "fix_id": "tier-int-to-string-autofix",
+                    "field_path": child_path,
+                    "before": value, "after": node[key],
+                })
+                continue
+
+            if key == "hub_kind" and value not in VALID_HUB_KINDS:
+                # Legacy / invalid hub_kind (e.g. pre-ARCH-B `theme`).
+                # Schema defaults absent hub_kind to `project`; drop the
+                # invalid value rather than guess a structural kind.
+                events.append({
+                    "fix_id": "hub-kind-invalid-drop-autofix",
+                    "field_path": child_path,
+                    "before": value, "after": None,
+                    "reason": "not-in-arch-b-enum",
+                })
+                del node[key]
+                continue
+
             if key in CONCEPT_LIST_FIELDS and isinstance(value, list):
                 normalised = normalize_concept_list(value)
                 if normalised != value:
@@ -1209,10 +1597,46 @@ def walk_and_normalise(
             )
 
     elif isinstance(node, list):
-        inject_trio = path in ENTITY_LIST_PARENT_PATHS
-        derive_hub_path = path in ("$.hubs.created", "$.hubs.updated")
+        inject_trio = (
+            path in ENTITY_LIST_PARENT_PATHS
+            or bool(_TIER2_UPSERTS_PATH_RE.match(path))
+        )
+        derive_hub_path = path in HUB_ENTRY_PATHS
+        wrap_record_note = path in RECORD_NOTE_ENTRY_PATHS
+        wrap_hub = path in HUB_ENTRY_PATHS
+        wrap_id_entry = path in TIER1_ID_ENTRY_PATHS
         for i, item in enumerate(node):
             child_path = f"{path}[{i}]"
+            if isinstance(item, str) and (wrap_record_note or wrap_hub):
+                wrapped = _wrap_bare_entry(item, wrap_hub)
+                events.append({
+                    "fix_id": "bare-string-entry-wrap-autofix",
+                    "field_path": child_path,
+                    "before": item, "after": wrapped,
+                })
+                node[i] = wrapped
+                item = wrapped
+            elif isinstance(item, str) and wrap_id_entry:
+                wrapped = {"id": item}
+                events.append({
+                    "fix_id": "tier1-bare-string-wrap-autofix",
+                    "field_path": child_path,
+                    "before": item, "after": wrapped,
+                })
+                node[i] = wrapped
+                item = wrapped
+            if (
+                wrap_hub
+                and isinstance(item, dict)
+                and "id" not in item
+                and isinstance(item.get("hub_id"), str)
+            ):
+                item["id"] = item.pop("hub_id")
+                events.append({
+                    "fix_id": "hub-id-field-rename-autofix",
+                    "field_path": f"{child_path}.id",
+                    "before": "hub_id", "after": item["id"],
+                })
             if inject_trio and isinstance(item, dict):
                 inject_privacy_trio_defaults(item, events, child_path)
             if (
@@ -1228,9 +1652,260 @@ def walk_and_normalise(
                     "field_path": f"{child_path}.path",
                     "before": None, "after": derived,
                 })
+            if (
+                path in TIER1_TASK_ENTRY_PATHS
+                and isinstance(item, dict)
+                and "title" not in item
+            ):
+                tid = item.get("id")
+                title = (
+                    _derive_task_title_from_id(tid)
+                    if isinstance(tid, str) else "Untitled task"
+                )
+                item["title"] = title
+                events.append({
+                    "fix_id": "tier1-task-title-derive-autofix",
+                    "field_path": f"{child_path}.title",
+                    "before": None, "after": title,
+                })
+            if (
+                path == LENS_OBSERVATION_UPSERTS_PATH
+                and isinstance(item, dict)
+                and item.get("is_hypothesis") is not True
+            ):
+                # Lens output is hypothesis by definition (ARCHITECTURE
+                # §8.11.6 invariant 3 — schema `const: true`).
+                before_hyp = item.get("is_hypothesis")
+                item["is_hypothesis"] = True
+                events.append({
+                    "fix_id": "lens-observation-is-hypothesis-force-true",
+                    "field_path": f"{child_path}.is_hypothesis",
+                    "before": before_hyp, "after": True,
+                })
             walk_and_normalise(
                 item, audience_accept, domain_accept, events, child_path,
             )
+
+
+_ISO_Z_RE = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+)
+_CONFORMANT_BATCH_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}(-[0-9]+)?$")
+
+
+def _normalise_iso_z(value) -> str | None:
+    """Coerce a loose timestamp string to strict ISO-8601 UTC `...Z`.
+    Returns None when no date can be recovered.
+    """
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if _ISO_Z_RE.fullmatch(v):
+        return v
+    m = re.match(
+        r"^([0-9]{4}-[0-9]{2}-[0-9]{2})[ T]"
+        r"([0-9]{2}:[0-9]{2}:[0-9]{2})", v,
+    )
+    if m:
+        return f"{m.group(1)}T{m.group(2)}Z"
+    m = re.match(r"^([0-9]{4}-[0-9]{2}-[0-9]{2})$", v)
+    if m:
+        return f"{m.group(1)}T00:00:00Z"
+    return None
+
+
+def _conform_batch_id(raw, filename_stem: str | None) -> str | None:
+    """Return a `^YYYYMMDD-HHMMSS(-N)?$`-conformant batch_id derived from
+    the raw value (or the filename stem). Strips a trailing skill suffix,
+    normalises a `-batchN` suffix to `-N`, and fills a missing time
+    component with `000000`. Returns None when no date can be found.
+    """
+    if isinstance(raw, str) and _CONFORMANT_BATCH_ID_RE.fullmatch(raw):
+        return raw
+    src = raw if isinstance(raw, str) else (filename_stem or "")
+    if not isinstance(src, str):
+        return None
+    for suffix, _proc in FILENAME_SKILL_SUFFIXES:
+        if src.endswith(suffix):
+            src = src[: -len(suffix)]
+            break
+    date_m = re.match(r"^([0-9]{8})", src)
+    if not date_m:
+        return None
+    date = date_m.group(1)
+    time_m = re.match(r"^[0-9]{8}-([0-9]{6})", src)
+    hhmmss = time_m.group(1) if time_m else "000000"
+    batch_no = None
+    bm = re.search(r"-batch([0-9]+)\b", src)
+    if bm:
+        batch_no = bm.group(1)
+    elif time_m:
+        tn = re.match(r"^[0-9]{8}-[0-9]{6}-([0-9]+)$", src)
+        if tn:
+            batch_no = tn.group(1)
+    out = f"{date}-{hhmmss}"
+    if batch_no:
+        out = f"{out}-{batch_no}"
+    return out
+
+
+def synthesise_required_fields(
+    data: dict, events: list[dict], *,
+    filename: str | None = None, fill_sections: bool = False,
+) -> None:
+    """Backfill the four required top-level identity fields and (when
+    `fill_sections`) the per-processor required sections, so a
+    structurally-incomplete historical manifest validates.
+
+    Identity derivation is deterministic: processor from existing value /
+    filename skill suffix / `skill` field; batch_id conformed from the
+    raw value or filename; timestamp from existing value / legacy
+    timestamp keys / batch_id; format_version defaulted to `2.0`.
+
+    Section fill (retrofit only) recovers known early-dialect aliases
+    (`sources` → `sources_processed`, `notes` → `knowledge_notes`) into
+    their canonical slot, then sets any still-missing required section to
+    an empty valid envelope. The original idiosyncratic keys remain on the
+    manifest — the schema tolerates additional top-level properties — so
+    no data is removed. Live emission keeps `fill_sections=False` so a
+    genuine "process produced no records" surfaces as a validation error
+    instead of being silently masked.
+    """
+    stem = None
+    if filename:
+        stem = Path(filename).name
+        if stem.endswith(".json"):
+            stem = stem[: -len(".json")]
+
+    # processor
+    proc = data.get("processor")
+    if proc not in ALLOWED_PROCESSORS:
+        derived = None
+        if stem:
+            for suffix, mapped in FILENAME_SKILL_SUFFIXES:
+                if stem.endswith(suffix):
+                    derived = mapped
+                    break
+        if derived is None:
+            skill = data.get("skill")
+            if isinstance(skill, str):
+                key = skill.split(":")[-1].replace("ztn-", "").strip()
+                for suffix, mapped in FILENAME_SKILL_SUFFIXES:
+                    if suffix.lstrip("-") == key:
+                        derived = mapped
+                        break
+        if derived is None:
+            derived = "ztn:process"
+        data["processor"] = derived
+        events.append({
+            "fix_id": "manifest-processor-synthesised",
+            "field_path": "$.processor",
+            "before": proc, "after": derived,
+        })
+
+    # batch_id
+    raw_bid = data.get("batch_id")
+    conformed = _conform_batch_id(raw_bid, stem)
+    if conformed is not None and conformed != raw_bid:
+        if isinstance(raw_bid, str):
+            extras = data.get("section_extras")
+            if not isinstance(extras, dict):
+                extras = {}
+                data["section_extras"] = extras
+            extras["legacy_batch_id"] = raw_bid
+        data["batch_id"] = conformed
+        events.append({
+            "fix_id": "manifest-batch-id-conformed",
+            "field_path": "$.batch_id",
+            "before": raw_bid, "after": conformed,
+        })
+
+    # timestamp
+    ts = data.get("timestamp")
+    if not (isinstance(ts, str) and _ISO_Z_RE.fullmatch(ts)):
+        new_ts = None
+        for key in LEGACY_TIMESTAMP_KEYS:
+            new_ts = _normalise_iso_z(data.get(key))
+            if new_ts:
+                break
+        if new_ts is None:
+            bid = data.get("batch_id", "")
+            bm = re.match(
+                r"^([0-9]{4})([0-9]{2})([0-9]{2})-"
+                r"([0-9]{2})([0-9]{2})([0-9]{2})", bid,
+            )
+            if bm:
+                new_ts = (
+                    f"{bm.group(1)}-{bm.group(2)}-{bm.group(3)}T"
+                    f"{bm.group(4)}:{bm.group(5)}:{bm.group(6)}Z"
+                )
+        if new_ts:
+            data["timestamp"] = new_ts
+            events.append({
+                "fix_id": "manifest-timestamp-synthesised",
+                "field_path": "$.timestamp",
+                "before": ts, "after": new_ts,
+            })
+
+    # format_version
+    fv = data.get("format_version")
+    if not (isinstance(fv, str) and "." in fv):
+        data["format_version"] = "2.0"
+        events.append({
+            "fix_id": "manifest-format-version-defaulted",
+            "field_path": "$.format_version",
+            "before": fv, "after": "2.0",
+        })
+
+    if not fill_sections:
+        return
+
+    # recover early-dialect section aliases into the canonical slot
+    for canon, aliases in LEGACY_SECTION_ALIASES.items():
+        if not isinstance(data.get(canon), (list, dict)):
+            for alias in aliases:
+                if isinstance(data.get(alias), (list, dict)):
+                    data[canon] = data[alias]
+                    events.append({
+                        "fix_id": "manifest-section-alias-recovered",
+                        "field_path": f"$.{canon}",
+                        "before": None, "after": f"recovered from $.{alias}",
+                    })
+                    break
+
+    if not isinstance(data.get("stats"), dict):
+        data["stats"] = {}
+
+    processor = data.get("processor")
+    for section in PROCESSOR_REQUIRED_SECTIONS.get(processor, ()):
+        if section == "stats":
+            continue
+        current = data.get(section)
+        valid_container = (
+            (section == "sources_processed" and isinstance(current, list))
+            or (section in ("records", "knowledge_notes", "concepts")
+                and isinstance(current, dict))
+        )
+        if valid_container or section not in EMPTY_REQUIRED_SECTION:
+            continue
+        if current is not None and not isinstance(current, (list, dict)):
+            extras = data.get("section_extras")
+            if not isinstance(extras, dict):
+                extras = {}
+                data["section_extras"] = extras
+            scalar = extras.setdefault("legacy_scalar_sections", {})
+            if isinstance(scalar, dict):
+                scalar[section] = current
+        data[section] = json.loads(
+            json.dumps(EMPTY_REQUIRED_SECTION[section])
+        )
+        events.append({
+            "fix_id": "manifest-required-section-synthesised",
+            "field_path": f"$.{section}",
+            "before": current if not isinstance(current, (list, dict))
+            else "wrong-shape",
+            "after": "empty-valid-envelope",
+        })
 
 
 def validate_manifest(data: dict) -> None:
@@ -1280,6 +1955,61 @@ def validate_manifest(data: dict) -> None:
         )
 
 
+def deep_validate_manifest(
+    data: dict, schemas_dir: Path | None = None,
+) -> list[str]:
+    """Full JSON-Schema validation against the major-matched `v{N}.json`.
+
+    `validate_manifest` is the shallow routing-layer gate (top-level keys,
+    processor, required sections). This is the **deep** gate: it runs the
+    same `jsonschema` validation the nightly lint runs, so the producer
+    catches any field the normaliser failed to coerce *at emit time*
+    instead of writing a manifest that only the nightly lint would flag.
+
+    Returns the list of error strings (empty == valid). Degrades to `[]`
+    with a stderr warning when `jsonschema` or the schema file is
+    unavailable — the shallow gate still applies, and a minimal install is
+    never blocked.
+    """
+    try:
+        from jsonschema import Draft202012Validator
+    except ImportError:
+        sys.stderr.write(
+            "emit_batch_manifest: warning: jsonschema not installed — "
+            "deep schema validation skipped (shallow gate still applies)\n"
+        )
+        return []
+    schemas_dir = schemas_dir or (
+        repo_root() / "_system" / "docs" / "manifest-schema"
+    )
+    fv = data.get("format_version", "")
+    major = (
+        fv.split(".", 1)[0]
+        if isinstance(fv, str) and "." in fv
+        else str(SUPPORTED_FORMAT_MAJOR)
+    )
+    schema_path = schemas_dir / f"v{major}.json"
+    if not schema_path.exists():
+        sys.stderr.write(
+            f"emit_batch_manifest: warning: schema {schema_path} not found "
+            f"— deep schema validation skipped\n"
+        )
+        return []
+    try:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        errors = list(Draft202012Validator(schema).iter_errors(data))
+    except Exception as exc:  # noqa: BLE001 — never let the gate crash emit
+        sys.stderr.write(
+            f"emit_batch_manifest: warning: deep validation errored "
+            f"({exc}) — skipped\n"
+        )
+        return []
+    return [
+        f"@ {list(e.absolute_path)}: {e.message[:160]}"
+        for e in errors[:20]
+    ]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1300,6 +2030,16 @@ def main(argv: list[str] | None = None) -> int:
         "--domains", type=Path, default=None,
         help="DOMAINS.md path (default: "
              "{repo_root}/_system/registries/DOMAINS.md).",
+    )
+    parser.add_argument(
+        "--schemas-dir", type=Path, default=None,
+        help="manifest-schema dir for the deep validation gate (default: "
+             "{repo_root}/_system/docs/manifest-schema).",
+    )
+    parser.add_argument(
+        "--no-deep-validate", action="store_true",
+        help="Skip the deep JSON-Schema gate (shallow gate still applies). "
+             "For isolated coercion unit-probes; never in production.",
     )
     parser.add_argument(
         "--dry-run", action="store_true",
@@ -1354,6 +2094,11 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(data.get("stats"), dict):
         data["stats"] = {}
     stats = data["stats"]
+    # NB: identity/section synthesis (synthesise_required_fields) is a
+    # retrofit-only concern, invoked by rewrite_manifest_violations.py.
+    # Live emission must NOT synthesise — a bogus processor / malformed
+    # format_version / missing section is a real producer bug that
+    # validate_manifest surfaces loudly (rc=3), never masks.
     coerce_sources_processed(data, events, stats)
     normalise_empty_section_shapes(data, events, stats)
     relocate_tier2_misplaced_sections(data, events, stats)
@@ -1362,6 +2107,17 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         validate_manifest(data)
+        deep_errors = (
+            [] if args.no_deep_validate
+            else deep_validate_manifest(data, args.schemas_dir)
+        )
+        if deep_errors:
+            raise ManifestValidationError(
+                "deep schema validation failed (normaliser gap — the "
+                "manifest passed the shallow gate but violates v"
+                f"{SUPPORTED_FORMAT_MAJOR}.json):\n  "
+                + "\n  ".join(deep_errors)
+            )
     except ManifestValidationError as exc:
         sys.stderr.write(f"emit_batch_manifest: validation error: {exc}\n")
         # Emit any normalisation events captured before the failure so
