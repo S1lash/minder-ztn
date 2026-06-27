@@ -48,6 +48,9 @@ _CONCEPT_MAP: dict[tuple[str, str], str] = {
     ("stress_avg", "high"):"stress_elevation_streak",
     ("bb_end", "low"):     "low_bb_streak",
     ("steps", "low"):      "low_activity_streak",
+    # Oura-specific signals.
+    ("temp_deviation", "high"): "elevated_temp_streak",
+    ("spo2_avg", "low"):        "low_spo2_streak",
 }
 
 _SEVERITY_ORDER = {"light": 1, "medium": 2, "strong": 3}
@@ -82,8 +85,19 @@ def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
         raise
 
 
-def concept_for(metric: str, direction: str) -> str:
-    return _CONCEPT_MAP.get((metric, direction), f"{metric}_{direction}_streak")
+def concept_for(
+    metric: str,
+    direction: str,
+    concept_map: dict[tuple[str, str], str] | None = None,
+) -> str:
+    """Map a (metric, direction) deviation to a streak concept name.
+
+    `concept_map` lets a metric-day profile override the biometric default
+    (e.g. the activity profile names switching / deep-work / late-night
+    streaks). Unmapped combos fall back to `<metric>_<direction>_streak`.
+    """
+    table = _CONCEPT_MAP if concept_map is None else concept_map
+    return table.get((metric, direction), f"{metric}_{direction}_streak")
 
 
 @dataclass(frozen=True)
@@ -102,6 +116,7 @@ def advance(
     deviations: list,
     min_consecutive: int = 3,
     min_severity: str = "medium",
+    concept_map: dict[tuple[str, str], str] | None = None,
 ) -> tuple[dict[str, Any], list[StreakEvent]]:
     """Advance streak state by one day.
 
@@ -160,7 +175,7 @@ def advance(
     # 1) Extend or start streaks for today's deviations.
     seen_concepts_today: set[str] = set()
     for (metric, direction), dev in today_keys.items():
-        concept = concept_for(metric, direction)
+        concept = concept_for(metric, direction, concept_map)
         seen_concepts_today.add(concept)
         if concept in state["active"]:
             entry = state["active"][concept]

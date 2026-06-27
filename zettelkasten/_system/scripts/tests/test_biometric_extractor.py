@@ -102,6 +102,66 @@ def test_sleep_deprived_unbalanced_hrv():
     assert m["readiness_lvl"] == "LOW"
 
 
+def test_oura_source_routes_to_oura_map(tmp_path):
+    """An oura-source file maps Oura blocks to canonical keys, selects the
+    main night (long_sleep) over nap fragments, and surfaces Oura-only
+    signals (readiness score, temp deviation, resilience, SpO2, vascular age)."""
+    src = tmp_path / "2026-06-07.md"
+    src.write_text(
+        "---\n"
+        "date: '2026-06-07'\n"
+        "source: oura\n"
+        "status: ok\n"
+        "metrics_collected: [daily_sleep, daily_readiness, daily_activity, "
+        "daily_spo2, daily_cardiovascular_age, daily_resilience, sleep]\n"
+        "metric_failures: []\n"
+        "---\n\n"
+        "## Summary\n- oura day.\n\n"
+        "## Detailed data\n\n"
+        "### daily_sleep\n\n```yaml\n- {day: '2026-06-07', score: 82}\n```\n\n"
+        "### daily_readiness\n\n```yaml\n"
+        "- {day: '2026-06-07', score: 85, temperature_deviation: -0.01}\n```\n\n"
+        "### daily_activity\n\n```yaml\n"
+        "- {day: '2026-06-07', score: 63, steps: 4882, active_calories: 391}\n```\n\n"
+        "### daily_spo2\n\n```yaml\n"
+        "- {day: '2026-06-07', spo2_percentage: {average: 96.6}, "
+        "breathing_disturbance_index: 9}\n```\n\n"
+        "### daily_cardiovascular_age\n\n```yaml\n"
+        "- {day: '2026-06-07', vascular_age: 27, pulse_wave_velocity: 6.1583}\n```\n\n"
+        "### daily_resilience\n\n```yaml\n- {day: '2026-06-07', level: adequate}\n```\n\n"
+        "### sleep\n\n```yaml\n"
+        "- {day: '2026-06-07', type: sleep, total_sleep_duration: 600, "
+        "average_heart_rate: 0.0, deep_sleep_duration: 60, light_sleep_duration: 540, "
+        "rem_sleep_duration: 0, awake_time: 810, efficiency: 43}\n"
+        "- {day: '2026-06-07', type: long_sleep, total_sleep_duration: 25650, "
+        "average_heart_rate: 57.375, lowest_heart_rate: 54, average_hrv: 25, "
+        "average_breath: 15.0, deep_sleep_duration: 3930, light_sleep_duration: 14910, "
+        "rem_sleep_duration: 6810, awake_time: 2250, efficiency: 92}\n```\n",
+        encoding="utf-8",
+    )
+    m = extract(src)["metrics"]
+    # main-night selection (not the 0.0-HR fragment)
+    assert m["sleep_h"] == 7.12
+    assert m["rhr"] == 54.0
+    assert m["hrv_ms"] == 25
+    assert m["sleep_efficiency"] == 92        # Oura 0-100 integer, kept as-is
+    assert m["respiration_sleeping"] == 15.0
+    # scores + Oura-only signals
+    assert m["sleep_score"] == 82
+    assert m["readiness"] == 85
+    assert m["temp_deviation"] == -0.01
+    assert m["resilience_level"] == "adequate"
+    assert m["activity_score"] == 63
+    assert m["steps"] == 4882
+    assert m["spo2_avg"] == 96.6
+    assert m["breathing_disturbance"] == 9
+    assert m["vascular_age"] == 27
+    assert m["pulse_wave_velocity"] == 6.16   # rounded
+    # garmin-only keys never leak onto an oura record
+    assert "bb_start" not in m
+    assert "train_status" not in m
+
+
 def test_robust_to_missing_metrics(tmp_path):
     """A source with only sleep should still parse cleanly."""
     src = tmp_path / "2024-02-01.md"

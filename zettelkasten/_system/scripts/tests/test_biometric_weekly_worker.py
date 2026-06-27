@@ -18,11 +18,11 @@ import biometric_weekly_worker as ww  # noqa: E402
 
 def _setup_base(tmp_path: Path) -> Path:
     base = tmp_path / "base"
-    (base / "_records" / "biometric").mkdir(parents=True)
+    (base / "_records" / "biometric" / "garmin").mkdir(parents=True)
     (base / "_records" / "observations").mkdir(parents=True)
     (base / "_records" / "meetings").mkdir(parents=True)
-    (base / "_system" / "state" / "biometric").mkdir(parents=True)
-    (base / "_system" / "views" / "biometric").mkdir(parents=True)
+    (base / "_system" / "state" / "biometric" / "garmin").mkdir(parents=True)
+    (base / "_system" / "views" / "biometric" / "garmin").mkdir(parents=True)
     (base / "_system" / "scripts").mkdir(parents=True)
     shutil.copy(SCRIPTS_DIR / "biometric_thresholds.yaml", base / "_system" / "scripts" / "biometric_thresholds.yaml")
     shutil.copy(SCRIPTS_DIR / "affect_lexicon.yaml", base / "_system" / "scripts" / "affect_lexicon.yaml")
@@ -30,7 +30,7 @@ def _setup_base(tmp_path: Path) -> Path:
 
 
 def _emit_record(base: Path, d: date, sleep_h: float, hrv_ms: float, readiness: int) -> None:
-    p = base / "_records" / "biometric" / f"{d.isoformat()}.md"
+    p = base / "_records" / "biometric" / "garmin" / f"{d.isoformat()}.md"
     body = (
         f"---\n"
         f"date: '{d.isoformat()}'\n"
@@ -39,7 +39,8 @@ def _emit_record(base: Path, d: date, sleep_h: float, hrv_ms: float, readiness: 
         "audience_tags: []\n"
         "is_sensitive: true\n"
         "origin: personal\n"
-        "garmin_estimate: true\n"
+        "device: garmin\n"
+        "device_estimate: true\n"
         "concepts: []\n"
         "---\n\n"
         f"# Biometric — {d.isoformat()}\n\n"
@@ -75,6 +76,11 @@ def test_backfill_mode_first_run(tmp_path):
     assert len(res.weeks_processed) >= 2
     # at least one correlations file written
     assert any(Path(p).exists() for p in res.correlations_paths)
+    # weekly-view BODY must carry the Recovery section — guards against the
+    # renderer being handed the bare (non-namespaced) records dir, which
+    # silently finds zero records and drops the section.
+    view_text = Path(res.weekly_view_paths[0]).read_text(encoding="utf-8")
+    assert "Recovery" in view_text
 
 
 def test_idempotent_weekly_gate(tmp_path):

@@ -62,6 +62,7 @@ MECHANICAL_PIPELINES = frozenset({
     "/ztn:maintain",
     "/ztn:agent-lens",
     "/ztn:bootstrap",
+    "/ztn:resolve-clarifications",
 })
 
 VERDICTS = frozenset({"aligned", "violated", "tradeoff", "no-match"})

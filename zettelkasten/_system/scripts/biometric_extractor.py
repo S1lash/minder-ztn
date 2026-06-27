@@ -9,9 +9,12 @@ Returns a dict suitable for downstream baseline / streak processing.
 Missing fields stay missing (None / absent) — callers handle gracefully.
 
 The extractor is universal across wearables-as-metric-day-source: the
-shape is "frontmatter → metrics_collected → ### blocks → YAML". Apple
-Watch, Whoop, Polar would slot in by re-using the same source family
-contract; per-vendor field maps live in this module.
+shape is "frontmatter → metrics_collected → ### blocks → YAML". Each
+vendor maps its raw blocks to a shared canonical metric vocabulary via a
+per-vendor field map in this module, dispatched on the `source`
+frontmatter. Apple Watch, Whoop, Polar slot in by adding a map. Garmin
+and Oura are implemented; an unknown source falls back to the Garmin map
+(historical default).
 """
 
 from __future__ import annotations
@@ -86,8 +89,8 @@ def _first_device_data(latest_training_status_data: dict[str, Any]) -> dict[str,
     return {}
 
 
-def _extract_metrics(blocks: dict[str, Any]) -> dict[str, Any]:
-    """Map vendor-specific YAML blocks to canonical metric keys.
+def _extract_garmin_metrics(blocks: dict[str, Any]) -> dict[str, Any]:
+    """Map Garmin YAML blocks to canonical metric keys.
 
     Canonical keys (subset, all optional — present only when source data is):
       sleep_h, deep_h, rem_h, light_h, awake_h, sleep_score, sleep_efficiency,
@@ -230,6 +233,138 @@ def _extract_metrics(blocks: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in m.items() if v is not None}
 
 
+def _oura_first(block: Any) -> dict[str, Any]:
+    """First record of an Oura list endpoint (daily endpoints have one), or
+    the object itself for singletons."""
+    if isinstance(block, list):
+        for r in block:
+            if isinstance(r, dict):
+                return r
+        return {}
+    return block if isinstance(block, dict) else {}
+
+
+def _oura_main_sleep(block: Any) -> dict[str, Any]:
+    """Pick the night's main sleep period from Oura's per-day `sleep` list.
+
+    Oura returns nap fragments + the main night; the main night is
+    `type == "long_sleep"`, falling back to the period with the most total
+    sleep. (Mirrors the collector's `select_main_sleep` so a record reflects
+    the real night, not a few-minute fragment.)
+    """
+    if not isinstance(block, list):
+        return block if isinstance(block, dict) else {}
+    periods = [r for r in block if isinstance(r, dict)]
+    if not periods:
+        return {}
+    longs = [r for r in periods if r.get("type") == "long_sleep"]
+
+    def _asleep(r: dict[str, Any]) -> int:
+        total = r.get("total_sleep_duration")
+        if total is not None:
+            return total
+        return sum((r.get(k) or 0) for k in
+                   ("deep_sleep_duration", "light_sleep_duration", "rem_sleep_duration"))
+
+    return max(longs or periods, key=_asleep)
+
+
+def _extract_oura_metrics(blocks: dict[str, Any]) -> dict[str, Any]:
+    """Map Oura YAML blocks to canonical metric keys.
+
+    Oura is score-centric and adds signals Garmin lacks — readiness,
+    resilience, body-temperature deviation, SpO2, vascular age. Shared keys
+    (sleep_h, rhr, hrv_ms, steps, sleep_score, sleep_efficiency, the sleep
+    stages, respiration_sleeping) line up with Garmin's vocabulary so the
+    deviation engine treats them uniformly; baselines stay per-source so the
+    different scales (e.g. Oura efficiency 0-100 vs Garmin's ratio) never mix.
+
+    Oura-only canonical keys: temp_deviation, resilience_level, activity_score,
+    active_calories, spo2_avg, breathing_disturbance, vascular_age,
+    pulse_wave_velocity, stress_high, recovery_high.
+    """
+    m: dict[str, Any] = {}
+
+    sleep = _oura_main_sleep(blocks.get("sleep"))
+    if sleep:
+        m["sleep_h"] = _hours(sleep.get("total_sleep_duration"))
+        m["deep_h"] = _hours(sleep.get("deep_sleep_duration"))
+        m["rem_h"] = _hours(sleep.get("rem_sleep_duration"))
+        m["light_h"] = _hours(sleep.get("light_sleep_duration"))
+        m["awake_h"] = _hours(sleep.get("awake_time"))
+        if sleep.get("efficiency") is not None:
+            m["sleep_efficiency"] = sleep["efficiency"]   # Oura: 0-100 integer
+        if sleep.get("average_hrv") is not None:
+            m["hrv_ms"] = sleep["average_hrv"]
+        if sleep.get("lowest_heart_rate") is not None:
+            m["rhr"] = float(sleep["lowest_heart_rate"])
+        if sleep.get("average_breath") is not None:
+            m["respiration_sleeping"] = sleep["average_breath"]
+
+    if (score := _oura_first(blocks.get("daily_sleep")).get("score")) is not None:
+        m["sleep_score"] = score
+
+    readiness = _oura_first(blocks.get("daily_readiness"))
+    if readiness.get("score") is not None:
+        m["readiness"] = readiness["score"]
+    if readiness.get("temperature_deviation") is not None:
+        m["temp_deviation"] = readiness["temperature_deviation"]
+
+    if (level := _oura_first(blocks.get("daily_resilience")).get("level")):
+        m["resilience_level"] = level
+
+    activity = _oura_first(blocks.get("daily_activity"))
+    if activity.get("steps") is not None:
+        m["steps"] = activity["steps"]
+    if activity.get("active_calories") is not None:
+        m["active_calories"] = activity["active_calories"]
+    if activity.get("score") is not None:
+        m["activity_score"] = activity["score"]
+
+    spo2 = _oura_first(blocks.get("daily_spo2"))
+    if spo2:
+        pct = spo2.get("spo2_percentage")
+        avg = pct.get("average") if isinstance(pct, dict) else pct
+        if avg is not None:
+            m["spo2_avg"] = avg
+        if spo2.get("breathing_disturbance_index") is not None:
+            m["breathing_disturbance"] = spo2["breathing_disturbance_index"]
+
+    cardio = _oura_first(blocks.get("daily_cardiovascular_age"))
+    if cardio.get("vascular_age") is not None:
+        m["vascular_age"] = cardio["vascular_age"]
+    if cardio.get("pulse_wave_velocity") is not None:
+        m["pulse_wave_velocity"] = round(float(cardio["pulse_wave_velocity"]), 2)
+
+    stress = _oura_first(blocks.get("daily_stress"))
+    if stress.get("stress_high") is not None:
+        m["stress_high"] = stress["stress_high"]
+    if stress.get("recovery_high") is not None:
+        m["recovery_high"] = stress["recovery_high"]
+
+    if (vo2 := _oura_first(blocks.get("vO2_max")).get("vo2_max")) is not None:
+        m["vo2max_running"] = vo2
+
+    return {k: v for k, v in m.items() if v is not None}
+
+
+_VENDOR_MAPS = {
+    "garmin": _extract_garmin_metrics,
+    "oura": _extract_oura_metrics,
+}
+
+
+def _extract_metrics(blocks: dict[str, Any], source: str | None) -> dict[str, Any]:
+    """Dispatch to the per-vendor field map by `source` frontmatter.
+
+    `source` is the bare source id on inbox files (`oura`) or `id/filename` on
+    emitted records — take the leading segment. Unknown sources fall back to
+    the Garmin map (historical default)."""
+    src = (source or "garmin").split("/", 1)[0].strip().lower()
+    mapper = _VENDOR_MAPS.get(src, _extract_garmin_metrics)
+    return mapper(blocks)
+
+
 def extract(record_md_path: str | Path) -> dict[str, Any]:
     """Parse one metric-day source file into a structured dict.
 
@@ -246,7 +381,7 @@ def extract(record_md_path: str | Path) -> dict[str, Any]:
     text = Path(record_md_path).read_text(encoding="utf-8")
     fm = _parse_frontmatter(text)
     blocks = _parse_metric_blocks(text)
-    metrics = _extract_metrics(blocks)
+    metrics = _extract_metrics(blocks, fm.get("source"))
     return {
         "date": fm.get("date"),
         "status": fm.get("status", "ok"),

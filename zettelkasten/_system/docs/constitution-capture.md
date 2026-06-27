@@ -29,7 +29,16 @@ principle behind it. The owner decides on review whether it is real or noise.
 
 - Technical preferences (prefer postgres, use records not classes) —
   those are conventions, not principles.
-- Stylistic preferences (commit-message phrasing, naming).
+- Cosmetic stylistic preferences with no cognitive basis (commit-message
+  phrasing, file naming). **NOT cosmetic — capture it:** how the owner wants
+  information *presented* (conclusion-first, insight density, what praise or
+  criticism actually lands, long-form shape). That is a cognitive /
+  communication principle (`suggested_domain: ai-interaction`), not style —
+  it is the lived signal that keeps the owner's presentation principles alive.
+  Capture it even as a **bare instruction** («lead with the conclusion next
+  time», «don't recap, tell me what it means») — the reason is implicit (so it
+  lands for the owner), so it clears trigger (a)/(d) without an explicit
+  «because».
 - Task-execution decisions without philosophical content.
 - Facts about people — those go through `/ztn:process` → PEOPLE.md.
 - The entire session content — that is `/ztn-recap`.

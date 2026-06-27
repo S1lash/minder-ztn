@@ -878,7 +878,11 @@ Next steps (in order — do not skip):
    archives closed items. 5–30 minutes depending on corpus size.
 
 2. **Finalise `_system/SOUL.md`** — fill any Working Style / Context
-   for Agents gaps the profile or interview left as TODO markers.
+   for Agents gaps the profile or interview left as TODO markers. The
+   profile's "How you like information presented" answers go here (general
+   tuning) and into `_system/long-form-playbook.md` (the long-form recipe);
+   firm presentation rules you wrote under "Principles you live by" are already
+   queued as `ai-interaction` principle-candidates for F.3 review.
 
 3. **Run `/ztn:process`** — backfill the inbox into records, knowledge
    notes, and hubs.

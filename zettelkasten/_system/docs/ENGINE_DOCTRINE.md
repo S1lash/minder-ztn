@@ -4,7 +4,7 @@
 > the ZTN engine. Every skill (`/ztn:bootstrap`, `/ztn:process`,
 > `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`, `/ztn:agent-lens-add`,
 > `/ztn:capture-candidate`, `/ztn:check-decision`,
-> `/ztn:regen-constitution`, `/ztn:check-content`, `/ztn:source-add`,
+> `/ztn:regen-constitution`, `/ztn:content`, `/ztn:source-add`,
 > `/ztn:resolve-clarifications`) reads this file as
 > part of Step 1 / Load Context. It is symlinked
 > into `~/.claude/rules/ztn-engine-doctrine.md` by `install.sh` so it
@@ -231,8 +231,10 @@ re-open or re-mutate.
 
 ### 3.4 Locks and exclusivity
 
-`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, and `/ztn:agent-lens` are
-mutually exclusive (cross-skill lock matrix in their SKILL.md).
+`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`, and
+`/ztn:content` (when writing — `--maintain` / `--draft`) are mutually
+exclusive (cross-skill lock matrix in their SKILL.md); `/ztn:content` matters
+because its maintainer reads `CONTENT_MAP.md` while `/ztn:maintain` rewrites it.
 `/ztn:bootstrap` is not in the matrix — owner ensures system idle before
 invoking it. `/ztn:capture-candidate` is fire-and-forget, no lock.
 `/ztn:agent-lens-add` does not acquire its own lock but respects
@@ -289,8 +291,14 @@ its own operation; never edited retroactively.
 - Never auto-promote a principle candidate from
   `principle-candidates.jsonl` to `0_constitution/`. Promotion is L2
   merge in `/ztn:lint` F.5 — and only `origin: personal` candidates
-  qualify (work / external / bootstrap origins always require manual
-  review per F.5 non-personal-origin guard).
+  qualify (work / external / bootstrap / agent-lens origins always require
+  manual review per F.5 non-personal-origin guard — a lens mines inferred,
+  batch-extracted signal, so its candidates are stamped `origin: agent-lens`
+  and never auto-merge). **Appending a candidate TO
+  the buffer is not promotion** — both the in-the-moment capture hook
+  (`/ztn:capture-candidate`) and the `principle_candidate_add` lens
+  action hint append to the high-recall buffer autonomously; the F.5
+  gate above is what keeps promotion owner-sovereign.
 - Never overwrite owner edits to SOUL.md / PEOPLE.md / PROJECTS.md /
   hub files. Re-runs add or surface, never rewrite.
 - Never demote tier silently — tier downgrades go through
@@ -304,13 +312,17 @@ its own operation; never edited retroactively.
 **Interpretation: lens Action Hints + smart_resolve auto-apply.**
 `/ztn:resolve-clarifications --auto-mode` (dispatched by lint nightly)
 applies a narrow class of additive lens proposals — `wikilink_add`,
-`hub_stub_create`, `open_thread_add`, `decision_update_section` —
-without per-action owner CLARIFICATION. This is consistent with §3.6,
-not an exception to it, because:
+`hub_stub_create`, `open_thread_add`, `decision_update_section`,
+`principle_candidate_add` — without per-action owner CLARIFICATION.
+This is consistent with §3.6, not an exception to it, because:
 
 1. The action set is **additive only** — never mutates, deletes, or
    rewrites existing owner content. Worst case is a misplaced new
-   bullet / hub / scaffold section that the owner can git revert.
+   bullet / hub / scaffold section / buffer line that the owner can git
+   revert. `principle_candidate_add` appends to the high-recall
+   `principle-candidates.jsonl` (capture, not promotion — F.5 still
+   gates the constitution per the contract above), so it is additive in
+   the same sense.
 2. Each apply is **bounded** — handlers re-validate inside apply
    (TOCTOU), refuse on any drift from the stale-check baseline, and
    fall back to a clarification on validation failure.
@@ -384,8 +396,16 @@ by top-level `processor` field. It carries:
 - Section per artifact kind (`sources`, `records`, `knowledge_notes`,
   `hubs`, `tier1_objects.{tasks,ideas,events,decisions,people,
   projects,content}`, `tier2_objects.{inventory,wardrobe,
-  lens-observation,...}`, `concepts`, `constitution.principles`,
+  lens-observation,biometric,activity,...}`, `concepts`, `constitution.principles`,
   `constitution.constitution_core_view`, `constitution.soul`)
+  - Note: the universal `communication-baseline` (engine behavioral floor at
+    `_system/docs/communication-baseline.md`) is part of the Tier-0 behavioral
+    contract an actor needs, but is NOT yet emitted — the owner's deltas reach
+    actors via `constitution_core_view`, the universal floor does not. When the
+    first actor consumer (OpenClaw / app agentic shell) exists, carry it via
+    `constitution.section_extras.communication_baseline` (a MINOR add). See
+    `platform/BRAIN-EVOLUTION.md` §4 carry-over 6. Deferred-not-dropped:
+    emitting it now, with no consumer, would be speculative plumbing.
 - Privacy trio per entity: `origin`, `audience_tags`, `is_sensitive`
   (defaults `personal / [] / false`)
 - Format version (`format_version: "MAJOR.MINOR"`) for evolution

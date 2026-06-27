@@ -38,19 +38,26 @@ unable to support population claims.
 The pipeline produces deterministic Tier II artefacts so lenses
 never need to load bulk timeseries.
 
+Tier II state is namespaced per wearable device under `<source>/`
+(e.g. `garmin`, `oura`) — each device's records and σ-baselines are
+isolated. A lens reads across **both** device namespaces present under
+`_system/state/biometric/*/` to build a unified picture; it never pools
+two devices' raw metrics into one baseline (the pipeline already keeps
+them separate by design).
+
 ### Allowed
 
-- **Tier II pre-computed correlations** — `_system/state/biometric/correlations-{week}.json`.
+- **Tier II pre-computed correlations** — `_system/state/biometric/{source}/correlations-{week}.json`.
   Top-N findings per pair, lag analysis, anomaly clusters, streak history.
   This is the canonical numerical surface.
-- **Tier II weekly view** — `_system/views/biometric/weekly-{week}.md`.
+- **Tier II weekly view** — `_system/views/biometric/{source}/weekly-{week}.md`.
   Human-readable narrative summary.
 - **Per-day Key Numbers point-lookup** — read `## Key Numbers`
   section of one biometric record when investigating one specific
   day's signal. Single-day OK.
-- **Streak state** — `_system/state/biometric/streaks.json`. Active
+- **Streak state** — `_system/state/biometric/{source}/streaks.json`. Active
   + recent streaks. Compact, structural.
-- **Baselines metadata** — `_system/state/biometric/baselines.json`
+- **Baselines metadata** — `_system/state/biometric/{source}/baselines.json`
   μ / σ / n for each metric. Compact.
 
 ### Forbidden

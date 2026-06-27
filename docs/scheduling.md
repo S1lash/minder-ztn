@@ -6,13 +6,21 @@ scheduling setup, the assumptions baked into it, and how to plug it in.
 
 ## The canonical loop
 
-Three scheduled jobs. No more.
+Four scheduled jobs.
 
 | Job | Cadence | Skill chain | Prompt source |
 |---|---|---|---|
 | `ztn-process` | ≥ 3× per day | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `finalize-tick.sh scheduler/process` | `integrations/claude-code/scheduler-prompts/process-scheduled.md` |
 | `ztn-agent-lens` | 1× nightly (03:00) | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `finalize-tick.sh scheduler/agent-lens` | `integrations/claude-code/scheduler-prompts/agent-lens-nightly.md` |
 | `ztn-lint` | 1× nightly (05:00) | `/ztn:sync-data` → `/ztn:lint` (Step 7.5 dispatches `/ztn:resolve-clarifications --auto-mode` inline) → `finalize-tick.sh scheduler/lint` | `integrations/claude-code/scheduler-prompts/lint-nightly.md` |
+| `ztn-content` | 1× weekly (Tue 06:00) | `/ztn:sync-data` → `/ztn:content --maintain` → `finalize-tick.sh scheduler/content` | `integrations/claude-code/scheduler-prompts/content-tick.md` |
+
+The content pipeline runs across two ticks a day apart: the `content-synthesis`
+lens (the classifier) is a registered agent-lens (`weekly mon`), so the existing
+`ztn-agent-lens` tick runs it on Mondays; the `ztn-content` maintainer drafts on
+Tuesdays. Producer (lens) and consumer (maintainer) stay in separate scheduler
+contexts on purpose — the maintainer must not be the same context that just
+produced the lens verdict.
 
 Two nightly ticks. Agent-lens runs first (03:00) in its own scheduler-
 agent context — lens production isolated from resolve consumption,

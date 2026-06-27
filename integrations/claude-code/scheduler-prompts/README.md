@@ -14,6 +14,13 @@ For full design rationale, cadence, and plug-in instructions see
 | `process-scheduled.md` | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `finalize-tick.sh scheduler/process` | ≥ 3× per day, e.g. cron `0 9,14,19 * * *` |
 | `agent-lens-nightly.md` | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `finalize-tick.sh scheduler/agent-lens` | 1× nightly, e.g. cron `0 3 * * *` |
 | `lint-nightly.md` | `/ztn:sync-data` → `/ztn:lint` (Step 7.5 dispatches `/ztn:resolve-clarifications --auto-mode` inline) → `finalize-tick.sh scheduler/lint` | 1× nightly, e.g. cron `0 5 * * *` |
+| `content-tick.md` | `/ztn:sync-data` → `/ztn:content --maintain` (draft-maintainer) → `finalize-tick.sh scheduler/content` | 1× weekly Tuesday, e.g. cron `0 6 * * 2` |
+
+The `content-synthesis` lens (the content pipeline's classifier) is NOT a
+separate tick — it is a registered agent-lens (`weekly (mon)`), so the existing
+`agent-lens-nightly.md` tick runs it on Mondays via `--all-due`. The
+`content-tick.md` maintainer runs the next day (Tuesday) — producer (lens) and
+consumer (maintainer) in separate scheduler contexts on purpose.
 
 ## Delivery model — two modes with an MCP fallback
 
@@ -139,7 +146,7 @@ guard, not a normal autonomy boundary.
 
 ## Plug-in — Claude Code `/schedule`
 
-The path of least friction. Two routines:
+The path of least friction. Routines:
 
 ```
 /schedule
@@ -160,6 +167,13 @@ The path of least friction. Two routines:
   name: ztn-lint
   cron: 0 5 * * *
   prompt: <paste body of lint-nightly.md>
+```
+
+```
+/schedule
+  name: ztn-content
+  cron: 0 6 * * 2
+  prompt: <paste body of content-tick.md>
 ```
 
 Each routine runs in a fresh agent — the prompt body is fully

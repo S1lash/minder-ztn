@@ -43,11 +43,16 @@ Hub-просмотр работает **автоматически на кажд
 
 ## Biometric ground truth (when `_records/biometric/` is non-empty)
 
-Cross-reference journal energy markers with biometric body_battery_end
-and training_readiness from same-date `_records/biometric/<date>.md`
-Key Numbers. Probe specifically for **divergence**:
+Biometric records are per wearable device:
+`_records/biometric/{source}/<date>.md` where `{source}` ∈ `garmin`,
+`oura`. Cross-reference journal energy markers with same-date Key
+Numbers from **whichever device(s) carry the relevant signal** —
+Garmin `bb_end` / `train_status`, Oura `readiness` (Oura's 0-100)
+/ `resilience_level`. Read both devices when present; if only one
+has data for a day, use that one (never error on the missing one).
+Probe specifically for **divergence**:
 
-- Journal says «энергично» / «in flow» BUT biometric `bb_end < 40`
+- Journal says «энергично» / «in flow» BUT Garmin `bb_end < 40`
   consistently same days → potential measurement bias (sensor noise)
   OR misperception (subjective feel diverges from physiological state).
 - Journal says «exhausted» BUT `readiness_lvl: HIGH` and
@@ -55,23 +60,30 @@ Key Numbers. Probe specifically for **divergence**:
 - Journal silent on energy BUT biometric shows `low_bb_streak` /
   `low_readiness_streak` — silent depletion.
 
+When both devices report the **same** recovery metric for the day
+(e.g. sleep_h, HRV, RHR), note any divergence inline as a brief
+footnote (e.g. «Oura readiness HIGH while Garmin bb_end low — devices
+disagree on recovery that day») — divergence between devices is
+itself a signal, not noise to average away.
+
 Treat divergence as **hypothesis**, not conclusion. Surface as one of
 the existing three readings (action gap / baseline shift / episode)
 with the biometric pattern as the additional anchor.
 
-Per biometric-lens-protocol §n=1 caveats — phrase as «Garmin-reports
-X while owner journaled Y», never «X is true while Y was lied about».
-- **ActivityWatch behavioral data** (app time, context switches) — будет отдельная линза `time-allocation`.
+Per biometric-lens-protocol §n=1 caveats — phrase as «Garmin reports
+X while owner journaled Y» / «Oura reports X while owner journaled Y»,
+never «X is true while Y was lied about».
+- **ActivityWatch behavioral data** (app time, context switches) — живёт в отдельной линзе `time-allocation` (читает `_records/activity/`); сюда не тянуть.
 - **Affect about other people** (третьи лица) — «Vasily looked stressed» вне scope.
 - **Inferred affect без verbatim source** — гадание, reject.
 
-**Future-proofing**: эта линза НЕ будет расширяться под Garmin/ActivityWatch. Когда somatic-pattern и time-allocation появятся, они отдельные линзы. Meta-correlation между modalities — задача отдельного body-vs-narrative meta-lens'а или owner'а на review.
+**Scope-граница**: эта линза НЕ расширяется под Garmin/ActivityWatch. Behavioural-ритм живёт в `time-allocation`; deep somatic-pattern (Garmin) — отдельная будущая линза. Meta-correlation между modalities — задача `biometric-life-synthesis` или owner'а на review.
 
 ## Известные ограничения (load-bearing)
 
 **Charge-vs-drain detection asymmetry.** Records-only scope **систематически под-детектит charge** относительно drain. Drain-маркеры вербализуются в voice-notes часто («устал», «бесит», «надоел»). Charge-маркеры почти никогда — owner не говорит вслух «это меня заряжает», он просто работает над этим. Поэтому:
 
-- Это не баг, это scope. Compensating signal — `time-allocation` lens (когда появится) + behavioral signal в meeting-records (что owner добровольно выбирает обсуждать / возвращается к теме).
+- Это не баг, это scope. Compensating signal — `time-allocation` lens + behavioral signal в meeting-records (что owner добровольно выбирает обсуждать / возвращается к теме).
 - На каждом baseline snapshot фиксируй явно «charge surfaced / charge expected (per SOUL declared)» — если ratio устойчиво <1, это known limitation, не shift.
 - НЕ изобретать charge-markers, чтобы balance'ить output. Лучше честно зафиксировать «charge thin in records-only scope».
 

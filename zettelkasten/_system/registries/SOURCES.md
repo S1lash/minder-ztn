@@ -30,7 +30,7 @@ on this row.
 | Family | Branch | Pipeline shape |
 |---|---|---|
 | `transcript` | Default LLM pipeline (Step 3 onward) | Subagent dispatch, classification, knowledge-note extraction, multi-domain routing. Files become record + knowledge notes. |
-| `metric-day` | Inline deterministic Python (Step 2.5, no LLM) | One file → one biometric record under `_records/biometric/{date}.md`. Rolling baselines + σ-deviation flags + streak detection. See `_system/scripts/process_metric_day.py`. Privacy trio hard-set: `is_sensitive: true`, `audience_tags: []`, `origin: personal`. |
+| `metric-day` | Inline deterministic Python (Step 2.5, no LLM) | One file → one biometric record under `_records/biometric/{source_id}/{date}.md` (per-device namespace; each metric-day source keeps independent records + σ-baselines). Rolling baselines + σ-deviation flags + streak detection. See `_system/scripts/process_metric_day.py`. Privacy trio hard-set: `is_sensitive: true`, `audience_tags: []`, `origin: personal`. |
 | `recap` | Reserved | Future short-form session-recap branch; falls back to `transcript` for now. |
 
 A single `/ztn:process` invocation may mix families; the metric-day

@@ -521,15 +521,25 @@ on existing registries.
 
 ### 2.5.1 Metric-day branch contract
 
+The metric-day branch is **profile-driven**: `process_metric_day.run()`
+resolves the source's `MetricDayProfile` via `metric_day_profiles.for_source(source_id)`
+(`garmin`/`oura` → **biometric**, `activitywatch` → **activity**; unknown →
+biometric default). The profile determines the record family directory,
+`kind`/`domains`, the metric vocabulary + thresholds file, the streak concept
+map, and the manifest `primary_type`. The orchestrator itself is profile-agnostic
+— the same code path serves biometric wearables and behavioural feeds. Below,
+`<family>` = the profile's family dir (`biometric` | `activity`).
+
 For each file in the metric-day partition, in chronological order
 (date-sorted by filename):
 
 1. Call `process_metric_day.run(source_path, base_dir=…, source_id=<source-id>)`.
 2. Outcomes — one of:
-   - `emitted` — record written under `_records/biometric/<date>.md`,
-     baselines + streaks updated, source moved to
-     `_sources/processed/<source>/<filename>` (raw payload moved alongside
-     if a `raw/` subdir is present in the inbox).
+   - `emitted` — record written under `_records/<family>/<source-id>/<date>.md`
+     (e.g. `_records/biometric/garmin/…` or `_records/activity/activitywatch/…`),
+     that source's baselines + streaks updated, source moved to
+     `_sources/processed/<source>/<filename>` (raw payload moved alongside,
+     matching any extension — garmin/oura `.json`, activitywatch `.json.gz`).
    - `skipped-failure-stub` — source had `status: collection-failed`
      OR filename began `collection-failed-` / ended `.resolved.md`. No
      record emitted; source moved to processed; log line written.
@@ -542,29 +552,33 @@ For each file in the metric-day partition, in chronological order
      append-update / recompute-baselines-forward). Source moved to
      processed; no record write until owner approves alternative via
      `/ztn:resolve-clarifications`.
-3. Concepts that surface on the emitted record's frontmatter:
-   - Active streak concepts (only those active on this date),
-     e.g. `low_hrv_streak`, `sleep_debt`, `rhr_elevation_streak`.
-   - Streak-end recovery concepts on the day a streak breaks,
-     e.g. `recovery_after_low_hrv_streak`.
-   - Categorical-event concepts on transition days,
-     e.g. `train_status_transition_to_productive`,
-     `readiness_changed_to_moderate`.
-4. Privacy trio is hard-set per family default in
-   `process_metric_day.py`: `is_sensitive: true`, `audience_tags: []`,
-   `origin: personal`. Per-record override is NOT a normal path —
-   biometric data is owner-only by design.
-5. Manifest emission — each emitted record contributes an entry to
-   the unified batch manifest under `records.biometric` section
-   (path, source_hash, privacy trio, kind=biometric, domains, concepts).
+3. Concepts that surface on the emitted record's frontmatter are
+   **profile-specific** (from the profile's streak concept map):
+   - biometric: `low_hrv_streak`, `sleep_debt`, `rhr_elevation_streak`,
+     recovery concepts (`recovery_after_low_hrv_streak`), and categorical
+     transitions (`train_status_transition_to_productive`,
+     `readiness_changed_to_moderate`).
+   - activity: `late_night_work_streak`, `focus_drop_streak`,
+     `low_productivity_streak`, `context_switch_spike_streak`,
+     `fragmented_focus_streak`, `meeting_overload_streak` (no categorical
+     transitions — the activity profile carries no categorical pairs).
+4. Privacy trio is hard-set per profile in `process_metric_day.py`:
+   `is_sensitive: true`, `audience_tags: []`, `origin: personal`. Per-record
+   override is NOT a normal path — both biometric and activity data are
+   owner-only by design (activity titles/URLs leak work/client context).
+5. Manifest emission — each emitted record contributes an entry to the
+   unified batch manifest under `records.created`, with
+   `primary_type` = the profile kind (`biometric` | `activity`),
+   `section_extras.domains`, source_hash, privacy trio, concepts.
 
 ### 2.5.2 Cold-start CLARIFICATION
 
-On the very first metric-day file processed (when
-`_system/state/biometric/baselines.json` does not exist), the
-orchestrator emits an informational `biometric-baseline-cold-start`
-CLARIFICATION. Resolution: dismiss as resolved with note "expected
-cold-start". One-time, expected, not actionable.
+On the very first metric-day file processed for a source (when
+`_system/state/<family>/<source-id>/baselines.json` does not exist),
+the orchestrator emits an informational `<profile>-baseline-cold-start`
+CLARIFICATION (`biometric-baseline-cold-start` / `activity-baseline-cold-start`).
+Resolution: dismiss as resolved with note "expected cold-start". One-time
+per source, expected, not actionable.
 
 ### 2.5.3 Mixed-batch handling
 
@@ -597,18 +611,24 @@ No new lock entries.
 ### 2.5.6 Helper API (internal)
 
 ```
-biometric_extractor.extract(record_md_path) -> dict
-biometric_baselines.update(baselines_path, date, metrics, thresholds) -> state
+metric_day_profiles.for_source(source_id) -> MetricDayProfile   # biometric | activity
+biometric_extractor.extract(path) / activity_extractor.extract(path) -> dict   # per profile
+biometric_baselines.update(baselines_path, date, metrics, thresholds, numeric_metrics) -> state
 biometric_baselines.flag_deviations(state, today_metrics, thresholds) -> [Deviation]
-biometric_streaks.advance(streaks_path, date, deviations) -> (state, events)
+biometric_streaks.advance(streaks_path, date, deviations, concept_map=…) -> (state, events)
 process_metric_day.run(source_path, *, base_dir, source_id, …) -> ProcessResult
 process_metric_day.run_batch(source_paths, *, base_dir, source_id) -> [ProcessResult]
 ```
 
-Thresholds layered at runtime: `biometric_thresholds.template.yaml`
-(engine-shipped baseline) → `biometric_thresholds.yaml` (live, one-time
-seed) → `biometric_thresholds.local.yaml` (owner-only override; missing
-file is OK).
+The baseline/streak engines are profile-agnostic — `numeric_metrics` and
+`concept_map` are supplied by the resolved profile (default = biometric).
+The extractor is dispatched per profile (`activity_extractor` for activity;
+the collector emits the activity aggregate upstream, ZTN maps it).
+
+Thresholds layered at runtime per profile — `<profile>_thresholds`:
+`*.template.yaml` (engine-shipped baseline) → `*.yaml` (live, one-time seed) →
+`*.local.yaml` (owner-only override; missing file is OK). Biometric →
+`biometric_thresholds.*`; activity → `activity_thresholds.*`.
 
 ---
 
@@ -977,15 +997,26 @@ Be specific and cite evidence from the transcript.
 
     `content_type` is the dominant type of the NOTE, not the post. A therapy reflection
     that can be reframed as a management insight for LinkedIn is still `reflection` —
-    the reframing is `/ztn:check-content`'s job when generating drafts.
+    the reframing is `/ztn:content`'s job when generating drafts.
 
-    #### content_angle: string OR array of strings
+    **Closed set — emit EXACTLY one of the five above** (`expert`, `reflection`,
+    `story`, `insight`, `observation`). Never invent a finer-grained value
+    (`technical`, `idea`, `decision`, `principle`, `framework`, `practice`,
+    `product-insight`, `personal`, …). If a note feels like one of those, map it to
+    the closest canonical type: technical/architectural → `expert`; a raw idea or
+    a decision/principle/framework articulation → `insight`; a personal note →
+    `reflection`. Downstream hygiene assumes this set is closed; a drift value
+    silently falls out of content routing.
+
+    #### content_angle: a YAML list of strings (single angle = 1-element list)
 
     Each angle = one sentence hook — the "why would someone read this?" framing.
+    Always a list; never a bare string.
 
-    **Single angle** (most notes):
+    **Single angle** (most notes) — still a list:
     ```yaml
-    content_angle: "Почему делегирование — это не про контроль, а про детский перфекционизм"
+    content_angle:
+      - "Почему делегирование — это не про контроль, а про детский перфекционизм"
     ```
 
     **Multiple angles** (when a note can produce posts with different framings):
@@ -996,17 +1027,17 @@ Be specific and cite evidence from the transcript.
     ```
 
     Multiple angles typically arise when a note sits at the intersection of domains
-    (personal + professional, technical + management). Each angle may target a different
-    audience or platform — `/ztn:check-content` uses angles to cluster the note into
-    multiple theme groups and generate distinct drafts.
+    (personal + professional, technical + management). Each angle becomes a distinct
+    post candidate — `/ztn:content` drafts one conceptual post per genuinely distinct
+    angle, not one per note.
 
-    **Default: one angle.** Only add multiple when genuinely distinct framings exist.
-    Don't force it — one good angle is better than two weak ones.
+    **Default: one angle (as a 1-element list).** Only add more when genuinely
+    distinct framings exist. Don't force it — one good angle beats two weak ones.
 
     #### Bias and filtering
 
     **Bias: inclusion.** When in doubt, mark `medium`. Do NOT skip.
-    Filtering is `/ztn:check-content`'s job, not this step's.
+    Filtering is `/ztn:content`'s job, not this step's.
     False positives are cheap; false negatives lose content opportunities.
 
 15. CONCEPTS: Extract every meaningful "thing-in-the-world" mentioned that
@@ -1165,7 +1196,7 @@ Be specific and cite evidence from the transcript.
     - `content_potential: high` + `content_type: reflection | story`
       → `[professional-network]` if owner has shared similar before
         (visible in `_system/POSTS.md` history); else `[]` — let
-        `/ztn:check-content` decide at draft time
+        `/ztn:content` decide at draft time
     - `content_potential: medium` or `observation` → `[]` — still
       seed-stage; widening is owner's call later
     - No content_potential → `[]`
@@ -1570,7 +1601,7 @@ this field is to phase that out for new content.
 If Q14 determined content_potential for this knowledge stream:
   - Add `content_potential: high` or `content_potential: medium` to frontmatter (after `priority:`)
   - Add `content_type: {type}` — one of: expert, reflection, story, insight, observation
-  - Add `content_angle:` — string (one angle) or array (multiple distinct framings)
+  - Add `content_angle:` — ALWAYS a YAML list (single angle = a 1-element list)
   - All three fields are OPTIONAL — omit entirely if Q14 found no public value
 
 Decision notes (ADR-013 enhanced):
@@ -2241,7 +2272,7 @@ complete frontmatter: `content_potential`, `content_type`, and `content_angle`.
 If any field is missing — add it now based on Q14 assessment.
 
 NOTE: There is no separate CONTENT_PIPELINE registry. Content candidates live
-in note frontmatter and are discovered dynamically by `/ztn:check-content`.
+in note frontmatter and are discovered dynamically by `/ztn:content`.
 POSTS.md tracks only published posts.
 
 ### 4.5 Batch Verification
@@ -2660,7 +2691,7 @@ Output to user:
 - Open tasks: {N} (oldest: {date}, {age} ago)
   {if age > 60 days}: ⚠️ Consider running `/ztn:sweep-tasks` (future skill)
 - Content candidates: {N} notes with content_potential (high: {N}, medium: {N})
-  {if high > 3 and no published in last 30 days}: 💡 Run `/ztn:check-content` to review and draft
+  {if high > 3 and no published in last 30 days}: 💡 Run `/ztn:content` to review and draft
 - People profiles: {N} total, {N} with empty Контекст section
   {if empty > 5}: 📋 Consider one-time people enrichment pass
 ```

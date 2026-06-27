@@ -33,25 +33,53 @@ OPEN_THREADS, engine state, выводы других обзорных проб�
 frame body описывает epistemic weight: claim о владельце обязан
 резолвиться в его primary заметках, не в чужом наблюдении.
 
-**Biometric sources (when `_records/biometric/` is non-empty):**
-- `_system/state/biometric/correlations-{recent}.json` — pre-computed
-  cross-source findings; cite by id (`phase_1.top_strong[i]` /
-  `phase_2.top_findings[j]`).
-- `_system/views/biometric/weekly-{recent}.md` — weekly biometric
-  summary in human-readable form.
+**Biometric sources (when `_records/biometric/` is non-empty).**
+Biometric records + derived state are per wearable device:
+`{source}` ∈ `garmin`, `oura`. Read **both** namespaces when present
+and synthesise **one** health picture; if only one device has data
+for the week, work from that one (never error on the missing one):
+- `_system/state/biometric/{source}/correlations-{recent}.json` per
+  device — pre-computed cross-source findings; cite by id
+  (`phase_1.top_strong[i]` / `phase_2.top_findings[j]`).
+- `_system/views/biometric/{source}/weekly-{recent}.md` per device —
+  weekly biometric summary in human-readable form.
 - Outputs from `biometric-anomaly-narrator` (last 7 daily runs),
   `biometric-cross-domain` (latest weekly thursday),
   `biometric-life-synthesis` (latest weekly monday — same week as
   this run, if already produced).
-- `_records/biometric/<date>.md` Key Numbers — point lookup only,
-  per `_system/docs/biometric-lens-protocol.md` numerical access
-  policy.
+- `_records/biometric/{source}/<date>.md` Key Numbers — point lookup
+  only, per `_system/docs/biometric-lens-protocol.md` numerical
+  access policy.
 
-**Anchoring constraint reminder:** every claim using biometric MUST
-cite a specific biometric record path or correlation finding id
+Where both devices report the **same** metric (RHR, sleep, HRV,
+sleep_score), compare inline and note any divergence as a brief
+footnote (e.g. «RHR: Garmin 58 vs Oura 54 — Oura runs ~4 bpm lower
+all week»). Device-specific metrics (Garmin train_status / bb_*;
+Oura readiness / temp_deviation) come from whichever device carries
+them.
+
+**Activity sources (when `_records/activity/` is non-empty).**
+Computer-usage / attention telemetry, per source (`{source}` ∈
+`activitywatch`) — the lived-attention modality alongside biometric (body):
+- `_system/views/activity/{source}/weekly-{recent}.md` — the weekly
+  Focus-Engineering rollup (median focus/productivity scores, switching
+  trend, category-time, top death loops, rhythm) in human-readable form.
+  **Primary input** — read this first, it is the digest.
+- Output from `time-allocation` (latest weekly monday — same week, if
+  produced) — the narrated attention-rhythm shifts.
+- `_records/activity/{source}/<date>.md` Key Numbers — point lookup for
+  a specific day; do NOT bulk-load raw events.
+Use activity for the "attention где, priorities где — gap" reading: where
+the owner's measured hours went vs what he declared mattering. Pair with
+biometric for the body × attention crossing (late-night-work ↔ readiness),
+but per n=1 — co-occurrence, never causation.
+
+**Anchoring constraint reminder:** every claim using biometric or activity
+MUST cite a specific record path / view / correlation finding id
 (`phase_1.top_strong[2]` etc). Lens output alone is hypothesis-grade.
-Per biometric-lens-protocol n=1 caveats — phrase as «Garmin reports X»,
-never «X is true». Association language only; never causation.
+Per biometric-lens-protocol n=1 caveats — phrase as «Garmin reports X»
+/ «Oura reports X», never «X is true». Association language only;
+never causation.
 
 Window — выбирается под паттерн, не привязан к неделе. Что-то видно
 в 7 днях, что-то в 4 месяцах, что-то — forecast. Trailing 7 дней

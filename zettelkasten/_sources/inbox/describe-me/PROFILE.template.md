@@ -123,6 +123,20 @@
 - {Markdown vs prose; tables vs bullets; code-block conventions}
 - {End-of-turn summary: yes / no}
 
+### How you like information presented & consumed
+
+> The assistant already defaults to conclusion-first, no-fluff, no-sycophancy
+> (the shipped communication baseline). This is where you tune it to you — skip
+> any line and the default still applies. Concrete answers here seed your
+> `ai-interaction` principles (add the firm ones to «Principles you live by»
+> below) and your long-form playbook.
+
+- **Order:** {Conclusion first, then evidence — or context / the story before the point?}
+- **Praise that lands:** {Facts ("14 people came to you unprompted") or labels ("great job")? Many people reject evaluative labels.}
+- **Criticism that lands:** {Only if concrete + actionable + provable? Blunt or cushioned? What makes you defensive vs sharper?}
+- **Insight vs recap:** {Weight interpretation / "what it means" over the play-by-play, or do you want faithful detail?}
+- **Long-form** (reports / audiobooks / debriefs you read or listen to top-to-bottom): {density, pacing, chapter structure, narrative devices, hard bans? → put the recipe in `_system/long-form-playbook.md`, loaded on demand only for such pieces.}
+
 ### Language
 
 - {Which language you write/think in vs which language code/metadata uses}
@@ -204,3 +218,4 @@
 - {axiom | identity: Quality is respect — a worse-than-possible result wastes someone's life downstream}
 - {principle | ethics: Surface trade-offs before deciding — silent compromise = future debt}
 - {rule | work: Don't ship without a rollback plan if 1+ user is affected}
+- {principle | ai-interaction: Lead with the conclusion, not the recap — I read for meaning, not the play-by-play}

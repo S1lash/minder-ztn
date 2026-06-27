@@ -1,8 +1,12 @@
 """Orchestrator for the /ztn:process metric-day branch.
 
-Pure deterministic Python (no LLM). One source file → one biometric
-record under `_records/biometric/<date>.md` plus updated rolling
-baselines + streak state.
+Pure deterministic Python (no LLM). One source file → one per-day record
+under `_records/<family>/<source_id>/<date>.md` plus updated rolling
+baselines + streak state, namespaced per source. The source's
+`MetricDayProfile` (see `metric_day_profiles`) supplies the family
+directory, record kind/domains, metric vocabulary and thresholds — the
+orchestrator itself is profile-agnostic, serving biometric wearables
+(garmin/oura) and behavioural feeds (activitywatch) through one path.
 
 Reads `_sources/inbox/{source}/<date>.md`, emits records, moves the
 source to `_sources/processed/{source}/`, appends to manifest.
@@ -32,30 +36,11 @@ from typing import Any, Iterable, Optional
 
 import yaml
 
-from biometric_extractor import extract
 import biometric_baselines as baselines_mod
-from biometric_baselines import Deviation, NUMERIC_METRICS, flag_deviations
+from biometric_baselines import Deviation, flag_deviations
 from biometric_streaks import advance as streaks_advance, StreakEvent
-
-
-# Keys that appear in `## Key Numbers` of the emitted record, in
-# canonical order. Numeric values come from the extractor; categorical
-# fields too.
-KEY_NUMBER_ORDER: tuple[str, ...] = (
-    "sleep_h", "sleep_score",
-    "deep_h", "rem_h", "light_h", "awake_h",
-    "sleep_efficiency",
-    "hrv_ms", "hrv_status",
-    "rhr",
-    "bb_start", "bb_end", "bb_charged", "bb_drained",
-    "stress_avg", "stress_max",
-    "readiness", "readiness_lvl",
-    "train_status",
-    "acute_load", "chronic_load", "acwr", "acwr_zone",
-    "respiration_waking", "respiration_sleeping",
-    "intensity_moderate_min", "intensity_vigorous_min",
-    "steps", "vo2max_running",
-)
+import metric_day_profiles as profiles
+from metric_day_profiles import MetricDayProfile
 
 
 @dataclass
@@ -87,14 +72,24 @@ class _Paths:
     clarifications_path: Path
 
     @classmethod
-    def for_source(cls, base_dir: str | Path, source_id: str) -> "_Paths":
+    def for_source(cls, base_dir: str | Path, source_id: str,
+                   family_dir: str = "biometric") -> "_Paths":
         b = Path(base_dir)
+        # Records + derived state are namespaced per source under a profile
+        # family directory (`biometric` / `activity`). A user may run two
+        # sources of the same family at once (e.g. garmin + oura); a shared
+        # store would collide records on the same date and pool two
+        # distributions into one σ-baseline (different sensors / signals read
+        # differently → meaningless deviations). Per-source isolation keeps
+        # each baseline statistically valid.
+        records_dir = b / "_records" / family_dir / source_id
+        state_dir = b / "_system" / "state" / family_dir / source_id
         return cls(
             base=b,
-            records_dir=b / "_records" / "biometric",
-            state_dir=b / "_system" / "state" / "biometric",
-            baselines_path=b / "_system" / "state" / "biometric" / "baselines.json",
-            streaks_path=b / "_system" / "state" / "biometric" / "streaks.json",
+            records_dir=records_dir,
+            state_dir=state_dir,
+            baselines_path=state_dir / "baselines.json",
+            streaks_path=state_dir / "streaks.json",
             inbox_dir=b / "_sources" / "inbox" / source_id,
             processed_dir=b / "_sources" / "processed" / source_id,
             log_path=b / "_system" / "state" / "log_process.md",
@@ -102,11 +97,16 @@ class _Paths:
         )
 
 
-def _load_thresholds(base_dir: Path) -> dict[str, Any]:
-    """Load thresholds with template → live → .local layering."""
-    template = base_dir / "_system" / "scripts" / "biometric_thresholds.template.yaml"
-    live = base_dir / "_system" / "scripts" / "biometric_thresholds.yaml"
-    local = base_dir / "_system" / "scripts" / "biometric_thresholds.local.yaml"
+def _load_thresholds(base_dir: Path, basename: str = "biometric_thresholds") -> dict[str, Any]:
+    """Load thresholds with template → live → .local layering.
+
+    `basename` selects the profile's threshold family
+    (`biometric_thresholds` / `activity_thresholds`).
+    """
+    scripts = base_dir / "_system" / "scripts"
+    template = scripts / f"{basename}.template.yaml"
+    live = scripts / f"{basename}.yaml"
+    local = scripts / f"{basename}.local.yaml"
     out: dict[str, Any] = {}
     for p in (template, live, local):
         if p.exists():
@@ -183,19 +183,18 @@ def _parse_record(text: str) -> dict[str, Any]:
     return {"frontmatter": fm, "key_numbers": kn}
 
 
-def _categorical_events(today: dict[str, Any], prior: Optional[dict[str, Any]]) -> list[str]:
+def _categorical_events(
+    today: dict[str, Any],
+    prior: Optional[dict[str, Any]],
+    pairs: tuple[tuple[str, str], ...],
+) -> list[str]:
     """Compare categorical fields against prior record. Return list of
-    one-line event strings."""
-    if not prior:
+    one-line event strings. `pairs` is the profile's (key, label) set;
+    an empty tuple (e.g. the activity profile) yields no events."""
+    if not prior or not pairs:
         return []
     prior_kn = prior.get("key_numbers", {}) or {}
     out: list[str] = []
-    pairs = [
-        ("hrv_status",     "HRV status"),
-        ("train_status",   "Training status"),
-        ("acwr_zone",      "ACWR zone"),
-        ("readiness_lvl",  "Readiness"),
-    ]
     for key, label in pairs:
         new = today.get(key)
         old = prior_kn.get(key)
@@ -235,21 +234,23 @@ def _format_record(
     metrics: dict[str, Any], deviations: list[Deviation],
     categorical_events: list[str], streaks_state: dict[str, Any],
     streak_events: list[StreakEvent], concepts: list[str],
-    metric_failures: list[Any], created_iso: str,
+    metric_failures: list[Any], created_iso: str, profile: MetricDayProfile,
 ) -> str:
-    fm = {
+    fm: dict[str, Any] = {
         "date": date,
-        "kind": "biometric",
-        "domains": ["health"],
+        "kind": profile.kind,
+        "domains": list(profile.domains),
         "people": [],
         "audience_tags": [],
-        "is_sensitive": True,
+        "is_sensitive": profile.is_sensitive,
         "origin": "personal",
-        "garmin_estimate": True,
-        "concepts": concepts,
+        "device": source_id,
     }
+    if profile.device_estimate is not None:
+        fm["device_estimate"] = profile.device_estimate
+    fm["concepts"] = concepts
     if metric_failures:
-        fm["garmin_metric_failures"] = metric_failures
+        fm["metric_failures"] = metric_failures
     fm["source"] = f"{source_id}/{source_filename}"
     fm["created"] = created_iso
 
@@ -258,7 +259,7 @@ def _format_record(
 
     parts: list[str] = []
     parts.append(f"---\n{fm_text}---\n")
-    parts.append(f"\n# Biometric — {date}\n")
+    parts.append(f"\n# {profile.heading} — {date}\n")
 
     # Summary verbatim
     summary_clean = summary_text.strip()
@@ -267,7 +268,7 @@ def _format_record(
 
     # Key Numbers
     kn: dict[str, Any] = {}
-    for key in KEY_NUMBER_ORDER:
+    for key in profile.key_number_order:
         if key in metrics and metrics[key] is not None:
             kn[key] = metrics[key]
     if kn:
@@ -309,8 +310,9 @@ def _format_record(
                 lines.append(f"- {ev.concept} (was {ev.days} days, started {ev.started})")
         parts.append("\n## Streak Transitions\n\n" + "\n".join(lines) + "\n")
 
-    # Source link
-    parts.append(f"\n## Source\n\n[[../../_sources/processed/{source_id}/{source_filename}]]\n")
+    # Source link. Record lives at _records/biometric/{source_id}/{date}.md,
+    # so three levels up reaches the base.
+    parts.append(f"\n## Source\n\n[[../../../_sources/processed/{source_id}/{source_filename}]]\n")
 
     return "".join(parts)
 
@@ -337,15 +339,16 @@ def run(
     `metric-record-rerender` CLARIFICATION (default: skip).
     """
     src = Path(source_path).resolve()
-    paths = _Paths.for_source(base_dir, source_id)
-    thresholds = thresholds or _load_thresholds(paths.base)
+    profile = profiles.for_source(source_id)
+    paths = _Paths.for_source(base_dir, source_id, profile.family_dir)
+    thresholds = thresholds or _load_thresholds(paths.base, profile.thresholds_basename)
 
     now = now or dt.datetime.now(dt.timezone.utc)
     created_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     src_text = src.read_text(encoding="utf-8")
     src_hash = _content_hash(src_text)
-    parsed = extract(src)
+    parsed = profile.extractor(src)
     date = parsed["date"] or src.stem
     status = parsed["status"]
 
@@ -381,7 +384,8 @@ def run(
         if prior_hash and prior_hash != src_hash:
             rerender_clarification = {
                 "type": "metric-record-rerender",
-                "subject": f"biometric/{date}",
+                "subject": f"{profile.family_dir}/{source_id}/{date}",
+                "source": source_id,
                 "context": (
                     f"Source {source_id}/{src.name} re-collected with different "
                     f"content; existing record hash {prior_hash[:8]}… new {src_hash[:8]}…. "
@@ -421,8 +425,8 @@ def run(
     cold_start_clarification: Optional[dict[str, Any]] = None
     if not paths.baselines_path.exists():
         cold_start_clarification = {
-            "type": "biometric-baseline-cold-start",
-            "subject": "biometric/baselines",
+            "type": f"{profile.name}-baseline-cold-start",
+            "subject": f"{profile.family_dir}/baselines",
             "context": (
                 "First metric-day file processed; no prior baselines.json. "
                 "Initialised empty baselines. One-time, expected. "
@@ -430,15 +434,22 @@ def run(
             ),
         }
 
-    # 4: Update baselines + flag deviations
-    baselines_state = baselines_mod.update(
-        paths.baselines_path, date, parsed["metrics"], thresholds
-    )
+    # 4: Update baselines + flag deviations. Skip the baseline contribution
+    # for days the profile deems non-representative (e.g. a near-idle Mac day
+    # would pull every behavioural baseline toward zero), but still emit the
+    # record — the empty day is itself signal.
+    if profile.should_baseline(parsed["metrics"]):
+        baselines_state = baselines_mod.update(
+            paths.baselines_path, date, parsed["metrics"], thresholds,
+            numeric_metrics=profile.numeric_metrics,
+        )
+    else:
+        baselines_state = baselines_mod.load(paths.baselines_path)
     deviations = flag_deviations(baselines_state, parsed["metrics"], thresholds)
 
     # 5: Categorical events vs prior record
     prior = _read_prior_record(paths.records_dir, date)
-    categorical_events = _categorical_events(parsed["metrics"], prior)
+    categorical_events = _categorical_events(parsed["metrics"], prior, profile.categorical_pairs)
     categorical_concepts = _categorical_concepts(categorical_events)
 
     # 6: Streak advancement
@@ -449,6 +460,7 @@ def run(
         deviations,
         min_consecutive=int(streak_rule.get("min_consecutive_days", 3)),
         min_severity=streak_rule.get("min_severity", "medium"),
+        concept_map=profile.concept_map,
     )
 
     # 7: Concept synthesis
@@ -477,6 +489,7 @@ def run(
         concepts=concepts,
         metric_failures=parsed["metric_failures"],
         created_iso=created_iso,
+        profile=profile,
     )
 
     # Inject `source_hash:` into frontmatter for idempotency on re-run.
@@ -509,20 +522,20 @@ def run(
     manifest_entry = {
         "path": str(record_path.relative_to(paths.base)),
         "id": date,
-        "title": f"Biometric — {date}",
+        "title": f"{profile.heading} — {date}",
         "checksum_sha256": record_checksum,
         "people": [],
         "projects": [],
         "concept_hints": concepts,
-        "primary_type": "biometric",
+        "primary_type": profile.manifest_primary_type,
         "origin": "personal",
         "audience_tags": [],
-        "is_sensitive": True,
+        "is_sensitive": profile.is_sensitive,
         # ZTN-specific extras (allowed via section_extras pattern)
         "section_extras": {
             "date": date,
             "source_hash": src_hash,
-            "domains": ["health"],
+            "domains": list(profile.domains),
             "deviations": len(deviations),
             "categorical_events": list(categorical_events),
             "streak_events": [
@@ -563,13 +576,16 @@ def _inject_frontmatter_field(rendered: str, key: str, value: str) -> str:
 
 def _move_to_processed(src: Path, processed_dir: Path) -> None:
     processed_dir.mkdir(parents=True, exist_ok=True)
-    raw_src = src.parent / "raw" / f"{src.stem}.json"
     target = processed_dir / src.name
     shutil.move(str(src), str(target))
-    if raw_src.exists():
-        raw_target_dir = processed_dir / "raw"
-        raw_target_dir.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(raw_src), str(raw_target_dir / raw_src.name))
+    # Move the sibling raw payload alongside, whatever its extension —
+    # garmin/oura ship `raw/<date>.json`, activitywatch `raw/<date>.json.gz`.
+    raw_dir = src.parent / "raw"
+    if raw_dir.is_dir():
+        for raw_src in sorted(raw_dir.glob(f"{src.stem}.json*")):
+            raw_target_dir = processed_dir / "raw"
+            raw_target_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(raw_src), str(raw_target_dir / raw_src.name))
 
 
 def _append_clarification(path: Path, clar: dict[str, Any]) -> None:
@@ -620,8 +636,9 @@ def run_batch(
     section with biometric entries. Default `manifest_out`:
     `_system/state/batches/{batch_id}.json`.
     """
-    paths = _Paths.for_source(base_dir, source_id)
-    thresholds = thresholds or _load_thresholds(paths.base)
+    profile = profiles.for_source(source_id)
+    paths = _Paths.for_source(base_dir, source_id, profile.family_dir)
+    thresholds = thresholds or _load_thresholds(paths.base, profile.thresholds_basename)
     results = []
     sorted_paths = sorted([Path(p) for p in source_paths], key=lambda p: p.name)
     for sp in sorted_paths:
@@ -661,6 +678,7 @@ def write_batch_manifest(
     `manifest-schema/v2.json`.
     """
     now = now or dt.datetime.now(dt.timezone.utc)
+    profile = profiles.for_source(source_id)
     timestamp = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -700,10 +718,10 @@ def write_batch_manifest(
             "threads_resolved": [],
             "stats": {
                 "files_processed": len(results),
-                "biometric_records_emitted": len(biometric_entries),
+                f"{profile.name}_records_emitted": len(biometric_entries),
             },
             "section_extras": {
-                "biometric_pipeline": {
+                f"{profile.name}_pipeline": {
                     "source_id": source_id,
                     "outcomes": _outcome_counts(results),
                 },
@@ -729,7 +747,8 @@ def append_update_to_record(
     the existing Key Numbers + new baseline deviations against the
     current baselines snapshot.
     """
-    paths = _Paths.for_source(base_dir, source_id)
+    profile = profiles.for_source(source_id)
+    paths = _Paths.for_source(base_dir, source_id, profile.family_dir)
     record_path = paths.records_dir / f"{date}.md"
     src_path = paths.processed_dir / f"{date}.md"
     if not record_path.exists() or not src_path.exists():
@@ -739,7 +758,7 @@ def append_update_to_record(
     today_iso = today.strftime("%Y-%m-%d")
 
     # Re-parse current source
-    parsed = extract(src_path)
+    parsed = profile.extractor(src_path)
     new_metrics = parsed["metrics"]
 
     # Read existing record's Key Numbers
@@ -757,7 +776,7 @@ def append_update_to_record(
             diff_lines.append(f"- {k}: {old_v!r} → {new_v!r}")
 
     # Recompute deviations against current baselines
-    thresholds = _load_thresholds(paths.base)
+    thresholds = _load_thresholds(paths.base, profile.thresholds_basename)
     baselines_state = baselines_mod.load(paths.baselines_path)
     new_devs = flag_deviations(baselines_state, new_metrics, thresholds)
 
@@ -800,7 +819,8 @@ def recompute_baselines_forward(
 
     Returns a summary dict with counts.
     """
-    paths = _Paths.for_source(base_dir, source_id)
+    profile = profiles.for_source(source_id)
+    paths = _Paths.for_source(base_dir, source_id, profile.family_dir)
     # 1) Truncate baselines per-metric
     baselines_state = baselines_mod.load(paths.baselines_path)
     truncated_metrics = 0
@@ -838,10 +858,7 @@ def recompute_baselines_forward(
         h for h in (streaks_state.get("history") or [])
         if (h.get("ended") or "9999-99-99") < from_date
     ]
-    streaks_state["last_date"] = max(
-        [from_date_minus_one(from_date)],
-        default=None,
-    )
+    streaks_state["last_date"] = from_date_minus_one(from_date)
     paths.streaks_path.write_text(
         json.dumps(streaks_state, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
         encoding="utf-8",
@@ -862,13 +879,15 @@ def recompute_baselines_forward(
         # Move source temporarily back to inbox to let run() process it
         inbox_target = paths.inbox_dir / src.name
         paths.inbox_dir.mkdir(parents=True, exist_ok=True)
-        # Move raw payload sibling if present
-        raw_src = sources_dir / "raw" / f"{src.stem}.json"
-        raw_target = paths.inbox_dir / "raw" / f"{src.stem}.json"
         shutil.move(str(src), str(inbox_target))
-        if raw_src.exists():
-            (paths.inbox_dir / "raw").mkdir(parents=True, exist_ok=True)
-            shutil.move(str(raw_src), str(raw_target))
+        # Move the raw payload sibling back too — match any extension
+        # (garmin/oura ship `.json`, activitywatch `.json.gz`), mirroring
+        # `_move_to_processed`.
+        raw_dir = sources_dir / "raw"
+        if raw_dir.is_dir():
+            for raw_src in sorted(raw_dir.glob(f"{src.stem}.json*")):
+                (paths.inbox_dir / "raw").mkdir(parents=True, exist_ok=True)
+                shutil.move(str(raw_src), str(paths.inbox_dir / "raw" / raw_src.name))
         # Delete existing record so run() does not detect content drift
         rec = paths.records_dir / f"{src.stem}.md"
         if rec.exists():

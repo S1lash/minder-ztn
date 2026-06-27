@@ -599,6 +599,7 @@ honestly with self-reported confidence; judgement is downstream.
 | `hub_stub_create` | `suggested_slug`, `cited_notes` (list of paths) | knowledge-emergence |
 | `open_thread_add` | `thread_title`, `cited_records` (list of paths) | stalled-thread |
 | `decision_update_section` | `decision_note_path`, `update_reason` | decision-review |
+| `principle_candidate_add` | `situation`, `observation`, `hypothesis`, `suggested_type`, `suggested_domain`, `source_record_count` | cognitive-model |
 
 A lens MAY emit any whitelisted type regardless of its «typical» role —
 the table above is descriptive, not prescriptive. Non-whitelisted types
@@ -607,7 +608,13 @@ clarifications queue with a note that owner review is required (the
 system learns about new types through owner approval, not lens fiat).
 
 **`confidence` values:** `low` | `medium` | `high` — lens self-report.
-Used by the resolver as one signal among many, never as a gate.
+**Advisory by default** — the resolver's LLM-judge weighs it as one signal among
+many. **EXCEPT** where a per-class `insights-config.yaml` entry
+(`{lens-id}__{action-type}__{confidence}`) pins it: that makes confidence a
+**deterministic gate** for that class (e.g.
+`cognitive-model__principle_candidate_add__high: auto` auto-applies high,
+`__medium`/`__low: never_auto` always queue). So a lens author choosing a
+confidence is choosing the auto/queue branch wherever such a config exists.
 
 **`brief_reasoning`:** one paragraph, owner-readable. Explains why the
 lens believes this proposal would be useful. The resolver reads this
@@ -616,13 +623,28 @@ about what is and isn't load-bearing in the cluster.
 
 **Lenses that emit Action Hints:** `cross-domain-bridge`,
 `knowledge-emergence`, `stalled-thread`, `decision-review`,
-`global-navigator`. Each lens prompt carries its own emission guidance
-(when to propose, what types to favour, how aggressive to be).
+`global-navigator`, `cognitive-model`. Each lens prompt carries its own
+emission guidance (when to propose, what types to favour, how aggressive
+to be).
 
 **Lenses that do NOT emit Action Hints:** `weekly-insights`,
 `energy-pattern`, `stated-vs-lived`. These are informational or
 identity-level by design — auto-apply machinery would cross owner-
 sovereignty lines.
+
+**Identity-level exception — `principle_candidate_add`.** `cognitive-model`
+is an identity-level lens yet DOES emit, because its one action type
+(`principle_candidate_add`) only **appends to the high-recall
+`principle-candidates.jsonl` review buffer** — it does not apply any change
+to `0_constitution/` or SOUL. The candidate is stamped `origin: agent-lens`
+(non-personal — inferred / batch-extracted), so the F.5 non-personal-origin
+guard always routes it to owner review and never L2-auto-merges it onto an
+existing principle. Promotion stays owner-gated (`/ztn:lint`
+F.5), exactly like the in-the-moment capture hook. Appending-to-the-
+review-buffer is therefore additive and does NOT cross the sovereignty
+line that direct identity edits would. An identity-level lens may emit
+`principle_candidate_add`; it must still NOT emit the content-mutating
+types.
 
 **Validator stance.** The Stage 3 validator does not parse the Action
 Hints body. It accepts the trailer as opaque markdown. The resolver's

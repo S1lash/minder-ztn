@@ -45,7 +45,7 @@ Evolution Tracking, principle 8 Texture).
 - `--scope fast` — skip expensive scans (dedup + Evidence Trail backfill); use for ad-hoc day-time runs. Default = full
 - `--verbose` — include reasoning traces in stdout report (doesn't change scan scope)
 - `--force` — bypass «lint ran recently (<6h)» warning
-- `--weekly` — force weekly scan triggers (content pipeline reminder, etc.) even if not first run of UTC week
+- `--weekly` — force weekly/monthly-gated scan triggers (e.g. Scan F constitution reviews) even if not first run of UTC week
 - `--no-sync-check` — skip the data-freshness pre-flight (see below)
 
 ---
@@ -361,7 +361,6 @@ Load into memory (streamed on-demand where noted):
 - `3_resources/people/*.md` profile bodies (Scan C)
 - `_sources/processed/**/transcript*.md` (Scan C.4 mention drift — sampled, not full)
 - `_system/state/PROCESSED.md` (Scan C.4 baseline)
-- `_system/views/CONTENT_OVERVIEW.md` (if exists, Scan E.2)
 
 ---
 
@@ -746,6 +745,80 @@ every path segment:
 A.10 never rewrites references — only inbox renames (reference-free by
 construction) are autonomous.
 
+**A.11 Content markup canonicalization (content_type drift + missing content_angle):**
+
+The post-write hygiene gate for the content pipeline's preparation layer.
+`/ztn:process` Q14 constrains its OWN output to the canonical five
+(`expert`, `reflection`, `story`, `insight`, `observation`); A.11 heals
+**existing** notes and any incoming drift (manual edits, older notes, future
+producers) so a drifted `content_type` never silently falls out of content
+routing. Scope: every PARA + archive knowledge note carrying
+`content_potential` (the routing gate — a drift type on a non-content note is
+irrelevant). `story` is canonical and never touched.
+
+**Single SoT for the mapping: `_system/scripts/lint_content_markup.py`
+`CANON_MAP`.** The table is defined once, in code; this prose describes the
+*method*, not the rows (no drift). Run it from the lint orchestrator:
+
+```bash
+python3 _system/scripts/lint_content_markup.py --mode {{scan|fix}} --root zettelkasten
+```
+
+`--mode scan` emits JSONL events without writing (dry-run preview);
+`--mode fix` applies the autonomous tier in place, same JSONL on stdout for
+`log_lint.md` fix-id ingestion. Each event:
+`{"kind": "content-type|content-angle", "path": ..., "raw": ..., "target": ..., "floor": "strong|weak", "tier_hint": ..., "reason": ...}`.
+
+**Method — each drifted-type candidate carries a floor; the standard §Step 3
+Confidence Routing (floor × LLM verdict → tier) decides the rest.** Two
+classes of mapping, distinguished in `CANON_MAP`:
+
+- **Synonym rows** (`strong` floor) — the drift value is an unambiguous
+  alias for exactly one canonical type (technical / technical-decision /
+  practice family → `expert`; `personal` → `reflection`). The declared value
+  itself canonicalizes deterministically regardless of body, so this
+  qualifies for the doctrine §3.1 autonomous-resolution exception: the helper
+  applies the rewrite in place and **prepends an Evidence-Trail note**
+  recording `{raw} → {canonical} (content-type-canon-autofix)`. Silent,
+  logged, reversible — no CLARIFICATION.
+- **Judgment rows** (`weak` floor) — the drift value could map to 2+
+  canonical types: a raw `idea` is `insight` when it carries a non-obvious
+  angle but `observation` when it is still a lightweight seed;
+  `decision` / `principle` / `framework` / `product-insight` are `insight` by
+  default but `expert` when the note is established domain knowledge. The
+  helper does NOT write; it emits the candidate with the default target. The
+  LLM verdict reads the actual note against the canonical definitions →
+  `weak × high` (reviewed: apply default + validate-CLARIFICATION) or
+  `weak × confident/unsure` (surfaced: no apply, CLARIFICATION carries the
+  default + the alternative + a note excerpt so the owner picks with context).
+  Never a silent guess on a judgment call (doctrine §3.1).
+
+**Unknown drift value (not in `CANON_MAP`)** — never silently dropped or
+guessed. `weak` floor → surfaced CLARIFICATION `content-type-unknown` with the
+LLM's suggested canonical mapping; resolving it can optionally extend
+`CANON_MAP` (one place). This is the forward-compat guard: a new finer-grained
+type a future producer invents surfaces for the owner instead of breaking
+content routing silently.
+
+**`content_angle` shape — always a list.** A note whose `content_angle` is a bare
+**string** is normalized to a 1-element list deterministically (`strong` floor →
+silent autofix, fix-id `content-angle-format`; the scalar is preserved verbatim,
+the note's own list indentation matched, only the one line rewritten).
+Already-list and block/anchor scalars are left alone.
+
+**Missing `content_angle`** — A.11 only *flags*, never invents. A note with
+`content_potential` set but `content_angle` empty/absent is emitted as a
+`content-angle` event aggregated into a single surfaced CLARIFICATION
+`content-angle-missing` (count + note list). The angle hook ("why would
+someone read this?") is content reasoning, not deterministic hygiene — it is
+**proposed per-note by the draft-maintainer** (`/ztn:content --maintain`) on
+its first run and owner-confirmed, never auto-written by lint.
+
+Idempotent: a second run on a healed note is a no-op (its type is now
+canonical; its angle, once owner-supplied, is present). Reversible: every
+autofix leaves an Evidence-Trail entry; one edit to `CANON_MAP` + re-run
+re-heals cleanly.
+
 ### Scan B — Thread Lifecycle
 
 **B.1 Stale thread detection per-status:**
@@ -1051,31 +1124,10 @@ Why surfaced-only:
 - Output: prose assessment (3–5 sentences) + specific observations
 - Always surfaced tier `soul-focus-drift` (SOUL never auto-edit — HARD RULE)
 
-**E.2 Weekly content pipeline reminder:**
-
-**Weekly gate check:** Determine if this is first lint run of UTC week (Monday = weekday 0).
-
-```
-today_utc = current UTC date
-# Check if any prior lint entry this week
-this_week_start = today_utc - timedelta(days=today_utc.weekday())  # Monday
-read log_lint.md entries with timestamp >= this_week_start
-if any entry found:
-  skip content pipeline reminder scan (already fired this week, even if on different day)
-else:
-  run trigger logic below
-```
-
-Exception: `--weekly` flag bypass — force weekly gate check to fire regardless of cadence (for manual validation or non-Monday schedules).
-
-Trigger logic (only if weekly gate allows):
-1. If `_system/views/CONTENT_OVERVIEW.md` doesn't exist AND ≥ 5 high-content_potential notes present → raise reminder
-2. If exists AND frontmatter `generated:` > 7 days ago AND ≥ 5 new high-content_potential notes added since → raise reminder
-3. If exists AND generated ≤ 7 days → skip
-
-CLARIFICATION `content-pipeline-reminder` (surfaced tier, aggregated, not per-note).
-
-**Edge case — first-ever lint run:** no log_lint.md entries previously → weekly gate treats as eligible (first run fires reminder regardless of weekday; subsequent runs этой недели skip).
+Content surfacing lives outside lint: the draft-maintainer
+(`/ztn:content --maintain`) self-surfaces "what changed this week" on its own
+weekly tick, and Scan A.11 owns content-markup hygiene. Scan E covers SOUL
+focus only.
 
 ---
 
@@ -1285,7 +1337,7 @@ so owner resolves the scope before merge.
 
 **Non-personal-origin guard.** Candidates whose `origin` is anything
 other than `personal` (e.g. `work`, `external`, `bootstrap-raw-scan`,
-`bootstrap-profile`) never qualify for automatic Level 2 merge —
+`bootstrap-profile`, `agent-lens`) never qualify for automatic Level 2 merge —
 always surface as CLARIFICATION (info tier) and let owner confirm
 whether the pattern belongs in the personal tree. Rationale: these
 origins represent inferred / batch-extracted / cross-context signals
@@ -1969,6 +2021,13 @@ The skill clusters items by theme, reminds context + verbatim quotes inline, and
 - `portable-name-collision` — non-portable inbox name whose normalised form already exists in the same directory, or normalisation returned None (A.10 — no autofix, owner resolves)
 - `portable-name-escape` — non-portable tracked path outside inbox and not grandfathered via PROCESSED.md (A.10 — surfaced only; rename + reference rewrite is an owner-reviewed action)
 
+**Content markup (A.11):**
+- `content-type-canon-reviewed` — judgment remap applied with default target, validate (A.11 — weak × high; reversible via Evidence Trail)
+- `content-type-canon-surfaced` — judgment remap ambiguous between 2+ canonical types, owner picks with note excerpt (A.11 — weak × confident/unsure, no apply)
+- `content-type-unknown` — drift `content_type` not in `CANON_MAP`; LLM-suggested canonical mapping, optionally extend the table (A.11 — surfaced only, never guessed)
+- `content-type-missing` — note has `content_potential` but no `content_type`; owner sets the canonical type (A.11 — surfaced, no apply)
+- `content-angle-missing` — note has `content_potential` but empty/absent `content_angle`; the draft-maintainer proposes a hook on its first run (A.11 — surfaced, aggregated count + note list, never auto-written)
+
 **Thread lifecycle:**
 - `thread-stale-warn` — past warn threshold, no activity (reviewed — no apply, CLARIFICATION)
 - `thread-stale-escalate` — past escalate threshold, explicit decision required
@@ -1993,7 +2052,6 @@ The skill clusters items by theme, reminds context + verbatim quotes inline, and
 **Focus:**
 - `soul-focus-drift` — Focus misaligned vs recent activity (daily scan)
 - `soul-update-advice` — monthly structured SOUL review
-- `content-pipeline-reminder` — weekly reminder to run `/ztn:check-content`
 
 **Profile normalization:**
 - `profile-context-missing` — existing profile без `## Контекст`, semantic content needed
@@ -2030,6 +2088,15 @@ takes no action.
   via `normalize_portable_name()` (A.10 — reference-safe by construction:
   unprocessed inbox items have no inbound references)
 
+**Content markup autofix (A.11) — autonomous, fix-codes only** (via
+`lint_content_markup.py`; targeted line-edits, not whole-frontmatter re-dumps):
+- `content-type-canon-autofix` — drifted `content_type` synonym rewritten to its
+  canonical type (technical/technical-decision/practice → expert; personal →
+  reflection) with an Evidence-Trail note. Judgment / unknown drift is NOT
+  autofixed — it routes to CLARIFICATIONs (see Content markup codes above).
+- `content-angle-format` — bare-string `content_angle` normalized to a 1-element
+  YAML list (uniform shape), scalar preserved verbatim, note's list indent matched.
+
 (Manifest concept and audience fields are conformant by upstream
 construction in `/ztn:process` §4.7 and `/ztn:maintain` Step 4 hub
 linkage — no separate manifest fix-ids needed.)
@@ -2053,7 +2120,7 @@ Parsable fields stable per Q0. Forward-compat: new codes append-only.
 /ztn:lint --scope fast           # skip expensive scans (dedup + Evidence Trail backfill)
 /ztn:lint --verbose              # reasoning traces в stdout
 /ztn:lint --force                # bypass «ran recently» warning
-/ztn:lint --weekly               # force weekly triggers (content pipeline reminder) even mid-week
+/ztn:lint --weekly               # force weekly/monthly-gated triggers (Scan F reviews) even mid-week
 ```
 
 ---

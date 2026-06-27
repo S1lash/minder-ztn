@@ -111,6 +111,9 @@ for f in "$BUILT_RULES"/*.md; do
 done
 link "$MINDER_ZTN_BASE/_system/docs/constitution-capture.md" "$TARGET_RULES/constitution-capture.md"
 link "$MINDER_ZTN_BASE/_system/views/constitution-core.md" "$TARGET_RULES/constitution-core.md"
+# Communication baseline — universal presentation spine, hot in every session.
+# Owner's calibration layers on top: SOUL → Context for Agents + the long-form playbook.
+link "$MINDER_ZTN_BASE/_system/docs/communication-baseline.md" "$TARGET_RULES/communication-baseline.md"
 # Engine doctrine — operating philosophy auto-loaded in every session.
 # Every /ztn:* skill reads it; the symlink ensures it flows into ad-hoc
 # Claude Code sessions in this repo too (e.g. when owner is debugging
@@ -150,6 +153,9 @@ $BEGIN_MARK
 ## Constitution Capture — Global Hook
 - @~/.claude/rules/constitution-capture.md
 
+## Communication baseline — how to present information
+- @~/.claude/rules/communication-baseline.md
+
 ## Constitution — auto-loaded values & principles
 - @~/.claude/rules/constitution-core.md
 $END_MARK
@@ -164,11 +170,21 @@ elif grep -qF "$BEGIN_MARK" "$CLAUDE_MD"; then
   log "refreshing managed block in $CLAUDE_MD"
   mkdir -p "$BACKUP_DIR"
   cp "$CLAUDE_MD" "$BACKUP_DIR/CLAUDE.md.before-refresh"
-  awk -v begin="$BEGIN_MARK" -v end="$END_MARK" -v block="$(managed_block)" '
-    $0 == begin { skip = 1; print block; next }
+  # Splice the new block in via awk getline from a file. A multi-line
+  # `-v block="$(managed_block)"` value is rejected by some awk builds
+  # (macOS bwk awk: «awk: newline in string»), which silently no-ops the
+  # refresh — so the block is read from a file, never from a var.
+  managed_block > "$CLAUDE_MD.block"
+  if awk -v begin="$BEGIN_MARK" -v end="$END_MARK" -v blockfile="$CLAUDE_MD.block" '
+    $0 == begin { while ((getline line < blockfile) > 0) print line; close(blockfile); skip = 1; next }
     $0 == end   { skip = 0; next }
     !skip       { print }
-  ' "$CLAUDE_MD" > "$CLAUDE_MD.tmp" && mv "$CLAUDE_MD.tmp" "$CLAUDE_MD"
+  ' "$CLAUDE_MD" > "$CLAUDE_MD.tmp"; then
+    mv "$CLAUDE_MD.tmp" "$CLAUDE_MD"
+  fi
+  # Clean temp files unconditionally — even if awk failed above (a failing
+  # `awk && mv` under `set -e` would otherwise exit before cleanup).
+  rm -f "$CLAUDE_MD.block" "$CLAUDE_MD.tmp"
 else
   log "appending managed block to $CLAUDE_MD"
   mkdir -p "$BACKUP_DIR"
@@ -195,6 +211,7 @@ cat <<EOF
 Wired into ~/.claude/CLAUDE.md (managed block):
   - @~/.claude/rules/ztn.md                    (search triggers, decision-check discovery)
   - @~/.claude/rules/constitution-capture.md   (global capture hook)
+  - @~/.claude/rules/communication-baseline.md (universal presentation spine)
   - @~/.claude/rules/constitution-core.md      (axioms / principles / rules)
 
 Obsidian vault config:

@@ -25,6 +25,15 @@ integrations/claude-code/built/
 # Advisory flock files for telemetry / append-only buffers
 zettelkasten/_system/state/.*.lock
 
+# ActivityWatch raw event dumps — kept LOCAL as the incident escape hatch,
+# never committed. ~180 KB/day gzipped (≈ hundreds of MB/year) AND the most
+# sensitive data in the base (months of verbatim window titles + client URLs).
+# The per-day `.md` preserves the signal (## Detailed aggregates + top titles);
+# raw is only needed for one-off event-level investigation on the collecting
+# Mac. (Deliberately unlike garmin/oura raw, which is tiny low-sensitivity JSON.)
+zettelkasten/_sources/inbox/activitywatch/raw/
+zettelkasten/_sources/processed/activitywatch/raw/
+
 # Temporary planning / SDD docs (deleted at end of implementation cycle)
 _planning/
 

@@ -732,32 +732,44 @@ Run **once** after the per-batch loop completes.
 Triggered on every `/ztn:maintain` after-batch invocation. **No new
 scheduler-prompt added** — re-uses the existing maintain tick.
 
-### Idempotency gate
+### Per-source loop
 
-Read `_system/state/biometric/last_weekly_run.txt`. If contents equal
-the current ISO week (`YYYY-Www`) → log "biometric weekly: noop" and
-skip the entire step. Otherwise the worker proceeds.
+Biometric records + derived state are namespaced per wearable device
+under `<source>/` (e.g. `garmin`, `oura`). The worker + snapshot run
+**once per active metric-day source** — every device directory that has
+records under `_records/biometric/*/`. Enumerate active sources by
+listing the immediate subdirectories of `_records/biometric/`; each
+subdirectory name is a `source_id`. Run the steps below for each in turn
+(order does not matter — sources are independent).
 
-This means the worker runs at most once per ISO week, on the first
-`/ztn:maintain` invocation of that week, regardless of weekday.
+### Idempotency gate (per source)
 
-### Pre-checks
+For source `<id>`, read `_system/state/biometric/<id>/last_weekly_run.txt`.
+If contents equal the current ISO week (`YYYY-Www`) → log
+"biometric weekly <id>: noop" and skip that source. Otherwise the
+worker proceeds for it.
 
-1. `_records/biometric/` exists and contains ≥ 14 records. Below that,
-   log `pre-checks-failed` and skip — Tier II requires substantial
-   data.
-2. If `_records/biometric/` has ≥ 14 records BUT no
-   `_system/state/biometric/correlations-*.json` exists yet → enter
-   **backfill mode** (worker iterates completed ISO weeks chronologically,
-   produces per-week outputs, then the current sentinel week).
+This means the worker runs at most once per ISO week **per source**, on
+the first `/ztn:maintain` invocation of that week, regardless of weekday.
+
+### Pre-checks (per source)
+
+1. `_records/biometric/<id>/` contains ≥ 14 records. Below that,
+   log `pre-checks-failed <id>` and skip that source — Tier II requires
+   substantial data.
+2. If `_records/biometric/<id>/` has ≥ 14 records BUT no
+   `_system/state/biometric/<id>/correlations-*.json` exists yet → enter
+   **backfill mode** for that source (worker iterates completed ISO weeks
+   chronologically, produces per-week outputs, then the current sentinel
+   week).
 3. Otherwise → normal current-week mode.
 
-### Steps
+### Steps (per source `<id>`)
 
-1. Run `python3 _system/scripts/biometric_weekly_worker.py --base-dir <base>`.
-   The worker:
+1. Call `biometric_weekly_worker.run(base, source_id="<id>", batch_id=…, manifest_out=…)`.
+   The worker (reading + writing only the `<id>/` namespace):
    - Loads thresholds (template → live → .local layered merge).
-   - Reads last 56 days of `_records/biometric/` Key Numbers.
+   - Reads last 56 days of `_records/biometric/<id>/` Key Numbers.
    - Phase 1: Pearson over metric pairs at lag 0..3, anomaly clusters.
    - Phase 2: lexicon-based affect tag extraction over `_records/observations/`
      + `_records/meetings/`, point-biserial correlations vs metrics
@@ -766,27 +778,29 @@ This means the worker runs at most once per ISO week, on the first
      detection vs expected (light ≈ 16%, medium ≈ 7%, strong ≈ 2%);
      proposes new σ when drift factor outside [0.5, 2.0] for ≥ 3
      consecutive weeks.
-   - Writes `_system/state/biometric/correlations-{YYYY-Www}.json`
+   - Writes `_system/state/biometric/<id>/correlations-{YYYY-Www}.json`
      per processed week (1 file in normal mode; up to ~8 in backfill).
-   - Writes owner-readable `_system/views/biometric/weekly-{YYYY-Www}.md`
+   - Writes owner-readable `_system/views/biometric/<id>/weekly-{YYYY-Www}.md`
      per processed week.
-   - Appends per-week observation to `_system/state/biometric/calibration-history.json`.
+   - Appends per-week observation to `_system/state/biometric/<id>/calibration-history.json`.
    - Surfaces `biometric-threshold-drift` CLARIFICATIONs (rate-limited
      by `insights-config.yaml::biometric_max_hints_per_week`).
-2. After worker completes successfully, write current ISO week into
-   `_system/state/biometric/last_weekly_run.txt` (single line, no
-   trailing newline).
+2. After the worker completes successfully for `<id>`, write current ISO
+   week into `_system/state/biometric/<id>/last_weekly_run.txt`
+   (single line, no trailing newline).
 
 ### Health Snapshot integration into Step 7 (CURRENT_CONTEXT regen)
 
 When CURRENT_CONTEXT.md regenerates (Step 7 below), inject the
-`## Health Snapshot` block produced by
-`python3 _system/scripts/render_health_snapshot.py --base-dir <base>`.
-Place it AFTER the `## Focus` block, BEFORE the Tasks/Meetings/Threads
-blocks — Health Snapshot is contextual to focus declarations.
+`## Health Snapshot` block. Render **one block per active metric-day
+source** by calling `render_health_snapshot.render(base, source_id="<id>")`
+for each source (so CURRENT_CONTEXT shows both `garmin` and `oura`).
+Place the blocks AFTER the `## Focus` block, BEFORE the
+Tasks/Meetings/Threads blocks — Health Snapshot is contextual to focus
+declarations.
 
-If `render_health_snapshot.py` returns empty (e.g. no biometric
-records yet), skip injection silently.
+If a source's `render()` returns empty (e.g. no biometric records yet
+for that device), skip its block silently.
 
 ### Failure semantics
 
@@ -803,12 +817,90 @@ follow normal `/ztn:resolve-clarifications` flow.
 
 ### Manifest emission
 
-Each emitted correlations-week file + weekly-view file contributes a
-row under `derived_views.biometric` section of the maintain batch
-manifest, carrying privacy trio (`is_sensitive: true`,
+Each emitted correlations-week file + weekly-view file (across all
+sources) contributes a row under `derived_views.biometric` section of
+the maintain batch manifest, carrying privacy trio (`is_sensitive: true`,
 `audience_tags: []`, `origin: personal`). Tier II derived files are
 NOT new content (per Skill Write Territory rules) — they are
-recomputable from `_records/biometric/`.
+recomputable from `_records/biometric/<source>/`.
+
+---
+
+## Step 6.8: Activity Weekly Worker — After-Batch with Weekly Gate
+
+Triggered on every `/ztn:maintain` after-batch invocation, symmetric to the
+biometric weekly worker (Step 6.7) but for the activity (computer-usage)
+metric-day family. **No new scheduler-prompt added** — re-uses the same
+maintain tick. Biometric and activity workers are independent: each gates on
+its own family namespace, so a biometric source never triggers an activity
+run and vice versa.
+
+### Per-source loop
+
+Activity records + derived state are namespaced per source under
+`_records/activity/<source>/` (e.g. `activitywatch`). Enumerate active
+sources by listing the immediate subdirectories of `_records/activity/`;
+run the steps below for each (sources are independent).
+
+### Idempotency gate (per source)
+
+For source `<id>`, read `_system/state/activity/<id>/last_weekly_run.txt`.
+If it equals the current ISO week (`YYYY-Www`) → log
+"activity weekly <id>: noop" and skip. Otherwise the worker proceeds —
+at most once per ISO week per source, on the first `/ztn:maintain` of that
+week regardless of weekday.
+
+### Pre-checks (per source)
+
+1. `_records/activity/<id>/` contains ≥ 14 records. Below that, log
+   `pre-checks-failed <id>` and skip.
+2. ≥ 14 records BUT no `_system/state/activity/<id>/weekly-*.json` yet →
+   **backfill mode** (worker iterates completed ISO weeks chronologically,
+   then the current sentinel week).
+3. Otherwise → normal current-week mode.
+
+### Steps (per source `<id>`)
+
+1. Call `activity_weekly_worker.run(base, source_id="<id>", batch_id=…, manifest_out=…)`.
+   The worker (reading + writing only the `<id>/` namespace):
+   - Reads each ISO week's `_records/activity/<id>/*.md` Key Numbers + the
+     Summary "Top categories:" line; **working days only** — days with
+     `active_h < 0.5` are absence, not signal, and are skipped.
+   - Computes a weekly rollup: median (+ min/max) of the scores
+     (combined / productivity / focus); medians of switching, focus and
+     rhythm metrics; weekly totals (sustained focus, meetings); the
+     category-time trend (sum seconds per category across the week, ranked);
+     the top recurring death-loop pairs (aggregated `top_death_loop` +
+     `distracting_loop_count`); a rhythm summary (late-night vs
+     early-morning day counts); and the week-over-week delta vs the prior
+     week's rollup if it exists.
+   - Writes `_system/state/activity/<id>/weekly-{YYYY-Www}.json` (machine
+     rollup) per processed week.
+   - Writes owner-readable `_system/views/activity/<id>/weekly-{YYYY-Www}.md`
+     (the at-a-glance human surface; also the weekly-insights lens input)
+     with privacy frontmatter `origin: personal / audience_tags: [] /
+     is_sensitive: true`.
+2. After the worker emits output for `<id>`, write the current ISO week
+   into `_system/state/activity/<id>/last_weekly_run.txt`.
+
+### Failure semantics
+
+Per-step try/except, same as Step 6.7. A failed worker step logs the error
+and does not block subsequent maintain steps. `last_weekly_run.txt` updates
+only when the worker actually emitted output.
+
+### Lock matrix
+
+Reuses the existing `/ztn:maintain` lock — runs inside the same critical
+section. No new lock entries.
+
+### Manifest emission
+
+Each emitted rollup file + weekly-view file contributes a row under
+`tier2_objects.activity` of the maintain batch manifest, carrying privacy
+trio (`is_sensitive: true`, `audience_tags: []`, `origin: personal`). Tier II
+derived files are NOT new content — they are recomputable from
+`_records/activity/<source>/`.
 
 ---
 
@@ -1171,11 +1263,42 @@ bottom of the AUTO-GENERATED block — visible audit trail.
 
 ---
 
+## Step 7.8: Content Map Render (content pipeline interface)
+
+Regenerate `_system/views/CONTENT_MAP.md` — the compact interface the weekly
+`content-synthesis` lens reads. **Maintain is the canonical writer:** it runs
+after every process batch, so the map is guaranteed fresh *before* the weekly
+lens reads it (the lens must never read a stale map). Runs after Step 7.7 so
+hub structure is current first.
+
+A pure projection over hubs + content-flagged note frontmatter + POSTS.md
+`source_notes` — carries no state (the ledger
+`_system/state/content-pipeline-state.json` holds state separately; the view
+is regenerable, so it must not). One compact line per content note; ripeness
+(`convergence × note_count × avg_potential`) is a sortable hint the lens
+re-derives, never authoritative.
+
+**Invocation.**
+
+```bash
+python3 _system/scripts/render_content_map.py
+```
+
+Deterministic, idempotent, pure — no LLM. Atomic write via `.tmp` + rename.
+Re-running on unchanged source yields a byte-identical body (modulo the
+`generated:` timestamp). Prints `wrote {path} ({N} themes)` to stderr.
+
+**Failure mode.** Surface `content-map-render-failed` to log_maintenance.md
+with stderr captured; continue the rest of the pipeline. The map remains in
+its last good state (best-effort, like Step 7.7).
+
+---
+
 ## Step 8: Patch last-batch log_maintenance.md entry with regen + pattern-detect confirmation
 
 The per-batch entries were written in Step 6.5 with
 `CURRENT_CONTEXT.md: pending` and `INDEX.md: pending`. After Step 7,
-Step 7.5, Step 7.6, and Step 7.7 complete successfully:
+Step 7.5, Step 7.6, Step 7.7, and Step 7.8 complete successfully:
 
 1. Locate the log_maintenance.md entry for the **last batch** of this run
    (highest batch_id processed).

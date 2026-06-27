@@ -76,15 +76,18 @@ engine:
   # Pure spec; no owner mutations; manual upstream re-mirror only.
   - zettelkasten/_system/registries/CONCEPT_TYPES.md
 
-  # Agent-lens — registry doc + frame contract + starter lenses
-  # AGENT_LENSES.md ships as the spec + concept doc with current lens
-  # registry table (3 starter lenses, status:draft). Friends override their
-  # local table after first sync; engine maintainer evolves spec and
-  # starter set via release_engine.
+  # Agent-lens — registry doc + frame contract + lens prompts.
+  # AGENT_LENSES.md ships as the spec + concept doc with the lens registry
+  # table. Friends override their local table after first sync; engine
+  # maintainer evolves spec and lens set via release_engine.
   # _frame.md is the two-stage thinker→structurer contract — pure engine,
   # never owner-edited.
-  # lenses/{id}/ folders are starter lens prompts (status:draft until
-  # owner activates them).
+  # lenses/{id}/ folders are lens prompts. MOST general proposer-lenses ship
+  # `status: active` (they read universal record types and no-op gracefully
+  # on empty data). Lenses in release_engine `DEMOTE_LENSES_ON_RELEASE` ship
+  # `status: draft` instead — either prerequisite-gated (biometric) or a
+  # high-trust opt-in (cognitive-model mines private reflections for
+  # identity/values candidates), so friends enable them deliberately.
   - zettelkasten/_system/registries/AGENT_LENSES.md
   - zettelkasten/_system/registries/lenses/
 
@@ -140,6 +143,7 @@ engine:
 template:
   # System layer
   - zettelkasten/_system/SOUL.template.md
+  - zettelkasten/_system/long-form-playbook.template.md
   - zettelkasten/_system/TASKS.template.md
   - zettelkasten/_system/CALENDAR.template.md
   - zettelkasten/_system/POSTS.template.md
@@ -175,19 +179,24 @@ template:
   # /ztn:resolve-clarifications. Ships under .template; resolver copies
   # to live path on first run when missing. Owner-mutable thereafter.
   - zettelkasten/_system/state/insights-config.yaml.template
+  # Content pipeline ledger — the only new content-pipeline state. Seeds
+  # empty; /ztn:content --maintain populates `drafts` on first run.
+  - zettelkasten/_system/state/content-pipeline-state.template.json
 
-  # Biometric pipeline live YAMLs — one-time seed at install; thereafter
+  # Metric-day pipeline live YAMLs — one-time seed at install; thereafter
   # owner can layer overrides via `*.local.yaml` (never shipped). The
   # paired `*.template.yaml` files sync via engine: (always upstream-
   # to-downstream), carrying spec updates. Live files start byte-
   # identical to their template siblings; divergence is owner's choice.
   - zettelkasten/_system/scripts/biometric_thresholds.yaml
+  - zettelkasten/_system/scripts/activity_thresholds.yaml
   - zettelkasten/_system/scripts/affect_lexicon.yaml
 
   # Views (auto-generated, but file must exist for skills to write)
   - zettelkasten/_system/views/CURRENT_CONTEXT.template.md
   - zettelkasten/_system/views/HUB_INDEX.template.md
   - zettelkasten/_system/views/INDEX.template.md
+  - zettelkasten/_system/views/CONTENT_MAP.template.md
   # Stub so installer symlink resolves before first /ztn:regen-constitution
   - zettelkasten/_system/views/constitution-core.template.md
 
@@ -215,6 +224,7 @@ exclude:
 
   # Live system files (templates ship instead)
   - zettelkasten/_system/SOUL.md
+  - zettelkasten/_system/long-form-playbook.md
   - zettelkasten/_system/TASKS.md
   - zettelkasten/_system/CALENDAR.md
   - zettelkasten/_system/POSTS.md

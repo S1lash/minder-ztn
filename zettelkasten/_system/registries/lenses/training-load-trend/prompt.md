@@ -14,10 +14,21 @@ status: draft
 
 **Mandatory pre-read:** [`_system/docs/biometric-lens-protocol.md`](../../../docs/biometric-lens-protocol.md).
 
+## Garmin-specific lens
+
+Training load (`acute_load`, `chronic_load`, `acwr`, `train_status`)
+is a Garmin-only metric — Oura does not track it. This lens is
+pinned to the `garmin/` namespace: `_records/biometric/garmin/<date>.md`
+and `_system/state/biometric/garmin/`. Do not look for these metrics
+under `oura/` and never fabricate a training-load reading from Oura
+data. Per `device_estimate: true` honesty, phrase findings as «Garmin
+reports X», never «X is true».
+
 ## Pre-check (mandatory first step)
 
-Read last 14 days of `_records/biometric/<date>.md` `## Key Numbers`.
-**If `acute_load == 0` for ALL 14 days, output exactly:**
+Read last 14 days of `_records/biometric/garmin/<date>.md`
+`## Key Numbers`. **If `acute_load == 0` for ALL 14 days (or the
+`garmin/` namespace has no records in the window), output exactly:**
 
 ```markdown
 ---
@@ -53,10 +64,10 @@ Surface training-load trends across the last 28 days:
 
 ## Read scope
 
-- Last 28 days of `_records/biometric/<date>.md` Key Numbers
+- Last 28 days of `_records/biometric/garmin/<date>.md` Key Numbers
   (`acute_load`, `chronic_load`, `acwr`, `acwr_zone`, `train_status`).
-- `_system/state/biometric/correlations-{most-recent}.json` for
-  context if any phase 1 finding involves training metrics.
+- `_system/state/biometric/garmin/correlations-{most-recent}.json`
+  for context if any phase 1 finding involves training metrics.
 - Own past outputs at `_system/agent-lens/training-load-trend/` for
   longitudinal continuity.
 

@@ -100,6 +100,7 @@ class WorkerResult:
 def run(
     base_dir: str | Path,
     *,
+    source_id: str = "garmin",
     today: str | None = None,
     thresholds: dict[str, Any] | None = None,
     batch_id: str | None = None,
@@ -110,9 +111,12 @@ def run(
     today_iso = today_d.isoformat()
     iso_week = _iso_week_label(today_d)
 
-    state_dir = base / "_system" / "state" / "biometric"
-    views_dir = base / "_system" / "views" / "biometric"
-    records_dir = base / "_records" / "biometric"
+    # Per-device namespace: each wearable's records + derived state live under
+    # `{source_id}/`. Caller (/ztn:maintain) runs the worker once per active
+    # metric-day source.
+    state_dir = base / "_system" / "state" / "biometric" / source_id
+    views_dir = base / "_system" / "views" / "biometric" / source_id
+    records_dir = base / "_records" / "biometric" / source_id
     last_weekly = state_dir / "last_weekly_run.txt"
     calibration_path = state_dir / "calibration-history.json"
 
@@ -255,7 +259,7 @@ def run(
         corr_path.write_text(json.dumps(out, indent=2, ensure_ascii=False, default=str) + "\n", encoding="utf-8")
         correlations_paths.append(str(corr_path))
 
-        weekly_view = _render_weekly_view(out, base / "_records" / "biometric")
+        weekly_view = _render_weekly_view(out, records_dir)
         view_path = views_dir / f"weekly-{_iso_week_label(monday)}.md"
         view_path.write_text(weekly_view, encoding="utf-8")
         weekly_view_paths.append(str(view_path))

@@ -74,3 +74,24 @@ modified: REPLACE_WITH_DATE
 <!-- soul-values:start -->
 {populated by render_soul_values.py — empty until first principle lands}
 <!-- soul-values:end -->
+
+## Context for Agents
+
+> Plain version: the assistant already answers you conclusion-first, no fluff,
+> by default (that's the shipped "communication baseline"). This section is
+> where YOU add anything specific to you. Leave it empty and the sensible
+> default applies.
+
+### How I like answers (optional)
+
+> e.g. "Praise me with facts, not labels — tell me what I did, not that I'm
+> great. Criticism only if it's concrete and tells me what to change. I think
+> in systems — give me the big picture before the details."
+
+{Write yours here, or leave blank.}
+
+### Long-form deliverables (optional)
+
+> Your long-form recipe lives in its own file — `_system/long-form-playbook.md`
+> (loaded on demand, only for an actual long-form piece, never for normal
+> answers). Edit it there.

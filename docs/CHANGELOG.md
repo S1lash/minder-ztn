@@ -2,6 +2,66 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.38.0 — The assistant learns how to talk to you
+
+Two layers, plus a way the system keeps learning your style — without becoming
+a yes-man.
+
+### What changed
+
+- **A communication baseline, loaded by default.** The assistant now answers
+  you conclusion-first (the point before the play-by-play), leads with a ready
+  result instead of an options menu, structures for scanning, cuts fluff — and
+  stays critical: no flattery, it pushes back with reasons. This is the
+  universal floor; your personal calibration layers on top.
+- **Your own presentation preferences.** Put how you like praise and criticism
+  in your `SOUL.md → ## Context for Agents`; put your recipe for long-form pieces
+  (reports, audiobooks, debriefs) in its own `_system/long-form-playbook.md`
+  (loaded on demand, never for normal answers). Both ship as templates with
+  filled examples to copy.
+- **A lens that learns your style from your reflections — opt-in, off by
+  default.** A new `cognitive-model` lens can read your own voice-notes and
+  reflections and propose "you seem to want X" as principles for you to approve
+  or ignore. It ships OFF — enable it deliberately by setting its row to
+  `active` in `AGENT_LENSES.md`. It never changes anything on its own:
+  proposals land in your review queue, only highly-confident ones append
+  without a click (tunable), and promotion into your constitution always needs
+  your approval. See `docs/privacy.md` for exactly what it reads and produces.
+
+### Why
+The more the assistant adapts to how you think, the bigger the risk it just
+tells you what you want to hear. The baseline's "no sycophancy" rule and the
+lens's "don't mine for what comforts you" guard are deliberate: it learns your
+thinking, it does not become your echo.
+
+## 0.35.0 — Content becomes a living shelf, not a cold backlog
+
+The content pipeline is rebuilt to be push-based and incremental like the rest of
+the system, instead of one heavy session you have to start cold.
+
+### What changed
+
+- **`/ztn:check-content` → `/ztn:content`.** Three modes: default shows status
+  from the new content map; `--draft <topic>` drafts one post on demand;
+  `--maintain` is the scheduled draft-maintainer that keeps living drafts in
+  `6_posts/drafts/` — creating, updating on new material, and archiving published
+  ones, never rewriting a draft you've edited.
+- **A weekly rhythm.** A new `content-synthesis` lens (Mondays) reads your whole
+  content backlog from the outside, finds what's ripe and the cross-theme posts;
+  the maintainer (Tuesdays) turns those into drafts. One autonomous run, a warm
+  shelf of drafts waiting when you want them. Publishing stays your manual act.
+- **Drafts are conceptual, in your language.** Each draft is the idea/argument, in
+  your primary language (from SOUL) — platform and final language are your
+  publish-time choices, not baked in.
+- **Cleaner markup.** `content_type` drift is healed automatically; `content_angle`
+  is always a list. A new `CONTENT_MAP.md` view + a small ledger track it all.
+
+### Action needed
+
+If you pinned the old `/ztn:check-content` command, switch to `/ztn:content`.
+Migration `008` cleans up the old skill folder and seeds the new ledger on
+`/ztn:update`; re-run `install.sh` afterwards.
+
 ## 0.33.0 — PROJECTS.md is the single source of truth for projects
 
 ### What changed

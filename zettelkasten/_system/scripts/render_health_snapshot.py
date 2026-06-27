@@ -93,13 +93,16 @@ def _last_n_values(metric_state: dict[str, Any], n: int) -> list[float]:
 def render(
     base_dir: str | Path,
     *,
+    source_id: str = "garmin",
     today: str | None = None,
 ) -> str:
-    """Render the snapshot block. Returns multi-line markdown string."""
+    """Render the snapshot block for one wearable source. Returns multi-line
+    markdown string. Records + derived state are read from the `{source_id}/`
+    namespace; the caller renders one block per active metric-day source."""
     base = Path(base_dir)
-    biometric_dir = base / "_records" / "biometric"
-    state_dir = base / "_system" / "state" / "biometric"
-    views_dir = base / "_system" / "views" / "biometric"
+    biometric_dir = base / "_records" / "biometric" / source_id
+    state_dir = base / "_system" / "state" / "biometric" / source_id
+    views_dir = base / "_system" / "views" / "biometric" / source_id
     soul = base / "_system" / "SOUL.md"
 
     today = today or date_cls.today().isoformat()

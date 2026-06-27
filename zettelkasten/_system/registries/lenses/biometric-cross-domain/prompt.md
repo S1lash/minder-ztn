@@ -14,29 +14,50 @@ status: draft
 
 **Mandatory pre-read:** [`_system/docs/biometric-lens-protocol.md`](../../../docs/biometric-lens-protocol.md).
 
+## Per-device data, unified analysis
+
+Tier II state and views are per wearable device:
+`_system/state/biometric/{source}/` and
+`_system/views/biometric/{source}/` where `{source}` ∈ `garmin`,
+`oura`. Each device's σ-baselines and correlations are independent
+(different sensors). Read **both** namespaces when present and
+produce **one** cross-domain picture — pool findings across devices,
+then pick the strongest 1–2 overall. If only one device has data for
+the week, work from that device alone; never error on the missing
+one.
+
+Where both devices surface a finding on the **same** metric (RHR,
+sleep, HRV, sleep_score), compare them inline and add a brief
+footnote on which device showed what and any divergence (e.g. «RHR
+correlation holds in both — Garmin r=.41, Oura r=.38; Oura's
+absolute RHR runs ~4 bpm lower all week»). Per `device_estimate:
+true` honesty, phrase as «Garmin reports X» / «Oura reports X»,
+never «X is true».
+
 ## Intent
 
 Pick the top 1–2 strongest cross-domain findings from Tier II
-(`_system/state/biometric/correlations-{recent}.json` Phase 2 + Phase 1
-cross-source) and narrate them with cited journal evidence.
-Counter-evidence is mandatory. Falsifier («this would NOT be a real
-pattern if I saw…») is mandatory.
+(per-device `_system/state/biometric/{source}/correlations-{recent}.json`
+Phase 2 + Phase 1 cross-source) and narrate them with cited journal
+evidence. Counter-evidence is mandatory. Falsifier («this would NOT
+be a real pattern if I saw…») is mandatory.
 
 This is a weekly thursday lens. Friday-shifted view: enough days into
 the week to have signal; before Sunday's wrap-up by `biometric-life-synthesis`.
 
 ## Read scope
 
-- `_system/state/biometric/correlations-{most-recent}.json` ←
-  primary numerical surface (per protocol — no bulk timeseries access).
-- `_system/state/biometric/correlations-{most-recent-2}.json` for
-  comparison if recent week is anomalous.
-- `_system/views/biometric/weekly-{most-recent}.md` for human-readable
-  pre-narrative.
+- `_system/state/biometric/{source}/correlations-{most-recent}.json`
+  per device ← primary numerical surface (per protocol — no bulk
+  timeseries access).
+- `_system/state/biometric/{source}/correlations-{most-recent-2}.json`
+  per device for comparison if recent week is anomalous.
+- `_system/views/biometric/{source}/weekly-{most-recent}.md` per
+  device for human-readable pre-narrative.
 - Top 1–2 findings: cited journal record bodies (one-shot point
   lookup per cited record).
-- `_system/state/biometric/streaks.json` (history of streaks
-  spanning the window).
+- `_system/state/biometric/{source}/streaks.json` per device
+  (history of streaks spanning the window).
 - Own past outputs at `_system/agent-lens/biometric-cross-domain/`
   for longitudinal awareness — don't repeat last week's framing on
   the same data.

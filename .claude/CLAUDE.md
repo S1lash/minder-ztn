@@ -47,12 +47,13 @@ When you find these in conflict, the higher one wins. When a rule is absent ever
 | Path | Skill that owns writes |
 |---|---|
 | `zettelkasten/_records/{meetings,observations}/` | `/ztn:process` |
+| `zettelkasten/_records/{biometric,activity}/<source>/` + `_system/state/{biometric,activity}/`, `_system/views/{biometric,activity}/` | `/ztn:process` metric-day branch (records/baselines) + `/ztn:maintain` weekly workers (views) — deterministic, never hand-edit |
 | `zettelkasten/_sources/inbox/` | `/ztn:process` consumes; `/ztn:source-add` registers new types |
 | `zettelkasten/_sources/processed/` | `/ztn:process` (move-only); never delete |
 | `zettelkasten/0_constitution/{axiom,principle,rule}/` | `/ztn:capture-candidate` → `/ztn:lint` F.5 promotion → `/ztn:regen-constitution` |
 | `zettelkasten/{1_projects,2_areas,3_resources,4_archive}/` (excluding READMEs) | `/ztn:process`, `/ztn:maintain` |
 | `zettelkasten/5_meta/mocs/`, `zettelkasten/6_posts/` | `/ztn:maintain` |
-| `zettelkasten/_system/{SOUL,TASKS,CALENDAR,POSTS}.md` | owner-curated; engine reads, surfaces clarifications, never silently overwrites |
+| `zettelkasten/_system/{SOUL,TASKS,CALENDAR,POSTS,long-form-playbook}.md` | owner-curated; engine reads, surfaces clarifications, never silently overwrites |
 | `zettelkasten/_system/registries/{TAGS,SOURCES,PEOPLE,PROJECTS}.md` | `/ztn:maintain`, `/ztn:lint` |
 | `zettelkasten/_system/registries/AUDIENCES.md` (Extensions table only) | `/ztn:resolve-clarifications` (appends rows on owner approval); spec sections never edited by hand |
 | `zettelkasten/_system/state/` | append-only logs, candidate buffers, clarifications queue — every skill writes its own files |
@@ -81,7 +82,7 @@ Skills live at `integrations/claude-code/skills/<name>/SKILL.md`. **That is the 
 integrations/claude-code/skills/
   ztn-bootstrap/        ztn-process/         ztn-maintain/
   ztn-lint/             ztn-agent-lens/      ztn-agent-lens-add/
-  ztn-capture-candidate/ ztn-check-content/  ztn-check-decision/
+  ztn-capture-candidate/ ztn-content/        ztn-check-decision/
   ztn-regen-constitution/ ztn-resolve-clarifications/
   ztn-save/             ztn-sync-data/       ztn-source-add/
   ztn-update/
@@ -114,6 +115,7 @@ When engine behaviour changes, these are the docs that must move with it. Drift 
 | `zettelkasten/_system/docs/manifest-schema/fixtures/` | Per-skill sanitized example manifests; regression test for schema evolution — schema changes MUST keep these validating |
 | `zettelkasten/_system/docs/batch-format.md` | Markdown batch-summary format (`{ts}-{skill}.md` next to each JSON manifest); narrative side only — JSON contract canonical lives in `manifest-schema/` |
 | `zettelkasten/_system/docs/constitution-capture.md` | In-the-moment capture trigger spec |
+| `zettelkasten/_system/docs/communication-baseline.md` | Universal presentation spine; hot-loaded into every session (symlinked to `~/.claude/rules/`) |
 | `zettelkasten/_system/docs/harness-setup.md` | Harness setup |
 | `zettelkasten/5_meta/CONCEPT.md` | Three-layer model; long-form philosophy |
 | `zettelkasten/5_meta/PROCESSING_PRINCIPLES.md` | The 8 processing principles |
@@ -160,7 +162,10 @@ Several skills run unattended via scheduler prompts (`integrations/claude-code/s
 - `/ztn:process` — pre-sync → process → save (3× per day)
 - `/ztn:lint` — pre-sync → lint → save (nightly)
 - `/ztn:maintain` — after-batch integrator
-- `/ztn:agent-lens --all-due` — pre-sync → lens runs → save (daily)
+- `/ztn:agent-lens --all-due` — pre-sync → lens runs → save (daily; runs the
+  `content-synthesis` lens on Mondays)
+- `/ztn:content --maintain` — pre-sync → draft-maintainer → finalize (weekly,
+  Tuesday; the content pipeline's actor)
 - `/ztn:sync-data` — pre-work pull on multi-device setups
 
 They follow the cross-skill lock matrix in `SYSTEM_CONFIG.md` and write to append-only logs under `_system/state/log_*.md`. When debugging an autonomous run, **read the relevant log first** — the audit trail is designed to make every decision recoverable without re-running.

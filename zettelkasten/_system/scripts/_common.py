@@ -1051,6 +1051,7 @@ ACTION_HINT_TYPES: frozenset[str] = frozenset({
     "decision_update_section",
     "threshold_tune_proposal",
     "metric_record_rerender_apply",
+    "principle_candidate_add",
 })
 
 ACTION_HINT_CONFIDENCES: frozenset[str] = frozenset({"low", "medium", "high"})
@@ -1064,6 +1065,10 @@ ACTION_HINT_REQUIRED_PARAMS: dict[str, frozenset[str]] = {
     "decision_update_section": frozenset({"decision_note_path", "update_reason"}),
     "threshold_tune_proposal": frozenset({"metric", "severity", "proposed_sigma"}),
     "metric_record_rerender_apply": frozenset({"date", "choice"}),
+    "principle_candidate_add": frozenset(
+        {"situation", "observation", "hypothesis", "suggested_type",
+         "suggested_domain", "source_record_count"}
+    ),
 }
 
 

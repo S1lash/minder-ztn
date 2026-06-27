@@ -102,20 +102,22 @@ def _copy_symlink(src: Path, dst: Path, dry_run: bool, label: Path) -> None:
     os.symlink(target, dst)
 
 
-# Lenses that the maintainer keeps `status: active` locally (owner has
-# the prerequisite data — biometric records, custom sources) but that
-# MUST ship `status: draft` to the skeleton, because friends won't have
-# the prerequisites and would otherwise see daily empty lens runs that
-# burn LLM budget.
+# Lenses that ship `status: draft` to the skeleton even though the maintainer
+# runs them `active` locally — for one of two reasons:
+#   (1) prerequisite-gated: friends lack the source data (biometric records,
+#       custom sources) and would otherwise burn LLM budget on empty runs;
+#   (2) high-trust opt-in: a lens that proposes identity / values principles by
+#       mining the owner's private reflections (cognitive-model) must be a
+#       deliberate opt-in, not an auto-enrollment on first `/ztn:update`.
 #
-# Add to this list when releasing a new lens family that depends on a
-# specific source-family (e.g. future `apple-watch`, `whoop` metric-day
-# variants, or any feature gated on owner-created infrastructure).
+# Add to this list when releasing a lens that is either source-gated OR
+# proposes constitution / identity-level candidates from private content.
 DEMOTE_LENSES_ON_RELEASE: tuple[str, ...] = (
     "biometric-anomaly-narrator",
     "biometric-cross-domain",
     "training-load-trend",
     "biometric-life-synthesis",
+    "cognitive-model",
 )
 
 

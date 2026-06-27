@@ -47,6 +47,12 @@ NUMERIC_METRICS: tuple[str, ...] = (
     "intensity_moderate_min", "intensity_vigorous_min",
     "respiration_waking", "respiration_sleeping",
     "steps", "vo2max_running",
+    # Oura-specific numerics (present only on oura-source records; baselines
+    # are per-source so these never mix with a Garmin device's distribution).
+    "temp_deviation", "spo2_avg", "breathing_disturbance",
+    "vascular_age", "pulse_wave_velocity",
+    "activity_score", "active_calories",
+    "stress_high", "recovery_high",
 )
 
 
@@ -108,16 +114,22 @@ def update(
     date: str,
     metrics_dict: dict[str, Any],
     thresholds: dict[str, Any],
+    numeric_metrics: tuple[str, ...] = NUMERIC_METRICS,
 ) -> dict[str, Any]:
     """Append today's values into rolling windows, recompute μ/σ, write.
 
     Idempotent on same-date re-runs: replaces the existing same-date
     entry rather than appending a duplicate.
+
+    `numeric_metrics` is the set of keys σ-tracked for this source. It
+    defaults to the biometric set; the metric-day profile passes its own
+    (e.g. the activity rhythm metrics) so the rolling engine stays
+    source-agnostic.
     """
     state = load(baselines_path)
     by_metric = state.setdefault("metrics", {})
 
-    for key in NUMERIC_METRICS:
+    for key in numeric_metrics:
         if key not in metrics_dict:
             continue
         val = metrics_dict[key]

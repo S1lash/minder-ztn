@@ -4,11 +4,12 @@
 # locks abort the tick.
 #
 # Lock matrix mirrored from zettelkasten/_system/docs/SYSTEM_CONFIG.md
-# §«Cross-skill lock contract». All five pipeline locks live under
+# §«Cross-skill lock contract». All pipeline locks live under
 # `_sources/.{name}.lock` (the inbox dir doubles as the lock home for
-# every pipeline skill — process / maintain / lint / agent-lens — plus
-# the resolve session). Each skill reads all five at Step 0 and aborts
-# on any present.
+# every pipeline skill — process / maintain / lint / agent-lens / content —
+# plus the resolve session). Each skill reads them all at Step 0 and aborts
+# on any present. `.content.lock` matters because `/ztn:content --maintain`
+# reads CONTENT_MAP.md while `/ztn:maintain` (Step 7.8) rewrites it.
 #
 # Usage:
 #   bash scripts/scheduler/lock-check.sh
@@ -28,6 +29,7 @@ LOCKS=(
   "$LOCK_DIR/.maintain.lock"
   "$LOCK_DIR/.lint.lock"
   "$LOCK_DIR/.agent-lens.lock"
+  "$LOCK_DIR/.content.lock"
   "$LOCK_DIR/.resolve.lock"
 )
 

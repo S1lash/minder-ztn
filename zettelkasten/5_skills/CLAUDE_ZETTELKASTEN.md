@@ -121,7 +121,7 @@ modified: '2026-04-26'
 | `/ztn:bootstrap` | One-shot populator системных файлов. Disposable. Три режима: established / fresh-onboarding / mixed |
 | `/ztn:recap` | Session recap → `_sources/inbox/claude-sessions/`; адаптивно сохраняет verbatim-артефакты (тост/письмо/пост) в `_sources/inbox/crafted/` (`--crafted` / `--crafted-only`), двусторонняя связь |
 | `/ztn:search` | Поиск по базе |
-| `/ztn:check-content` | Review контент-кандидатов, кластеризация, drafts, CONTENT_OVERVIEW |
+| `/ztn:content` | Status из CONTENT_MAP · `--draft <topic>` · `--maintain` (draft-maintainer: живые черновики в 6_posts/drafts/) |
 | `/ztn:resolve-clarifications` | Interactive разбор очереди CLARIFICATIONS — кластеризация по темам, numbered questions, hypothesis pre-forming против constitution-core, archive resolved |
 | `/ztn:save` | Категоризованный commit + push в `origin`. Owner-friendly обёртка над git, без auto-chain из других скиллов |
 | `/ztn:sync-data` | Pull данных из `origin` с rebase (мульти-девайс). Refuses auto-merge на конфликтах прозы — escalates owner |

@@ -27,26 +27,52 @@ Strong tier requires consistent multi-day pattern; that lives in
 `biometric-cross-domain` and `biometric-life-synthesis`. Here we
 narrate one day.
 
+## Per-device data, unified narrative
+
+Biometric records live per wearable device:
+`_records/biometric/{source}/<date>.md` where `{source}` ∈
+`garmin`, `oura`. Each device keeps its own records and σ-baselines
+(different sensors read differently). Read **both** namespaces when
+present and narrate **one** picture of yesterday — not two parallel
+reports. If only one device has data for yesterday, narrate that
+device alone; never error on the missing one.
+
+Where both devices report the **same** metric (RHR, sleep, HRV,
+sleep_score, steps, sleep stages), compare them inline and add a
+brief footnote noting which device showed what and any divergence —
+e.g. «RHR: Garmin 58 vs Oura 54 — Oura runs ~4 bpm lower». Device-
+specific metrics (Garmin: bb_*, train_status, intensity_*; Oura:
+readiness, temp_deviation, resilience_level, …) are narrated from
+whichever device carries them.
+
+Per `device_estimate: true` honesty — phrase findings as «Garmin
+reports X» / «Oura reports X», never «X is true» (n=1 device
+estimates).
+
 ## When to produce content
 
-Read `_records/biometric/<yesterday>.md`. Proceed only if at least
-one of these is non-empty:
+Read `_records/biometric/{source}/<yesterday>.md` for each device
+present. Proceed only if at least one of these is non-empty in at
+least one device's record:
 
 - `## Baseline Deviations`
 - `## Categorical Events`
 - `## Active Streaks` (any concept active on yesterday's date)
 - `## Streak Transitions` (start or recovery on yesterday's date)
 
-If all are empty / absent, output: «Yesterday clean — no signal.»
-and return. This is normal and expected on most days.
+If all are empty / absent across every device present, output:
+«Yesterday clean — no signal.» and return. This is normal and
+expected on most days.
 
 ## Read scope
 
-- `_records/biometric/<yesterday>.md` (primary)
+- `_records/biometric/{source}/<yesterday>.md` for each device
+  present (primary)
 - `_records/observations/*<yesterday>*.md`,
   `_records/meetings/*<yesterday>*.md` — journal context for the
   same date
-- `_system/state/biometric/streaks.json` (active streak state)
+- `_system/state/biometric/{source}/streaks.json` per device
+  (active streak state)
 - Cited record bodies for the top hypothesis (one-shot, per
   protocol)
 

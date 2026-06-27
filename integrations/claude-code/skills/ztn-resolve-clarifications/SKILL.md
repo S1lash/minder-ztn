@@ -45,7 +45,7 @@ version/phase/rename-history narratives.
 - `--no-sync` — skip Step 0 pre-sync (offline review, known-current state)
 - `--no-refresh` — skip Step 9 post-resolution refresh (`/ztn:regen-constitution`,
   `/ztn:maintain`); owner promises to run them manually
-- `--no-save` — skip the Step 9.5 save reminder (commit later by hand)
+- `--no-save` — skip the Step 9.4 save reminder (commit later by hand)
 - `--no-extraction` — skip Step 6.5 knowledge extraction pass entirely
   (no proposals surfaced; resolutions applied as usual). Use when owner
   wants pure queue review without follow-up artefact creation
@@ -191,9 +191,9 @@ items). Skipped entirely under `--no-constitution`.
 
 ### Biometric rate limiting + new action types
 
-When biometric pipeline is active (`_records/biometric/` non-empty),
-the smart-resolve sweep applies anti-DDoS calibration on biometric-origin
-action hints:
+When biometric pipeline is active (any per-device namespace under
+`_records/biometric/*/` non-empty), the smart-resolve sweep applies
+anti-DDoS calibration on biometric-origin action hints:
 
 - Read `_system/state/insights-config.yaml::biometric.biometric_max_hints_per_week`
   (default 3 if absent).
@@ -213,7 +213,7 @@ New CLARIFICATION types and action types added by biometric pipeline:
 | Type | Class | Apply mechanism |
 |---|---|---|
 | `metric-record-rerender` | C (proposal) | `metric_record_rerender_apply` action — owner picks `skip` / `append-update` / `recompute-baselines-forward` |
-| `biometric-baseline-cold-start` | informational | One-time on first metric-day run; resolution = dismiss with «expected cold-start» note |
+| `biometric-baseline-cold-start` | informational | One-time per source on its first metric-day run; resolution = dismiss with «expected cold-start» note |
 | `biometric-threshold-drift` | C (proposal) | `threshold_tune_proposal` action — writes proposed σ to `biometric_thresholds.yaml` |
 | `biometric-affect-lexicon-empty` | review | Owner audits lexicon; may add `affect_lexicon.local.yaml` overlay entries |
 
@@ -424,9 +424,14 @@ escalates it:
    note linking the prior rejection.
 5. **Additive-only restriction.** Currently whitelisted types
    (`wikilink_add`, `hub_stub_create`, `open_thread_add`,
-   `decision_update_section`) are all additive — no auto type can
-   mutate or delete owner content. Resolver enforces by allowing
-   only `ACTION_HINT_TYPES` in `action.type` for auto-apply.
+   `decision_update_section`, `principle_candidate_add`) are all
+   additive — no auto type can mutate or delete owner content.
+   `principle_candidate_add` appends one line to the high-recall
+   `principle-candidates.jsonl` buffer (CAPTURE, not promotion — the
+   owner still gates promotion to `0_constitution/` via `/ztn:lint`
+   F.5); append-only + git-revertible, on par with the others. Resolver
+   enforces by allowing only `ACTION_HINT_TYPES` in `action.type` for
+   auto-apply.
 6. **Uncertainty default = queue with `queue_reason: "uncertainty"`.**
    When the LLM is unsure between auto and queue, route to queue and
    record `queue_reason: "uncertainty"` so Step A.3.5 can escalate to
@@ -486,7 +491,12 @@ queue.
    without an `action` (curated CLARIFICATIONS from Step A.2 that lack
    a structured action manifest) are not eligible — there is nothing
    for `/ztn:check-decision` to evaluate.
-4. The action touches a values-bearing surface — at least one holds:
+4. The action touches a values-bearing surface. `principle_candidate_add` is
+   explicitly carved out — it appends to the high-recall review buffer, it
+   never applies a value to `0_constitution/` (promotion stays at F.5), so it
+   is **never** values-bearing for escalation. Skip it here regardless of its
+   params; its safety must not rest on the incidental absence of path-typed
+   params. For every OTHER action type, at least one of these holds:
    - `action.type == "decision_update_section"` (always values-bearing
      by definition — the action targets a decision note).
    - Any path in the action params (`note_a` / `note_b` for
@@ -708,7 +718,10 @@ weight. Standard Types (extend as new ones appear in producer skills):
 |---|---|---|
 | `people-bare-name` | light | 5 |
 | `person-identity` | light | 5 |
-| `content-pipeline-reminder` | light | 5 |
+| `content-type-canon-reviewed` | light | 5 |
+| `content-type-canon-surfaced` | light | 5 |
+| `content-type-unknown` | light | 5 |
+| `content-angle-missing` | light | 5 |
 | `process-compatibility` | light | 5 |
 | `thread-closure-suggested` | medium | 4 |
 | `idea-ambiguous-match` | medium | 4 |
@@ -740,7 +753,7 @@ Render single screen — numbered list with weight hints and recency:
   1. people-bare-name (4)        — лёгкая · ~5 мин · самое старое 2026-04-23
   2. person-identity (1)          — лёгкая · ~2 мин · 2026-04-27
   3. principle-candidate-batch (4) — тяжёлая · требует размышления · 2026-04-27
-  4. content-pipeline-reminder (1) — лёгкая · можно одной командой
+  4. content-type-canon-surfaced (3) — лёгкая · выбрать canonical content_type
   5. process-compatibility (1)    — техника · 2026-04-27
 
 Введи номер темы (или `q` — выйти).
@@ -894,8 +907,11 @@ the reasoning ground; never just "I think X".}
      - ...
 
   {For LIGHT items (person-identity, people-bare-name, process-compatibility,
-  content-pipeline-reminder): one-line options are sufficient; add a 1-line
-  clarifier only when the action is non-obvious.}
+  content-type-canon-*, content-angle-missing): one-line options are sufficient;
+  add a 1-line clarifier only when the action is non-obvious. For
+  content-type-canon-surfaced, present the default canonical type + the
+  alternative(s) from the item, with the note title/excerpt already in the
+  Context block, so the owner picks insight vs observation (etc.) in one keystroke.}
 
   d) skip — оставить открытым в текущей форме (показать снова в следующий раз)
   e) defer — оставить открытым с пометкой `**Last reviewed:** {today} — deferred`,
@@ -932,14 +948,24 @@ For each answered question, classify the action:
 - `e` dismiss — move item to `CLARIFICATIONS_ARCHIVE.md` with
   `**Resolution:** {today} — dismissed: {one-line owner rationale or
   "not actionable"}` appended to the block; remove from open file
-- `a/b` for `process-compatibility`, `content-pipeline-reminder`,
+- `a/b` for `process-compatibility`, `content-angle-missing`,
   `evidence-trail-anomaly` archival cases (no content edit needed) —
-  same as dismiss but with substantive `Resolution:` text
+  same as dismiss but with substantive `Resolution:` text.
+  `content-angle-missing` is informational at resolve time: acknowledge and
+  archive — the draft-maintainer proposes the actual hook on its next run
+  (the owner confirms it there, not here).
 
 **Class B — content edits (diff-first):**
 - Profile creation (person-identity → `3_resources/people/{slug}.md` +
   PEOPLE.md row + people-frontmatter backfill in cited records)
 - Note frontmatter edits (people:, projects:, threads:)
+- `content_type` canonicalization (`content-type-canon-surfaced` /
+  `content-type-unknown`): write the owner's chosen canonical type into the
+  note's `content_type:` frontmatter and prepend an Evidence-Trail line
+  (`{today}: content_type set {raw} → {chosen} (owner-resolved, A.11)`).
+  `content-type-canon-reviewed` items were already applied with the default
+  by lint; resolving them either confirms (archive) or overrides (rewrite to
+  the owner's pick + new Evidence-Trail line).
 - Hub edits (open questions, current understanding bullets)
 - OPEN_THREADS.md state changes (open → resolved)
 - Decision-note creation (typically already created by the producer
@@ -1011,7 +1037,7 @@ a veto'd item is also valid (owner judgement supersedes resolver).
    layer accretes precedent only from owner clicks, never from engine-
    approved actions. This keeps the precedent corpus owner-grounded.
 
-When the session ends (Step 9.5), `resolve_session.write_session_log`
+When the session ends (Step 9.4), `resolve_session.write_session_log`
 overwrites the markdown session file with the final accumulated state
 (auto-applied + vetoed + owner_decisions). The file is sensitive
 (captures conversational reasoning) — `is_sensitive: true` by default,
@@ -1040,8 +1066,7 @@ classes of writes happened during the session (counters, not file lists):
 | Counter | Incremented by | Triggers in Step 9 |
 |---|---|---|
 | `constitution_writes` | principle-candidate accept (new file under `0_constitution/{type}/{domain}/`) | `/ztn:regen-constitution` |
-| `registry_writes` | person-identity (new profile + PEOPLE.md row), project-identity (PROJECTS.md), thread-closure (OPEN_THREADS.md), hub edits (`5_meta/mocs/`) | `/ztn:maintain` |
-| `content_pipeline_writes` | `content-pipeline-reminder` accept | suggest `/ztn:check-content` (do NOT auto-invoke — content review is a separate owner gesture) |
+| `registry_writes` | person-identity (new profile + PEOPLE.md row), project-identity (PROJECTS.md), thread-closure (OPEN_THREADS.md), hub edits (`5_meta/mocs/`), `content_type` canonicalization (A.11 note frontmatter) | `/ztn:maintain` |
 
 These are surfaced + acted on by Step 9. The skill no longer leaves
 them as text suggestions in the round-close report.
@@ -1307,13 +1332,7 @@ Fires only if `registry_writes > 0` and `--no-refresh` not passed.
   rebase preview).
 - On failure → print the skill's error verbatim, continue.
 
-### 9.4 — Content pipeline reminder
-
-If `content_pipeline_writes > 0`:
-- Print suggestion only, do NOT auto-invoke: «можешь прогнать
-  `/ztn:check-content` — есть свежие content candidates».
-
-### 9.5 — Save reminder
+### 9.4 — Save reminder
 
 `/ztn:save` per its contract is **never auto-fired by other skills** —
 it stays an explicit owner gesture. This step only reminds, never
@@ -1332,7 +1351,7 @@ If dirty and `--no-save` not passed:
 ```
 If clean → print «Working tree clean — nothing to commit». Exit.
 
-### 9.6 — Final recap
+### 9.5 — Final recap
 
 ```
 Сессия завершена.
@@ -1382,11 +1401,11 @@ If clean → print «Working tree clean — nothing to commit». Exit.
   `/ztn:regen-constitution` / `/ztn:maintain` only when this session
   produced principle accepts / registry edits respectively. Pure
   defer/skip/dismiss sessions still trigger 9.1 (lock release) and
-  9.5 (save reminder) — the working tree is dirty either way.
-- **Save is never auto-invoked.** Step 9.5 prints a reminder; the
+  9.4 (save reminder) — the working tree is dirty either way.
+- **Save is never auto-invoked.** Step 9.4 prints a reminder; the
   owner runs `/ztn:save` themselves. This preserves `/ztn:save`'s
   contract («never auto-fired by other skills»).
-- **Lock released before any 9.2/9.3/9.5 step.** `/ztn:save` checks
+- **Lock released before any 9.2/9.3/9.4 step.** `/ztn:save` checks
   `.resolve.lock` and would refuse if held; releasing in 9.1 keeps
   the invariant simple regardless of which sub-steps fire.
 - **Extraction evaluation is structural, not optional.** Step 6 output
@@ -1464,7 +1483,7 @@ Indirect writes via Step 9 chained skills:
   `_system/SOUL.md` Values zone, `_system/views/CONSTITUTION_INDEX.md`
 - `/ztn:maintain` (Step 9.3) — `_system/views/HUB_INDEX.md`,
   `_system/views/INDEX.md`, `_system/registries/CONCEPTS.md`, registry hygiene
-- `/ztn:save` (Step 9.5) — NOT invoked by this skill; reminder only,
+- `/ztn:save` (Step 9.4) — NOT invoked by this skill; reminder only,
   owner runs explicitly per save's contract
 
 (Concept/audience format issues do NOT pass through this skill —
@@ -1477,14 +1496,12 @@ the pipeline.)
 - Does not invent new ambiguities — only resolves what producers wrote.
 - Does not edit principle bodies in `0_constitution/` (only creates new
   files on accept).
-- Does not invoke `/ztn:save` — Step 9.5 reminds, owner runs.
+- Does not invoke `/ztn:save` — Step 9.4 reminds, owner runs.
 - Does not reorder or rewrite open items beyond the deferred-line append.
 - Does not auto-resolve Class B without diff confirmation, even on
   unambiguous owner answers.
 - Does not back up CLARIFICATIONS.md before writing — git is the
   rollback mechanism.
-- Does not auto-invoke `/ztn:check-content` — content review is a
-  separate owner gesture; Step 9.4 only suggests it.
 - Does not write extraction artefacts (knowledge-note / soul-update /
   people-update) without the Class B diff gate — every Step 6.5
   approval still shows the full draft before commit.

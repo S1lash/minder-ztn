@@ -45,7 +45,7 @@ def test_failure_stub_no_record_emitted(tmp_path):
     src = _stage_source(base, "2024-01-02-failure.md")
     res = pmd.run(src, base_dir=base)
     assert res.outcome == "skipped-failure-stub"
-    assert not (base / "_records" / "biometric" / "2024-01-02.md").exists()
+    assert not (base / "_records" / "biometric" / "garmin" / "2024-01-02.md").exists()
     # source moved to processed
     assert (base / "_sources" / "processed" / "garmin" / "2024-01-02-failure.md").exists()
 
@@ -55,7 +55,7 @@ def test_emit_record_on_clean_source(tmp_path):
     src = _stage_source(base, "2024-01-01.md")
     res = pmd.run(src, base_dir=base)
     assert res.outcome == "emitted"
-    rec = base / "_records" / "biometric" / "2024-01-01.md"
+    rec = base / "_records" / "biometric" / "garmin" / "2024-01-01.md"
     assert rec.exists()
     text = rec.read_text(encoding="utf-8")
     assert "kind: biometric" in text
@@ -76,7 +76,7 @@ def test_idempotent_re_run_same_content_noop(tmp_path):
     base = _setup_base(tmp_path)
     src = _stage_source(base, "2024-01-01.md")
     pmd.run(src, base_dir=base)
-    rec = base / "_records" / "biometric" / "2024-01-01.md"
+    rec = base / "_records" / "biometric" / "garmin" / "2024-01-01.md"
     text_before = rec.read_text(encoding="utf-8")
     # Re-stage the same source content
     src = _stage_source(base, "2024-01-01.md")
@@ -115,7 +115,7 @@ def test_categorical_event_detection(tmp_path):
     assert res.outcome == "emitted"
     assert any("Readiness changed" in e for e in res.categorical_events)
     assert any("HRV status changed" in e for e in res.categorical_events)
-    rec = (base / "_records" / "biometric" / "2024-01-02.md").read_text(encoding="utf-8")
+    rec = (base / "_records" / "biometric" / "garmin" / "2024-01-02.md").read_text(encoding="utf-8")
     assert "## Categorical Events" in rec
 
 
@@ -186,7 +186,7 @@ def test_append_update_to_record(tmp_path):
     base = _setup_base(tmp_path)
     src = _stage_source(base, "2024-01-01.md")
     pmd.run(src, base_dir=base)
-    rec = base / "_records" / "biometric" / "2024-01-01.md"
+    rec = base / "_records" / "biometric" / "garmin" / "2024-01-01.md"
     original = rec.read_text(encoding="utf-8")
     # Modify the processed source as if re-collected with different sleep_h
     proc = base / "_sources" / "processed" / "garmin" / "2024-01-01.md"
@@ -214,14 +214,14 @@ def test_recompute_baselines_forward(tmp_path):
         path.write_text(body, encoding="utf-8")
         pmd.run(path, base_dir=base)
     # Sanity — 3 records emitted
-    assert len(list((base / "_records" / "biometric").glob("2024-*.md"))) == 3
+    assert len(list((base / "_records" / "biometric" / "garmin").glob("2024-*.md"))) == 3
 
     # Recompute from day 2 forward
     summary = pmd.recompute_baselines_forward(base, from_date="2024-01-02")
     assert summary["records_replayed"] == 2
     # Baselines now hold only day 1's values (others truncated and replayed)
     import json
-    bl = json.loads((base / "_system" / "state" / "biometric" / "baselines.json").read_text(encoding="utf-8"))
+    bl = json.loads((base / "_system" / "state" / "biometric" / "garmin" / "baselines.json").read_text(encoding="utf-8"))
     sleep = bl["metrics"]["sleep_h"]
     # 3 values total again after replay (day 1 kept + 2 + 3 replayed)
     assert sleep["n"] == 3

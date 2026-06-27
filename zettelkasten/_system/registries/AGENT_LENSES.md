@@ -76,6 +76,8 @@ will be visible in `global-navigator` as gaps.
 | knowledge-emergence | Knowledge Emergence | mechanical | records | weekly (sat) | longitudinal | active |
 | global-navigator | Global Navigator | meta | lens-outputs | weekly (mon) | longitudinal | active |
 | weekly-insights | Weekly Insights | meta | multi-source | weekly (mon) | longitudinal | active |
+| content-synthesis | Content Synthesis | meta | multi-source | weekly (mon) | longitudinal | active |
+| time-allocation | Time Allocation (computer-usage rhythm) | mechanical | records | weekly (mon) | longitudinal | active |
 
 ## Draft Lenses
 
@@ -85,10 +87,15 @@ will be visible in `global-navigator` as gaps.
 | biometric-cross-domain | Biometric Cross-Domain | psyche | records | weekly (thu) | longitudinal | draft |
 | training-load-trend | Training Load Trend | mechanical | records | weekly (mon) | longitudinal | draft |
 | biometric-life-synthesis | Biometric × Life Synthesis | meta | multi-source | weekly (mon) | longitudinal | draft |
+| cognitive-model | Cognitive Model | psyche | records | biweekly (mon) | longitudinal | draft |
 
 ## Lens summaries
 
 Each active lens MUST have a summary block here — purpose / value / output format in 2-3 sentences each. This is what owner sees when scanning the registry; the full prompt lives in `lenses/{id}/prompt.md`.
+
+### cognitive-model
+
+Runs every other Monday. Mines the owner's own reasoning and reflection (`_records/observations` primarily) for **undeclared** patterns of how they think and want to be communicated with — structure of thought, insight-vs-noise judgement, what praise/criticism lands — and proposes them as `ai-interaction` / `learning` / `meta` principle candidates. The proactive head of the adaptation loop: where `stated-vs-lived` checks drift on EXISTING declarations, this generates NEW candidates from reflection. Output: pattern + ≥2 quoted records + why-it-is-new (which existing principle/SOUL section does NOT already cover it) + alternative reading + confidence, plus `principle_candidate_add` Action Hints (append to the high-recall buffer; owner gates promotion via `/ztn:lint` F.5). Conservative by design — 0-3 high-quality candidates, never a thin list. «No new pattern; existing principles + SOUL cover it» is a valid result.
 
 ### stalled-thread
 
@@ -96,7 +103,7 @@ Runs weekly on Monday. Surfaces topics the owner keeps returning to in records w
 
 ### stated-vs-lived
 
-Runs every other Monday. Compares what the owner declares (constitution + SOUL — values, goals, focus) against where attention actually goes in records over a window matched to the declaration's timescale. Output: declaration quote + multiple lived-side signals (count + completion + emotional energy etc) + three parallel readings (action gap / priority shift / stale declaration) with markers + confidence — owner judges which reading holds.
+Runs every other Monday. Compares what the owner declares (constitution + SOUL — values, goals, focus) against where attention actually goes in records over a window matched to the declaration's timescale. When `_records/activity/` is present it reads the **measured** lived-attention ledger (per-category / per-project hours, focus / rhythm) as the strongest lived-side signal — a declared goal with near-zero category-time is a hard action-gap, a barely-mentioned project with hours logged is a priority-shift. Output: declaration quote + multiple lived-side signals (count + completion + emotional energy + measured time) + three parallel readings (action gap / priority shift / stale declaration) with markers + confidence — owner judges which reading holds.
 
 ### cross-domain-bridge
 
@@ -108,7 +115,11 @@ Runs monthly on the 1st. Primary concern: takes substantive decisions 90-180 day
 
 ### energy-pattern
 
-Runs weekly on Monday. Surfaces verbatim affect-markers from owner's voice-note records over a 14-day window and compares them against the SOUL Working Style baseline («Заряжает / Истощает / Выводит из себя») and the previous window — targeting **shifts** in distribution, not absolute mood. Records-only by design; physiological (Garmin) and behavioral (ActivityWatch) data stay scoped to future sibling lenses. Hit requires ≥3 markers distributed across ≥2 different records (no single-session venting bursts) OR a polarity crossing relative to baseline. Output: pattern + verbatim quotes (path + date) + shift framing (vs prev / vs SOUL) + three readings (action gap / baseline shift / episode) + confidence (high requires 2+ consecutive windows confirming). «No shift, baseline confirmed» is a valid output, not failure.
+Runs weekly on Monday. Surfaces verbatim affect-markers from owner's voice-note records over a 14-day window and compares them against the SOUL Working Style baseline («Заряжает / Истощает / Выводит из себя») and the previous window — targeting **shifts** in distribution, not absolute mood. Records-only by design; behavioral (ActivityWatch) rhythm lives in the sibling `time-allocation` lens, deep physiological (Garmin somatic) stays a future sibling. Hit requires ≥3 markers distributed across ≥2 different records (no single-session venting bursts) OR a polarity crossing relative to baseline. Output: pattern + verbatim quotes (path + date) + shift framing (vs prev / vs SOUL) + three readings (action gap / baseline shift / episode) + confidence (high requires 2+ consecutive windows confirming). «No shift, baseline confirmed» is a valid output, not failure.
+
+### time-allocation
+
+Runs weekly on Monday — the behavioural twin of `energy-pattern` (attention in facts, not affect in words). Narrates **shifts** in the owner's computer-usage rhythm from the deterministic substrate already on each `_records/activity/{source}/` record — `## Baseline Deviations` + `## Active Streaks` over a 14-day window vs the prior window and vs the owner's SOUL-declared work-rhythm goals (read at runtime, not hardcoded). The metrics are Focus-Engineering-grade: `focus_score` / `productivity_score` (0-100), `human_switches` (genuine fragmentation — productive AI-coding churn split out into `ai_assisted_*` upstream, so switch-spikes on Claude-Code nights don't false-flag), `top_death_loop` (the attention-leak app-pair with verdict, already computed), plus deep-work / late-night-work / early-morning-shift / meeting-overload streaks. Cross-references same-week `_records/biometric/{source}/` for body co-occurrence (late-night/meeting-heavy week ↔ readiness/REM) under strict n=1 caveats. Output schema: `synthesis-custom` — Week shape / Facts (cited records) / Patterns / ranked Hypotheses (three readings: action gap / baseline shift / episode) / mandatory Counter-evidence / one falsifiable experiment / optional Memory note. First-run writes a baseline snapshot with `hits: 0`; «No shift, rhythm baseline holds» is a valid output. No Action Hints (informational, like its sibling `energy-pattern`).
 
 ### knowledge-emergence
 
@@ -124,11 +135,11 @@ Runs daily — narrates yesterday's biometric record when at least one of `## Ba
 
 ### biometric-cross-domain
 
-Runs weekly Thursday — narrates the top 1–2 strongest cross-domain findings from Tier II (`_system/state/biometric/correlations-{recent}.json` Phase 2: biometric × affect lexicon, plus Phase 1 cross-source). Diagnostic gate: n ≥ 10 AND effect_size ≥ 0.5 → diagnostic statement permitted; below → tentative or question form. Counter-evidence + falsifier mandatory. Empty output («No cross-source findings this week above noise») is a valid result. Output schema: `synthesis-custom`. Action hints: `wikilink_add`, `open_thread_add` if pattern strong + actionable.
+Runs weekly Thursday — narrates the top 1–2 strongest cross-domain findings from Tier II (`_system/state/biometric/{source}/correlations-{recent}.json` Phase 2: biometric × affect lexicon, plus Phase 1 cross-source), reading across every device namespace. Diagnostic gate: n ≥ 10 AND effect_size ≥ 0.5 → diagnostic statement permitted; below → tentative or question form. Counter-evidence + falsifier mandatory. Empty output («No cross-source findings this week above noise») is a valid result. Output schema: `synthesis-custom`. Action hints: `wikilink_add`, `open_thread_add` if pattern strong + actionable.
 
 ### training-load-trend
 
-Runs weekly Monday with **conditional execution**: if last 14 days of biometric records show `acute_load == 0` for all days, outputs «No training activity in window — skipping» and returns immediately. Otherwise surfaces train_status transitions (DETRAINING / MAINTAINING / PRODUCTIVE / PEAKING / OVERREACHING), ACWR drift escapes from OPTIMAL, sustained zones >2 weeks. Reads last 28 days of `_records/biometric/` Key Numbers. Output schema: `synthesis-custom`. Action hints: `open_thread_add` only if overreaching OR sustained detraining ≥3 weeks.
+Runs weekly Monday with **conditional execution**: if last 14 days of biometric records show `acute_load == 0` for all days, outputs «No training activity in window — skipping» and returns immediately. Otherwise surfaces train_status transitions (DETRAINING / MAINTAINING / PRODUCTIVE / PEAKING / OVERREACHING), ACWR drift escapes from OPTIMAL, sustained zones >2 weeks. Garmin-pinned (training-load has no Oura equivalent): reads last 28 days of `_records/biometric/garmin/` Key Numbers only. Output schema: `synthesis-custom`. Action hints: `open_thread_add` only if overreaching OR sustained detraining ≥3 weeks.
 
 ### biometric-life-synthesis
 
@@ -136,7 +147,11 @@ Runs weekly Monday — flagship multi-source synthesis. Reads all 4 biometric le
 
 ### weekly-insights
 
-Runs weekly on Monday — synthesis lens with `input_type: multi-source` and `output_schema: synthesis-custom`. Reads primary owner-data (records, knowledge, hubs, constitution, SOUL, operational layers, posts, people), engine state (CLARIFICATIONS, OPEN_THREADS, CURRENT_CONTEXT, indexes, runs / logs), other lenses' outputs, and own past insights (longitudinal). Synthesizes across them into a 9-section weekly digest the owner reads as a single file: convergence between lenses, drift between declaration and lived life, bottleneck (where movement is blocked), pattern not yet named (present-tense), counter-evidence to the owner's narrative, opportunities and trajectories (future-tense — including standalone opportunities and risks the owner has not yet named), question of the week, marginalia (open free-form). Default-silence per section is load-bearing — empty section is signal, not failure. **Strictly informational** — produces no actions, no auto-applies, no clarifications. Owner reads, owner decides what to do (if anything). Anchoring constraint: every claim about the owner resolves back to primary owner-data; lens output alone is hypothesis-grade, never the basis for a claim.
+Runs weekly on Monday — synthesis lens with `input_type: multi-source` and `output_schema: synthesis-custom`. Reads primary owner-data (records — including the biometric **body** and activity **attention** weekly views, knowledge, hubs, constitution, SOUL, operational layers, posts, people), engine state (CLARIFICATIONS, OPEN_THREADS, CURRENT_CONTEXT, indexes, runs / logs), other lenses' outputs, and own past insights (longitudinal). Synthesizes across them into a 9-section weekly digest the owner reads as a single file: convergence between lenses, drift between declaration and lived life, bottleneck (where movement is blocked), pattern not yet named (present-tense), counter-evidence to the owner's narrative, opportunities and trajectories (future-tense — including standalone opportunities and risks the owner has not yet named), question of the week, marginalia (open free-form). Default-silence per section is load-bearing — empty section is signal, not failure. **Strictly informational** — produces no actions, no auto-applies, no clarifications. Owner reads, owner decides what to do (if anything). Anchoring constraint: every claim about the owner resolves back to primary owner-data; lens output alone is hypothesis-grade, never the basis for a claim.
+
+### content-synthesis
+
+Runs weekly on Monday — the **sole classifier of the content pipeline**. Reads the compact `CONTENT_MAP.md` (themes by ripeness — its primary input), the content ledger, sibling lens outputs (especially `cross-domain-bridge` for cross-theme post candidates and `knowledge-emergence` for post-ready clusters), POSTS.md (anti-repetition + cross-link), and the constitution/SOUL for voice, drilling into note bodies only for the top themes. Classifies each theme against the ledger by ripeness **change** — new / strengthened / stable / published-out — so a theme seeded months ago resurfaces the moment a new note lifts it (the long tail is preserved). Surfaces, with no cap, two equal kinds of candidate: single-theme posts and cross-theme bridges (taken from the `cross-domain-bridge` output, not mechanical pairing, each with an explicit falsifier). **Observation only** — never writes a draft, never publishes; the draft-maintainer (`/ztn:content --maintain`) reads this output directly the next day and is the sole actor. Output schema: `synthesis-custom`. Echo-loop guard (re-derive ripeness from the map each run) + apophenia falsifiability guard (cross-theme) carried from `knowledge-emergence` / `cross-domain-bridge`. No Action Hints — the maintainer is its dedicated consumer.
 
 ## Frameworks behind the calibration
 
@@ -150,6 +165,7 @@ Each lens prompt is calibrated against external frameworks (cited inline in the 
 - **global-navigator**: SRE Four Golden Signals + USE method + Tufte data-ink + multi-doc summarisation hallucination research
 - **knowledge-emergence**: Luhmann Folgezettel (thematic anchor on ≥3 sister-notes) + Matuschak evergreen promotion ladder + Weick retrospective sensemaking + apophenia falsifiability guard
 - **weekly-insights**: Bayesian belief-update + falsification + Munger inversion / pre-mortem + Kahneman reference-class forecasting + de Shazer solution-focused exception finding + Higgins self-discrepancy + Argyris-Schön espoused-vs-in-use + Theory of Constraints (bottleneck) + apophenia falsifiability guard + multi-doc summarisation hallucination research (anti-eye-roll guards on every section, default-silence load-bearing)
+- **cognitive-model**: metacognition + cognitive-styles (analytic-vs-holistic, need-for-cognition, systemising) + Communication Accommodation Theory + trait-vs-state distinction + dual-process (System 1/2) + Argyris-Schön espoused-vs-in-use (shared with stated-vs-lived, opposite lane: undeclared vs drift) + anti-sycophancy guard against mining-for-comfort (no-sycophancy rule in `communication-baseline` / `principle-ai-interaction-012`)
 
 ## Operating principles
 
@@ -204,9 +220,10 @@ Lenses with `status: paused` or `status: archived`. Per Archive Contract Form B 
   trailer; the resolver's deterministic parser handles malformed
   entries with drop-and-log. **Lenses that emit hints:**
   cross-domain-bridge, knowledge-emergence, stalled-thread,
-  decision-review, global-navigator. **Lenses that never emit
+  decision-review, global-navigator, cognitive-model. **Lenses that never emit
   hints** (informational / identity-only by design):
-  weekly-insights, energy-pattern, stated-vs-lived
+  weekly-insights, energy-pattern, stated-vs-lived, content-synthesis
+  (the draft-maintainer is its dedicated consumer, not the resolver)
 
 ## `agent-lens-runs.jsonl` schema
 

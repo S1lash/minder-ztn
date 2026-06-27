@@ -28,6 +28,12 @@ deviation_thresholds:
   readiness:         { direction: low,  light: null, medium: 1.5, strong: 2.0 }
   steps:             { direction: low,  light: null, medium: 1.5, strong: 2.0 }
   vo2max_running:    { direction: low,  light: null, medium: 1.5, strong: 2.0 }
+  # Oura-specific (fire only on oura-source records — the metric is simply
+  # absent from a Garmin day, so the rule is skipped). Body-temp elevation and
+  # SpO2 drop are the early illness/strain signals worth flagging.
+  temp_deviation:    { direction: high, light: null, medium: 1.5, strong: 2.0 }
+  spo2_avg:          { direction: low,  light: null, medium: 1.5, strong: 2.0 }
+  breathing_disturbance: { direction: high, light: null, medium: 1.5, strong: 2.0 }
 
 baseline_windows:
   default:           28        # days — most metrics

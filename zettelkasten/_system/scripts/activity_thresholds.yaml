@@ -1,0 +1,56 @@
+# Activity (computer-usage) thresholds — engine spec + universal defaults.
+#
+# Layered at runtime exactly like the biometric thresholds:
+#   1. this template — engine-shipped baseline (synced via /ztn:update)
+#   2. activity_thresholds.yaml — live working file (one-time seed; not
+#      synced upstream-to-downstream)
+#   3. activity_thresholds.local.yaml — owner-only override (never shipped)
+#
+# σ-based: thresholds adapt to each owner's own rhythm baseline, so the
+# numbers below are device-agnostic. Direction encodes which way is the
+# notable one for the owner's stated work-rhythm goals (less switching,
+# more deep work, fewer late nights, earlier starts).
+
+# `human_switches*` (NOT raw context_switches) is the fragmentation signal —
+# productive AI-coding churn is excluded upstream so the σ-baseline tracks real
+# fragmentation. focus/productivity scores are the Focus-Engineering headline.
+#
+# Only metrics with a roughly continuous, non-degenerate distribution are
+# σ-flagged. Zero-inflated / sparse metrics (early_morning_h, sustained_focus_h —
+# mostly 0 for this work pattern) are deliberately NOT here: a single non-zero
+# day off a ~0 baseline fakes a multi-σ spike. They stay baseline-tracked (μ
+# available to the lens) and surface as Key Numbers, but never raise a deviation
+# flag. The lens watches their trend longitudinally instead.
+deviation_thresholds:
+  human_switches_per_active_hour: { direction: high, light: 1.0,  medium: 1.5, strong: 2.0 }
+  focus_score:                    { direction: low,  light: 1.0,  medium: 1.5, strong: 2.0 }
+  productivity_score:             { direction: low,  light: null, medium: 1.5, strong: 2.0 }
+  longest_focus_block_min:        { direction: low,  light: null, medium: 1.5, strong: 2.0 }
+  late_night_ratio:               { direction: high, light: 1.0,  medium: 1.5, strong: 2.0 }
+  meeting_h:                      { direction: high, light: null, medium: 1.5, strong: 2.0 }
+
+baseline_windows:
+  default:           28        # days
+  refresh_cadence:   daily     # recompute on each /ztn:process run
+
+# No categorical-transition flags for activity (the profile carries no
+# categorical pairs). Block kept for parity / future extension.
+categorical_events: {}
+
+streak_rule:
+  min_consecutive_days:        3
+  min_severity:                medium
+  emit_state_concept:          true
+  emit_recovery_concept_on_end: true
+
+# σ at small n is unstable (the σ itself shifts materially per new day), so
+# behavioural deviations stay conservative until the window matures: no flags
+# under 14 days, strong-only (≥2σ) until 28. Trust direction before magnitude.
+cold_start:
+  full_disable_below_days:     14    # n<14 → no deviations
+  reduced_mode_below_days:     28    # 14≤n<28 → strong-only (≥2σ)
+  reduced_mode_min_severity:   strong
+
+# Anti-DDoS: cap on activity action hints surfaced to the resolve queue.
+hint_rate_limit:
+  activity_max_hints_per_week: 3

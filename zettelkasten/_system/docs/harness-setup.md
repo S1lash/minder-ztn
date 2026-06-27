@@ -23,6 +23,7 @@ stable local path:
 | `~/.claude/rules/ztn.md` | `integrations/claude-code/built/rules/ztn.md` (rendered) |
 | `~/.claude/rules/constitution-capture.md` | `zettelkasten/_system/docs/constitution-capture.md` |
 | `~/.claude/rules/constitution-core.md` | `zettelkasten/_system/views/constitution-core.md` |
+| `~/.claude/rules/communication-baseline.md` | `zettelkasten/_system/docs/communication-baseline.md` |
 | `~/.claude/rules/ztn-engine-doctrine.md` | `zettelkasten/_system/docs/ENGINE_DOCTRINE.md` |
 | `~/.claude/skills/ztn-*` (15 dirs) | `integrations/claude-code/skills/ztn-*` (direct, no render step) |
 | `~/.claude/commands/ztn-recap.md`, `ztn-search.md` | `integrations/claude-code/built/commands/*.md` (rendered) |

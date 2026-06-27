@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "description": "Content pipeline ledger — the only new persistent state of the content pipeline (NOT regenerable: it records what the engine already drafted, so incremental drafting and the long tail can coexist). Written by `/ztn:content --maintain`. Each entry in `drafts` references a SET of `theme_ids` — length 1 for a single-theme post, length N for a cross-theme post. 'Did this draft change' = ANY constituent theme strengthened since `last_surfaced` (the maintainer diffs current map ripeness vs `last_surfaced_ripeness` across all referenced themes). Separated from the regenerable CONTENT_MAP.md view by hard SoT requirement.",
+  "draft_entry_schema": {
+    "draft_id": "string slug, e.g. agentic-commerce-x-team-management",
+    "theme_ids": ["hub-id or theme slug", "... (1 = single-theme, N = cross-theme)"],
+    "last_surfaced": "YYYY-MM-DD — last date the maintainer acted on this draft",
+    "last_surfaced_ripeness": {"<theme_id>": {"note_count": 0, "score": 0.0}, "__doc__": "per-theme map keyed by theme_id (one entry per theme in theme_ids); score = the map's ripeness for that hub at last surface. Diff current map ripeness vs this per theme: ANY theme's score up = strengthened."},
+    "draft_path": "6_posts/drafts/YYYYMMDD-draft-{slug}.md",
+    "draft_status": "auto | owner-editing | archived-published | stale",
+    "owner_touched": false,
+    "new_insight_available": false,
+    "last_auto_hash": "sha256 of the draft body the maintainer last wrote — owner-edit guard: if the current body hash differs, the owner edited it",
+    "published_post_ids": []
+  },
+  "drafts": []
+}

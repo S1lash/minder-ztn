@@ -207,6 +207,24 @@ Paste each body into your scheduler of choice (Claude Code `/schedule`,
 GitHub Actions cron, host crontab calling `claude` headless — any
 runner that can launch a Claude Code session works).
 
+## 10. (Optional) Tune how the assistant talks to you
+
+After install the assistant already answers you **conclusion-first, no fluff,
+and stays critical** by default — the shipped *communication baseline*. You
+don't have to do anything for it.
+
+To make it yours: put how you like praise and criticism in
+`zettelkasten/_system/SOUL.md → ## Context for Agents`, and your recipe for long
+pieces (reports, audiobooks, debriefs) in
+`zettelkasten/_system/long-form-playbook.md` (loaded on demand, only for an
+actual long-form piece). Both ship with filled examples.
+
+If you want the assistant to *learn* your style over time, enable the opt-in
+`cognitive-model` lens (set its row to `active` in
+`_system/registries/AGENT_LENSES.md`). It reads your own reflections and
+proposes "you seem to want X" for you to approve — never changing anything on
+its own. See `docs/privacy.md` for exactly what it reads and produces.
+
 ### Required GitHub repo setting — auto-delete head branches
 
 Before relying on Cloud Routines (Claude Code `/schedule`), enable:

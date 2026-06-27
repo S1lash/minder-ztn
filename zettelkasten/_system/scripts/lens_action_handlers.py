@@ -487,6 +487,9 @@ def apply_metric_record_rerender_apply(params: dict, source_lens: str, base: Pat
                 "targets": [], "from_lens": source_lens}
     date = params["date"]
     choice = params["choice"]
+    # Biometric records are namespaced per device; the clarification carries the
+    # source (default garmin for pre-namespace clarifications).
+    source_id = params.get("source", "garmin")
     base_path = base or repo_root()
 
     if choice == "skip":
@@ -502,21 +505,26 @@ def apply_metric_record_rerender_apply(params: dict, source_lens: str, base: Pat
 
     try:
         if choice == "append-update":
-            target = _pmd.append_update_to_record(base_path, date=date)
+            target = _pmd.append_update_to_record(base_path, date=date, source_id=source_id)
             return {
                 "success": True, "applied": True, "reason": "",
                 "targets": [str(target.relative_to(base_path))],
                 "from_lens": source_lens,
             }
         if choice == "recompute-baselines-forward":
-            summary = _pmd.recompute_baselines_forward(base_path, from_date=date)
+            summary = _pmd.recompute_baselines_forward(
+                base_path, from_date=date, source_id=source_id
+            )
             return {
                 "success": True, "applied": True,
                 "reason": (
                     f"truncated {summary['metrics_truncated']} metric histories; "
                     f"replayed {summary['records_replayed']} records from {date}"
                 ),
-                "targets": ["_system/state/biometric/", "_records/biometric/"],
+                "targets": [
+                    f"_system/state/biometric/{source_id}/",
+                    f"_records/biometric/{source_id}/",
+                ],
                 "from_lens": source_lens,
             }
     except Exception as exc:  # pragma: no cover — defensive guard
@@ -531,6 +539,116 @@ def apply_metric_record_rerender_apply(params: dict, source_lens: str, base: Pat
             "targets": [], "from_lens": source_lens}
 
 
+# ---------------------------------------------------------------------------
+# principle_candidate_add — lens-mined principle candidate → append-only buffer
+# ---------------------------------------------------------------------------
+#
+# Appends one candidate to `_system/state/principle-candidates.jsonl`, the
+# SAME high-recall buffer the `/ztn:capture-candidate` hook writes. This is
+# CAPTURE (high-recall), never PROMOTION: the candidate is reviewed in batch
+# by the owner via `/ztn:lint` F.5 before anything reaches `0_constitution/`
+# (ENGINE_DOCTRINE §3.6). Append-only + git-revertible → qualifies as an
+# additive auto-apply, on par with wikilink_add.
+
+_PRINCIPLE_CANDIDATES_REL = "_system/state/principle-candidates.jsonl"
+_VALID_SUGGESTED_TYPES = {"axiom", "principle", "rule", "unknown"}
+_VALID_SUGGESTED_DOMAINS = {
+    "identity", "ethics", "work", "tech", "relationships", "health",
+    "money", "time", "learning", "ai-interaction", "meta", "unknown",
+}
+
+
+def _candidate_dedup_key(observation: str, hypothesis: str) -> str:
+    """Normalised content key (whitespace-collapsed, case-folded) for dedup."""
+    def _norm(s: str) -> str:
+        return " ".join((s or "").split()).casefold()
+    return f"{_norm(observation)}||{_norm(hypothesis)}"
+
+
+def _existing_candidate_keys(base: Path | None) -> set[str]:
+    import json as _json
+    text = _read_text(base, _PRINCIPLE_CANDIDATES_REL)
+    keys: set[str] = set()
+    if not text:
+        return keys
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = _json.loads(line)
+        except ValueError:
+            continue
+        keys.add(_candidate_dedup_key(obj.get("observation", ""), obj.get("hypothesis", "")))
+    return keys
+
+
+def validate_principle_candidate_add(params: dict, base: Path | None = None) -> tuple[bool, str]:
+    """All three text fields non-empty; type/domain in vocabulary; candidate
+    not already present in the buffer (dedup by observation+hypothesis)."""
+    for key in ("situation", "observation", "hypothesis"):
+        v = params.get(key)
+        if not isinstance(v, str) or not v.strip():
+            return False, f"params.{key} must be a non-empty string"
+    if params.get("suggested_type") not in _VALID_SUGGESTED_TYPES:
+        return False, f"suggested_type must be one of {sorted(_VALID_SUGGESTED_TYPES)}"
+    if params.get("suggested_domain") not in _VALID_SUGGESTED_DOMAINS:
+        return False, f"suggested_domain must be one of {sorted(_VALID_SUGGESTED_DOMAINS)}"
+    src = params.get("source_record_count")
+    # bool is an int subclass — exclude it explicitly. Floor of 2 = the lens's
+    # own "a pattern needs >=2 distinct records" criterion, enforced in code so
+    # the autonomy gate doesn't rest on prompt compliance alone.
+    if isinstance(src, bool) or not isinstance(src, int) or src < 2:
+        return False, "source_record_count must be an integer >= 2 (a pattern needs >=2 records)"
+    key = _candidate_dedup_key(params["observation"], params["hypothesis"])
+    if key in _existing_candidate_keys(base):
+        return False, "candidate already present in principle-candidates.jsonl"
+    return True, ""
+
+
+def apply_principle_candidate_add(params: dict, source_lens: str, base: Path | None = None) -> dict:
+    """Append a candidate line to the principle-candidates buffer.
+
+    `captured_by: ztn:agent-lens`, `origin: agent-lens` (a non-personal
+    origin — lens output is inferred / batch-extracted, so the F.5
+    non-personal-origin guard always routes it to owner review, never L2
+    auto-merge), source lens in `session_id` for provenance. Promotion stays
+    gated downstream by `/ztn:lint` F.5 — this handler only captures.
+    """
+    ok, reason = validate_principle_candidate_add(params, base)
+    if not ok:
+        return {"success": False, "applied": False, "reason": reason, "targets": [], "from_lens": source_lens}
+    import json as _json
+    p = _resolve(base, _PRINCIPLE_CANDIDATES_REL)
+    record = {
+        "date": _date.today().isoformat(),
+        "situation": params["situation"].strip(),
+        "observation": params["observation"].strip(),
+        "hypothesis": params["hypothesis"].strip(),
+        "suggested_type": params["suggested_type"],
+        "suggested_domain": params["suggested_domain"],
+        "source_record_count": int(params["source_record_count"]),
+        "applies_in_concepts": params.get("applies_in_concepts") or [],
+        "origin": "agent-lens",
+        "session_id": f"agent-lens/{source_lens}",
+        "record_ref": params.get("record_ref"),
+        "captured_by": "ztn:agent-lens",
+    }
+    line = _json.dumps(record, ensure_ascii=False)
+    existing = p.read_text(encoding="utf-8") if p.exists() else ""
+    if existing and not existing.endswith("\n"):
+        existing += "\n"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(existing + line + "\n", encoding="utf-8")
+    return {
+        "success": True,
+        "applied": True,
+        "reason": "",
+        "targets": [_PRINCIPLE_CANDIDATES_REL],
+        "from_lens": source_lens,
+    }
+
+
 VALIDATORS = {
     "wikilink_add": validate_wikilink_add,
     "hub_stub_create": validate_hub_stub_create,
@@ -538,6 +656,7 @@ VALIDATORS = {
     "decision_update_section": validate_decision_update_section,
     "threshold_tune_proposal": validate_threshold_tune_proposal,
     "metric_record_rerender_apply": validate_metric_record_rerender_apply,
+    "principle_candidate_add": validate_principle_candidate_add,
 }
 
 APPLIERS = {
@@ -547,6 +666,7 @@ APPLIERS = {
     "decision_update_section": apply_decision_update_section,
     "threshold_tune_proposal": apply_threshold_tune_proposal,
     "metric_record_rerender_apply": apply_metric_record_rerender_apply,
+    "principle_candidate_add": apply_principle_candidate_add,
 }
 
 # Cross-check: every whitelisted type has both a validator and an applier.

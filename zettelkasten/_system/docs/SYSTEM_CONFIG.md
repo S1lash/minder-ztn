@@ -73,12 +73,17 @@ migrating existing open items.
 | `lens-action-proposed` | `/ztn:resolve-clarifications` (`--auto-mode` Step A.3) | Smart-resolve sweep judged a lens-emitted Action Hint as `queue` (not safe to auto-apply, not constitution-vetoed); the row carries `**Smart_resolve reasoning:**` + `**Action type:**` + `**Action params:**` for owner Class C review (apply / reject / modify / defer) | Queue stays as-is; auto-apply requires owner click |
 | `lens-action-veto` | `/ztn:resolve-clarifications` (`--auto-mode` Step A.3) | Smart-resolve judged a lens-emitted Action Hint as `block-veto` against constitution / SOUL focus; row carries `**Smart_resolve reasoning:**` + `**Veto reason:**` naming the principle / SOUL element triggered. Step A.3.5 also routes here when an escalation `/ztn:check-decision` call returned `violated` at confidence ≥ 0.7 on a `queue` candidate; the row additionally carries `**Escalation-resolved by check-decision:**` annotation with the cited principle id | Owner reviews; can override per-class via `_system/state/insights-config.yaml::classes` |
 | `lens-action-apply-failed` | `/ztn:resolve-clarifications` (`--auto-mode` Step A.3) | Handler validation failed inside apply (TOCTOU drift between Step A.1 stale-check and apply — e.g. another process created the hub target, or a cited note was renamed mid-tick) | Action is queued instead; owner reviews proposal + handler error reason |
-| `metric-record-rerender` | `/ztn:process` metric-day branch | Existing `_records/biometric/<date>.md` + new content-hash differs (re-collected source) | Skip re-write; offer 3 alternatives via resolve (skip / append-update / recompute-baselines-forward). Apply via `metric_record_rerender_apply` action handler |
-| `biometric-baseline-cold-start` | `/ztn:process` metric-day branch | First metric-day file processed AND `_system/state/biometric/baselines.json` does not exist | Initialize empty baselines; emit informational CLARIFICATION (one-time, expected). Resolution: dismiss as resolved with note "expected cold-start". No further action needed |
+| `metric-record-rerender` | `/ztn:process` metric-day branch | Existing `_records/biometric/<source>/<date>.md` + new content-hash differs (re-collected source) | Skip re-write; offer 3 alternatives via resolve (skip / append-update / recompute-baselines-forward). Apply via `metric_record_rerender_apply` action handler |
+| `biometric-baseline-cold-start` | `/ztn:process` metric-day branch | First metric-day file for a source processed AND `_system/state/biometric/<source>/baselines.json` does not exist | Initialize empty baselines for that source; emit informational CLARIFICATION (one-time per source, expected). Resolution: dismiss as resolved with note "expected cold-start". No further action needed |
 | `biometric-threshold-drift` | `/ztn:maintain` Tier II calibration check | ≥3 consecutive weeks observed/expected fire-rate ratio outside [0.5, 2.0] for a metric × severity pair | Skip auto-tune; surface proposal with current vs proposed σ; owner approves via resolve action `threshold_tune_proposal` (Class C) |
 | `biometric-affect-lexicon-empty` | `/ztn:maintain` Tier II Phase 2 | Lexicon overlay loaded successfully but produces zero affect tags across the entire 56-day window | Skip Phase 2; surface so owner can audit lexicon entries (may indicate non-RU/EN owner needs lexicon localisation via `affect_lexicon.local.yaml`) |
 | `portable-name-collision` | `/ztn:process` §0.0, `/ztn:save` Step 0.5, `/ztn:lint` A.10 | Non-portable (Windows-illegal) inbox name whose `normalize_portable_name()` form already exists in the same directory, or normalisation returned None | Skip the item this run (process) / exclude from staging (save); never guess a suffix |
 | `portable-name-escape` | `/ztn:lint` A.10 | Non-portable tracked path outside `_sources/inbox/` and not grandfathered via PROCESSED.md — slipped past both ingestion gates | Surface only; rename + reference rewrite happens as an owner-reviewed resolve action, never autonomously |
+| `content-type-canon-reviewed` | `/ztn:lint` A.11 | Judgment-row `content_type` drift mapped to its default canonical (weak × high) | Applied with the default; CLARIFICATION asks owner to validate (resolve action `canonicalize-content-type`) |
+| `content-type-canon-surfaced` | `/ztn:lint` A.11 | Judgment-row `content_type` drift ambiguous between 2+ canonical types (weak × confident/unsure) | No apply; owner picks the canonical type with note excerpt in Context |
+| `content-type-unknown` | `/ztn:lint` A.11 | `content_type` drift value not in `CANON_MAP` | No apply; owner picks a canonical mapping (optionally extends `CANON_MAP`) |
+| `content-type-missing` | `/ztn:lint` A.11 | Note has `content_potential` but no `content_type` | No apply; owner sets the canonical type |
+| `content-angle-missing` | `/ztn:lint` A.11 | Note has `content_potential` but empty/absent `content_angle` | Informational; the draft-maintainer proposes the hook on its next run |
 
 Per-skill SKILL.md may add narrower types for skill-internal flows;
 this table covers the cross-skill canonical set referenced in
@@ -198,8 +203,9 @@ a schema violation — audits check this via git diff scope.
 | Write `_system/state/batches/{id}.md` + `BATCH_LOG.md` row | `/ztn:process` only | One run = one batch; maintain reads, doesn't write |
 | Hub linkage back-write (`hub:` field on thread, bullet in hub Open Questions) | `/ztn:maintain` only | Both sides updated atomically; lint verifies |
 | Regenerate views (CONSTITUTION_INDEX, constitution-core, INDEX, HUB_INDEX, CURRENT_CONTEXT) | Scripts via `regen_all.py` / relevant skill | Views are derived — source is `0_constitution/` / knowledge notes / hubs |
-| Create `_records/biometric/<date>.md` + update `_system/state/biometric/{baselines,streaks}.json` | `/ztn:process` metric-day branch only | Per-day deterministic emission from `_sources/inbox/garmin/<date>.md`. One source file → one record. Idempotent on re-run; CLARIFICATION on content-hash drift (`metric-record-rerender`). |
-| Write `_system/state/biometric/{correlations-{week}.json, calibration-history.json, last_weekly_run.txt}` + `_system/views/biometric/weekly-{week}.md` | `/ztn:maintain` only (Tier II weekly worker, after-batch with weekly idempotency gate) | Derived state — recomputable from `_records/biometric/`. Weekly-gated by `last_weekly_run.txt` ISO-week comparison; runs at most once per ISO week per first /ztn:maintain invocation. |
+| Create `_records/<family>/<source>/<date>.md` + update `_system/state/<family>/<source>/{baselines,streaks}.json` | `/ztn:process` metric-day branch only | Per-day deterministic emission from `_sources/inbox/<source>/<date>.md`, profile-driven (`<family>` = `biometric` for garmin/oura, `activity` for activitywatch). One source file → one record; records + baselines namespaced per source. Idempotent on re-run; CLARIFICATION on content-hash drift (`metric-record-rerender`). |
+| Write `_system/state/biometric/<source>/{correlations-{week}.json, calibration-history.json, last_weekly_run.txt}` + `_system/views/biometric/<source>/weekly-{week}.md` | `/ztn:maintain` only (biometric Tier II weekly worker, after-batch with weekly idempotency gate, run once per active biometric source) | Derived state — recomputable from `_records/biometric/<source>/`. Weekly-gated per source by `<source>/last_weekly_run.txt` ISO-week comparison; runs at most once per ISO week per source per first /ztn:maintain invocation. |
+| Write `_system/state/activity/<source>/{weekly-{week}.json, last_weekly_run.txt}` + `_system/views/activity/<source>/weekly-{week}.md` | `/ztn:maintain` only (activity weekly worker, Step 6.8 — symmetric to biometric, after-batch with weekly idempotency gate) | Derived state — recomputable from `_records/activity/<source>/`. Activity has no σ-correlations/calibration layer (the heavy aggregation is upstream in the collector); the worker produces a weekly Focus-Engineering rollup (median scores, category/rhythm/switching trend, top death loops). Weekly-gated per source by `<source>/last_weekly_run.txt`. |
 | Write `## Health Snapshot` block in CURRENT_CONTEXT.md | `/ztn:maintain` only (via `render_health_snapshot.py`, integrated into CURRENT_CONTEXT regen chain) | Extension of existing CURRENT_CONTEXT regen — derived view, not new content. ≤15 lines, life-connection focused. |
 
 **Supporting invariants:**
@@ -246,7 +252,7 @@ Owner-facing review path: `/ztn:resolve-clarifications` — interactive walker t
 | `validate-applied-fixes` | fix-id-range | `fix_ids: [ids], all_correct: bool, reverts: [ids]` |
 | `pursue-or-close` | thread-id | `choice: pursue | close | keep-watching, note: "why"` |
 | `review-soul` | soul-section | `edits_applied: bool, rationale: "..."` |
-| `run-check-content` | (none) | `content_overview_generated: true, notes_reviewed: N` |
+| `canonicalize-content-type` | note-id | `raw: "{drifted-value}", chosen: "{canonical-five}", applied: bool` — owner picked the canonical `content_type` for an A.11 judgment / unknown / reviewed item; note frontmatter rewritten + Evidence-Trail line |
 | `decide-policy` | subject | `policy_chosen: "a|b|c|d", sdd_updated: bool` |
 | `suppress-until` | subject | `date: YYYY-MM-DD, reason: "..."` — suppression cache entry |
 | `update-hub-synthesis` | hub-id | `sections_updated: ["Текущее понимание", "Changelog"], notes_integrated: [ids]` — owner refreshed hub against fresh underlying material (D.4) |
@@ -262,7 +268,7 @@ Owner-facing review path: `/ztn:resolve-clarifications` — interactive walker t
 
 ### Cross-skill exclusion
 
-All four pipeline skills (`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`) mutually exclusive. Each reads all five `.{skill}.lock` files в `_sources/` (the four pipelines + `.resolve.lock`) on start. Any other skill's lock exists → abort.
+All five pipeline skills (`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`, `/ztn:content`) mutually exclusive. Each reads all six `.{skill}.lock` files в `_sources/` (the five pipelines + `.resolve.lock`) on start. Any other skill's lock exists → abort. `/ztn:content` acquires `.content.lock` when it writes (`--maintain` / `--draft`); its read-only status mode needs no lock. `.content.lock` matters because the maintainer reads `CONTENT_MAP.md` while `/ztn:maintain` Step 7.8 rewrites it.
 
 `/ztn:resolve-clarifications` acquires `.resolve.lock` for both interactive and `--auto-mode` runs. Interactive mode reads the four pipeline locks (process / maintain / lint / agent-lens) and aborts on any. **`--auto-mode` exception for `.lint.lock`:** auto-mode is dispatched by `/ztn:lint` Step 7.5 (lint holds its own lock during dispatch); treating that lock as competitor would deadlock the nightly chain. Auto-mode therefore proceeds when `.lint.lock` exists (it is the dispatcher's signature), aborts silently on any other pipeline lock (those should have cleared at lint's own Step 0.1; presence here means something genuinely went wrong — let the next nightly tick retry).
 
@@ -325,8 +331,9 @@ zettelkasten/
 │   │   ├── HUB_INDEX.md              # Индекс всех hub-заметок
 │   │   ├── INDEX.md                  # Surface catalog (knowledge + archive + constitution + hubs, faceted)
 │   │   ├── CURRENT_CONTEXT.md        # Live state snapshot
-│   │   └── CONTENT_OVERVIEW.md       # Автогенерируемый обзор контент-кандидатов
+│   │   └── CONTENT_MAP.md            # Content pipeline interface — view over hubs (writer: /ztn:maintain)
 │   ├── state/                        # Pipeline state (write-heavy)
+│   │   ├── content-pipeline-state.json  # Content ledger (drafts) — writer: /ztn:content --maintain
 │   │   ├── BATCH_LOG.md              # Index всех batch-операций
 │   │   ├── PROCESSED.md              # Source → Note маппинг
 │   │   ├── CLARIFICATIONS.md         # Human-in-the-loop вопросы от скиллов
@@ -517,13 +524,15 @@ people: []
 audience_tags: []          # owner-only by family default
 is_sensitive: true         # health data → friction on share
 origin: personal
-garmin_estimate: true      # name varies per source: garmin_estimate, apple_estimate, …
+device: <source>           # which wearable feed this record belongs to (garmin, oura)
+device_estimate: true      # wearable numbers are device estimates, not ground truth
 concepts:                  # streak / event concepts emitted by Tier I
   - low_hrv_streak
   - sleep_debt
-garmin_metric_failures: [] # populated only when source carried metric_failures
-source: garmin/<date>.md
+metric_failures: [...]     # only present when the source carried metric_failures
+source: <source>/<date>.md
 created: '<YYYY-MM-DDTHH:MM:SSZ>'
+source_hash: <16-hex>      # hash of source content; drives metric-record-rerender drift detection
 ---
 ```
 
@@ -549,6 +558,55 @@ override is NOT a normal path — biometric data is owner-only by design.
 is a no-op log line. Content-hash drift between source and existing
 record raises `metric-record-rerender` CLARIFICATION (default: skip;
 owner picks alternative via resolve).
+
+### Activity Record (kind: activity)
+
+The behavioural sibling of the biometric record — same metric-day pipeline,
+the **activity** profile. Auto-emitted by `/ztn:process` from
+`_sources/inbox/activitywatch/<date>.md`. One file per calendar day, pure
+deterministic Python, owner never hand-edits. Computer-usage / attention
+telemetry, NOT physiology — so a distinct `kind` and namespace
+(`_records/activity/<source>/`), never under `biometric/`. The heavy
+aggregation (Focus-Engineering metrics) runs upstream in the collector
+(`minder-activity-collector`); ZTN ingests clean facts and σ-tracks them.
+
+```yaml
+---
+date: '<YYYY-MM-DD>'
+kind: activity
+domains: [time, work]      # the meta-practice of running the day + work context
+people: []
+audience_tags: []          # owner-only by profile default
+is_sensitive: true         # window titles / URLs captured verbatim → leak work/client identifiers
+origin: personal
+device: <source>           # activitywatch
+concepts:                  # activity streak concepts (no device_estimate field — measured, not estimated)
+  - late_night_work_streak
+  - focus_drop_streak
+source: <source>/<date>.md
+created: '<YYYY-MM-DDTHH:MM:SSZ>'
+source_hash: <16-hex>
+---
+```
+
+Body sections (only emit when non-empty):
+
+- `# Activity — <date>`
+- `## Summary` — verbatim from source (scores, switching split, top death loop, categories, rhythm)
+- `## Key Numbers` — focus / productivity / combined scores, `sustained_focus_h`,
+  `human_switches`/`human_switches_per_active_hour` (genuine fragmentation — AI-coding
+  churn split into `ai_assisted_*`), `top_death_loop(s)`, `late_night_ratio`,
+  `early_morning_h`, `meeting_h`, work/personal split, `top_category`, `top_project`, …
+- `## Baseline Deviations` — σ-flags on the non-sparse metrics only (focus/productivity/
+  human-switch-rate/late-night/meeting/longest-block; sparse metrics like
+  `early_morning_h` are tracked but never σ-flagged)
+- `## Active Streaks` / `## Streak Transitions` — activity streak state
+- `## Source` — wikilink to processed source
+
+(No `## Categorical Events` — the activity profile carries no categorical pairs.)
+Privacy + idempotency identical to the biometric record. Near-idle days
+(`active_h < 0.5`) emit a record but are excluded from baselines and carry no
+scores (the collector nulls them).
 
 ### Knowledge Note Frontmatter (layer: knowledge)
 
@@ -583,7 +641,7 @@ archived_at: YYYY-MM-DD  # REQUIRED when status: archived (per Archive Contract 
 priority: high|normal|low
 content_potential: high|medium  # OPTIONAL — set by pipeline when note has public value
 content_type: expert|reflection|story|insight|observation  # OPTIONAL — set with content_potential
-content_angle: "hook" | ["hook1", "hook2"]  # OPTIONAL — string or array of angle hooks
+content_angle: ["hook1", "hook2"]  # OPTIONAL — ALWAYS a list (single angle = 1-element list); lint A.11 normalizes a stray string
 mentions: N  # OPTIONAL — for idea notes, counts how many times idea surfaced across transcripts
 
 concepts:                                 # canonical concept names per CONCEPT_NAMING.md
@@ -868,23 +926,35 @@ Omit all three if note is purely operational, private, or context-free.
 | insight | Non-obvious connection, counter-intuitive observation, pattern recognition |
 | observation | Lightweight seed thought, casual noticing, not yet developed |
 
-### content_angle: string OR array of strings
+Closed set — `/ztn:process` emits exactly one of these five; lint Scan A.11 heals
+any drift (`CANON_MAP` in `lint_content_markup.py`).
+
+### content_angle: ALWAYS a YAML list of strings
 
 Each angle is one sentence — the "why would someone read this?" framing.
-Written in the language of the target audience.
+Written in the owner's language (the draft is conceptual; platform/translation
+are publish-time choices).
 
-- **String** (default): single angle for most notes
-- **Array**: multiple distinct framings when a note sits at the intersection of domains
+**Always a list** (single angle = 1-element list) — uniform shape so consumers
+never branch on string-vs-list. Lint Scan A.11 normalizes a stray bare string
+(`content-angle-format` autofix).
 
 ```yaml
-# Single angle (most notes)
-content_angle: "Why delegation is hard for tech leads"
+# Single angle (most notes) — still a list
+content_angle:
+  - "Why delegation is hard for tech leads"
 
-# Multiple angles (note can produce different posts)
+# Multiple angles (each becomes a distinct post candidate)
 content_angle:
   - "Childhood perfectionism → adult control patterns"
   - "Why delegation is hard for tech leads — it's not about trust"
 ```
+
+**content_type drift → canonical mapping.** The non-canonical values producers
+sometimes emit (technical, idea, decision, …) are mapped to the canonical five by
+lint Scan A.11. The mapping table is owned in one place —
+`_system/scripts/lint_content_markup.py::CANON_MAP` (synonym rows autofix; judgment
+rows surface as CLARIFICATIONs). See `/ztn:lint` SKILL Scan A.11 for the method.
 
 ---
 
@@ -1167,8 +1237,9 @@ Before saving each note:
 | _system/state/PROCESSED.md | Source → Note mapping | Each /ztn:process |
 | _system/TASKS.md | All open tasks | Regenerated |
 | _system/CALENDAR.md | All events | Regenerated |
-| _system/POSTS.md | Published posts archive + content strategy | Manual or /ztn:check-content |
-| _system/CONTENT_OVERVIEW.md | Auto-generated content candidates overview | Each /ztn:check-content (read-only) |
+| _system/POSTS.md | Published posts archive + content strategy | Manual or /ztn:content |
+| _system/views/CONTENT_MAP.md | Content pipeline interface — compact view over hubs + content notes + POSTS.md (ripeness, posts-on-theme) | /ztn:maintain Step 7.8 (canonical writer; regenerable, read-only) |
+| _system/state/content-pipeline-state.json | Content ledger — per-draft state (theme_ids[], ripeness, draft_status, owner_touched) | /ztn:content --maintain (NOT regenerable) |
 | _system/state/CLARIFICATIONS.md | Non-blocking human-in-the-loop questions | All skills (safety valve) |
 | _system/registries/TAGS.md | Tag registry (`tags:` namespace labels) | When new tags |
 | _system/registries/CONCEPT_NAMING.md | Spec — canonical concept-name format (engine-shipped) | Manual (engine maintainer) |

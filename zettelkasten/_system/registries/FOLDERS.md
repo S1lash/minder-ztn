@@ -34,11 +34,20 @@ zettelkasten/
 │   │   └── YYYYMMDD-meeting-{person}-{topic}.md
 │   ├── observations/             # Соло Plaud-транскрипты: reflection/idea/therapy (kind: observation)
 │   │   └── YYYYMMDD-observation-{topic}.md
-│   └── biometric/                # Daily wearable snapshots (kind: biometric)
-│       └── YYYY-MM-DD.md         # one file per calendar day; auto-emitted by /ztn:process
-│                                 # metric-day branch from _sources/inbox/garmin/<date>.md.
-│                                 # Privacy: is_sensitive: true, audience_tags: [], origin: personal.
-│                                 # Never hand-edit (see _records/biometric/README.md).
+│   ├── biometric/                # Daily wearable snapshots (kind: biometric)
+│   │   └── {source}/             # per-device namespace (garmin, oura): independent records + baselines
+│   │       └── YYYY-MM-DD.md     # one file per calendar day per device; auto-emitted by /ztn:process
+│   │                             # metric-day branch from _sources/inbox/{source}/<date>.md.
+│   │                             # Frontmatter: device: {source}, device_estimate: true.
+│   │                             # Privacy: is_sensitive: true, audience_tags: [], origin: personal.
+│   │                             # Never hand-edit (see _records/biometric/README.md).
+│   └── activity/                 # Daily computer-usage snapshots (kind: activity)
+│       └── {source}/             # per-source namespace (activitywatch): focus/attention rhythm + baselines
+│           └── YYYY-MM-DD.md     # one file per calendar day; same metric-day branch, activity profile.
+│                                 # Metrics: context switches, deep-work blocks, late-night/early-morning,
+│                                 # meeting load, work/personal split — σ-baseline tracked like biometric.
+│                                 # domains: [time, work]. Privacy: is_sensitive: true (verbatim titles/URLs).
+│                                 # Never hand-edit (see _records/activity/README.md).
 │
 ├── _system/                      # Системные файлы (Phase 4.75 layout, не для заметок)
 │   ├── SOUL.md                   # identity + focus + working style
@@ -58,7 +67,7 @@ zettelkasten/
 │   │   ├── HUB_INDEX.md          # индекс всех hub-заметок
 │   │   ├── INDEX.md              # surface catalog: knowledge + archive + constitution + hubs (faceted)
 │   │   ├── CURRENT_CONTEXT.md    # live state snapshot
-│   │   └── CONTENT_OVERVIEW.md   # автогенерируемый обзор контент-кандидатов
+│   │   └── CONTENT_MAP.md        # content pipeline interface — view over hubs (writer: /ztn:maintain)
 │   ├── state/                    # pipeline state (write-heavy)
 │   │   ├── BATCH_LOG.md          # index batch-операций
 │   │   ├── PROCESSED.md          # source → note маппинг
@@ -161,7 +170,8 @@ zettelkasten/
 | log | 2_areas/personal/ |
 | record (kind: meeting) | _records/meetings/ |
 | record (kind: observation) | _records/observations/ |
-| record (kind: biometric) | _records/biometric/ |
+| record (kind: biometric) | _records/biometric/{source}/ |
+| record (kind: activity) | _records/activity/{source}/ |
 | hub | 5_meta/mocs/ |
 
 ### По домену (если тип неясен)

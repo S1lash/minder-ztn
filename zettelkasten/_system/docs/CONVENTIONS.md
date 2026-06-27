@@ -109,6 +109,19 @@ territory.
 
 **Правило:** describe what IS. Evolution stories belong в git log + SDDs.
 
+### 7. Defensive over-explanation (scar tissue)
+
+- ❌ повтор обоснования правила в каждой точке касания («…ALWAYS a list — so every
+  consumer reads one type, never a string-or-list branch» в трёх местах)
+- ❌ объяснение-через-баг, из-за которого правило появилось
+
+**Правило:** называй правило **кратко** в каждой точке; «почему» — **один раз**, в
+доме факта (SoT), и ссылка. Не пере-обосновывай и не пересказывай баг на каждом
+месте — это рубцовая ткань (топит сигнал + протаскивает историю в present-tense).
+Если правило требует громкой защиты повсюду — чини дизайн, не доку. Универсальная
+формулировка — `harness-kit/UNIVERSAL-HARNESS-TEMPLATE` §2.6 item 21 («Fix the design,
+not its scar tissue»); этот пункт — её локальный энфорсмент для ZTN engine-доков и SKILLs.
+
 ---
 
 ## Разрешено / нужно

@@ -137,6 +137,37 @@ repo on disk.
    record citing the regrettable content, edit the record, run
    `/ztn:save`. The engine never auto-rewrites your edits.
 
+## The cognitive-model lens — profiling from your reflections
+
+ZTN ships a `cognitive-model` lens that, *if you enable it*, reads your own
+reflections (solo voice-notes, journal-style observations) and proposes
+principles about how you think and want to be communicated with. Because it
+touches your most private content, it is **opt-in**: it ships `status: draft`
+and runs only after you deliberately set its row to `active` in
+`_system/registries/AGENT_LENSES.md`.
+
+- **Reads:** your `_records/observations/` (and meetings) — the same content
+  every records-lens already sees. It does not reach outside your repo.
+- **Produces:** dated lens outputs under `_system/agent-lens/cognitive-model/`
+  and proposed candidates in `_system/state/principle-candidates.jsonl` —
+  inferences about you, in plain text, in your repo.
+- **Never promotes on its own.** A candidate becomes a constitution principle
+  only through `/ztn:lint` F.5 + your review. Highly-confident candidates may
+  append to the review buffer without a click (tunable in
+  `insights-config.yaml`); medium / low always wait for you. Set the class to
+  `never_auto` to click every one.
+- **Travels with your repo.** Like all your data, these inference files sync to
+  `origin` on `/ztn:save` and are sent to the Claude API when a skill reads
+  them. `is_sensitive` is advisory only (see above) — it does not redact. If a
+  derived inference feels too personal to live in your git history, delete the
+  lens output + candidate line and run `/ztn:save`.
+- **Turn it off:** set the lens row back to `status: draft`/`inactive`. It
+  stops immediately; existing outputs stay until you delete them.
+
+The guard against this becoming a profiler that flatters you is
+`principle-ai-interaction-012` (no sycophancy): the lens is instructed to model
+how you think, never to mine for what comforts you.
+
 ## Engine boundaries — what the engine is not allowed to do
 
 Codified in `zettelkasten/_system/docs/ENGINE_DOCTRINE.md` (auto-loaded

@@ -19,6 +19,17 @@ classes:
   # cross-domain-bridge__wikilink_add__high: auto
   # knowledge-emergence__hub_stub_create__*: never_auto
 
+  # cognitive-model proposes principles about HOW you think (mined from your
+  # reflections). It may auto-append a candidate to the review buffer ONLY when
+  # highly confident (low friction on the obvious cases); medium / low always
+  # wait for your click — nothing about your mind is recorded uncertainly
+  # while you sleep. Promotion to the constitution stays gated by /ztn:lint F.5
+  # regardless of these. Loosen to `*: auto` if you want all of it autonomous;
+  # tighten `__high` to `never_auto` if you want to click every single one.
+  cognitive-model__principle_candidate_add__high: auto
+  cognitive-model__principle_candidate_add__medium: never_auto
+  cognitive-model__principle_candidate_add__low: never_auto
+
 # Reasoning posture. Hint to the resolver LLM, not a hard threshold.
 reasoning:
   # `conservative` — require strong precedent + clean constitution

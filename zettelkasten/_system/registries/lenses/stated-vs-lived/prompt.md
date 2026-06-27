@@ -35,6 +35,7 @@ Surface all three readings with their distinguishing markers. The owner decides 
 
 **Lived side (where attention goes):**
 - `_records/` — primary lived signal, raw. Match the window to the declaration's timescale (see below).
+- `_records/activity/{source}/` (when non-empty) — the **direct, measured lived-attention ledger**: where the owner's computer hours actually went, in seconds, not inferred from mention-frequency. Read each day's Key Numbers (`work_h`/`personal_h`, `top_category`, `top_project`, `meeting_h`, `late_night_ratio`, `focus_score`/`productivity_score`) and, when present, the weekly rollup `_system/views/activity/{source}/weekly-{recent}.md`. This is the strongest lived-side evidence for any declaration about work focus, deep work, or a specific project: a goal declared in SOUL but whose category-time / `top_project` time is near-zero across the window is a hard **action-gap** signal; a project the owner rarely mentions yet spends hours in is a **priority-shift** signal. Activity n=1 framing applies — associations and measured time, never causation; cite the record/view path. Do NOT bulk-load raw event JSON; the Key Numbers + weekly view are the contract.
 - `_system/TASKS.md` — work in flight, completion rate (declared next-actions → followed through, or not). Personal section ≠ work section — keep them separate.
 - `_system/state/OPEN_THREADS.md` — what is consciously held as open.
 - `1_projects/PROJECTS.md` + project files (`1_projects/{slug}.md` or `{slug}/` folders) — **project-handle layer**. A goal with no project-counterpart here is a strong signal of declaration-without-execution-handle.
@@ -54,24 +55,35 @@ Surface all three readings with their distinguishing markers. The owner decides 
 When `_records/biometric/` is non-empty AND SOUL.md `## Goals`
 declarations include health-quantifiable goals (sleep ≥X hours, work
 out N×/week, stress reduction), compute adherence as a parallel
-reading of "stated vs lived":
+reading of "stated vs lived". Biometric records + state are per
+wearable device: `_records/biometric/{source}/<date>.md` and
+`_system/state/biometric/{source}/` where `{source}` ∈ `garmin`,
+`oura`. Read both devices when present and report one adherence
+reading; if only one has data, use that one (never error on the
+missing one):
 
 - **sleep ≥X hours.** Read last 7d / 28d biometric records' Key
-  Numbers (`sleep_h`); count days meeting target. Report rate.
-- **workout N×/week.** Count workout-days in declared window
-  (`acute_load > 0` OR `intensity_vigorous_min > 5`).
+  Numbers (`sleep_h`) from each device present; count days meeting
+  target. Report rate. If both devices cover the same day, compare
+  inline and footnote any divergence (e.g. «sleep_h: Garmin 7.1 vs
+  Oura 6.8 — Oura logs ~20 min less most nights»).
+- **workout N×/week.** Count workout-days in declared window from
+  Garmin (`acute_load > 0` OR `intensity_vigorous_min > 5`) — these
+  are Garmin-only metrics; Oura does not track training load. Oura
+  `activity_score` may corroborate active days when Garmin is absent.
 - **stress reduction.** Trend `stress_avg` last 28d vs prior 28d
-  from `_system/state/biometric/baselines.json`.
+  from `_system/state/biometric/{source}/baselines.json` per device.
 
-Read `_system/state/biometric/streaks.json` for active
-deviation-streak concepts that contradict declarations (e.g. owner
-declared «sleep matters» on 2026-04-15; `sleep_debt` streak active
-since 2026-05-04 → action gap).
+Read `_system/state/biometric/{source}/streaks.json` per device for
+active deviation-streak concepts that contradict declarations (e.g.
+owner declared «sleep matters» on 2026-04-15; `sleep_debt` streak
+active since 2026-05-04 → action gap).
 
 Bring biometric anchoring into the standard 3-reading output —
 health adherence gap is one parallel reading, not a verdict. Per
-biometric-lens-protocol n=1 caveat: phrase as «Garmin-reported
-adherence is X», never «sleep adherence is X».
+biometric-lens-protocol n=1 caveat: phrase as «Garmin reports
+adherence is X» / «Oura reports adherence is X», never «sleep
+adherence is X».
 - Other lens outputs in `_system/agent-lens/{other-lens}/` — that is meta-territory, belongs to lens-output-input lenses, not this one.
 
 ## Domain alignment
