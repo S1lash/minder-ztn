@@ -849,7 +849,18 @@ For person-identity: «В записи X (про Y) неизвестно кто 
 For thread-closure: «Thread X открыт N дней; есть/нет signals что
 закрылся. Решаем — закрыть или нет.»
 For principle-candidate: «N кандидатов в принципы накопилось. Решаем по
-каждому — accept в constitution / reject / defer.»
+каждому — accept в constitution / sharpen существующий / reject / defer.»
+Для каждого показывай полную карточку (цитата-observation, hypothesis,
+falsifier+alt-reading из brief_reasoning, ось-`dimension`). На **accept→новый
+принцип**: если есть `dimension` — проставь `cognitive_axes: [{dimension}]`, и
+если у принципа ещё НЕТ `source_quote:` — проставь `source_quote: {observation}`
+(DEC-3-якорь; не перезаписывай существующий), и задай **hot-reach вопрос** «меняет
+ли это как ассистент общается со мной каждый день?» → если да, взвесь `core: true`
+(доезжает до актёров) или внеси рельсу в SOUL `Context for Agents`; если нет —
+оставь non-core. Рефлексия
+владельца по кандидату — сама сигнал: если она уточняет/противоречит принципу,
+заведи её как новое наблюдение (Evidence Trail / следующий кандидат), чтобы модель
+актуализировалась из его фидбека, не только из линзы.
 For policy/values: «N records carry inconsistent state for {field};
 решаем policy A/B/C про N.»}
 

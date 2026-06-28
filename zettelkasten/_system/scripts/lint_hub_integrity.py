@@ -179,7 +179,7 @@ def _scan_hub(path: Path, valid_ids: set[str]) -> None:
                "reason": (
                    f"hub_kind={hub_kind} with chronological_map_mode: "
                    "derived. Trajectories and domains are intentionally "
-                   "curated (PROCESSING_PRINCIPLES §9 Q4 default) — "
+                   "curated (PROCESSING_PRINCIPLES §9 «Hub kinds» table) — "
                    "narrative arcs typically don't fit auto-derivation."
                ),
                "to_resolve": (
@@ -208,6 +208,10 @@ def main(argv: list[str] | None = None) -> int:
     valid_ids = _build_id_index(root)
 
     for hub_path in sorted(mocs.glob("hub-*.md")):
+        # Skip engine `*.template.md` seeds co-located in mocs (e.g.
+        # hub-cognitive-model.template.md) — they are not owner hubs.
+        if hub_path.name.endswith(".template.md"):
+            continue
         _scan_hub(hub_path, valid_ids)
 
     return 0

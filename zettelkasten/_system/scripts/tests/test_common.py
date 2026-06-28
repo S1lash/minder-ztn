@@ -966,5 +966,22 @@ class TestConceptTypeMirror(unittest.TestCase):
         )
 
 
+class CognitiveFieldTests(unittest.TestCase):
+    def _p(self, fm):
+        return c.Principle(path=Path("x.md"), frontmatter=fm, body="")
+
+    def test_cognitive_axes_dedup_and_nonlist(self):
+        self.assertEqual(
+            self._p({"cognitive_axes": ["a", "a", "b"]}).cognitive_axes, ["a", "b"])
+        self.assertEqual(self._p({"cognitive_axes": "a"}).cognitive_axes, [])
+        self.assertEqual(self._p({}).cognitive_axes, [])
+
+    def test_source_quote(self):
+        self.assertEqual(self._p({"source_quote": "  demo > слова "}).source_quote,
+                         "demo > слова")
+        self.assertEqual(self._p({"source_quote": 5}).source_quote, "")
+        self.assertEqual(self._p({}).source_quote, "")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -164,9 +164,10 @@ and runs only after you deliberately set its row to `active` in
 - **Turn it off:** set the lens row back to `status: draft`/`inactive`. It
   stops immediately; existing outputs stay until you delete them.
 
-The guard against this becoming a profiler that flatters you is
-`principle-ai-interaction-012` (no sycophancy): the lens is instructed to model
-how you think, never to mine for what comforts you.
+The guard against this becoming a profiler that flatters you is the
+no-sycophancy rule (in `communication-baseline`, and in your own constitution
+where you keep one): the lens is instructed to model how you think, never to
+mine for what comforts you.
 
 ## Engine boundaries — what the engine is not allowed to do
 

@@ -52,7 +52,7 @@ When you find these in conflict, the higher one wins. When a rule is absent ever
 | `zettelkasten/_sources/processed/` | `/ztn:process` (move-only); never delete |
 | `zettelkasten/0_constitution/{axiom,principle,rule}/` | `/ztn:capture-candidate` → `/ztn:lint` F.5 promotion → `/ztn:regen-constitution` |
 | `zettelkasten/{1_projects,2_areas,3_resources,4_archive}/` (excluding READMEs) | `/ztn:process`, `/ztn:maintain` |
-| `zettelkasten/5_meta/mocs/`, `zettelkasten/6_posts/` | `/ztn:maintain` |
+| `zettelkasten/5_meta/mocs/`, `zettelkasten/6_posts/` | `/ztn:maintain` (incl. `hub-cognitive-model.md`: its `<!-- AUTO-GENERATED: cognitive-model-hub -->` zone is rendered by `render_cognitive_model_hub.py` Step 7.9 — never hand-edit the table; the prose «portrait» above the markers is owner-curated) |
 | `zettelkasten/_system/{SOUL,TASKS,CALENDAR,POSTS,long-form-playbook}.md` | owner-curated; engine reads, surfaces clarifications, never silently overwrites |
 | `zettelkasten/_system/registries/{TAGS,SOURCES,PEOPLE,PROJECTS}.md` | `/ztn:maintain`, `/ztn:lint` |
 | `zettelkasten/_system/registries/AUDIENCES.md` (Extensions table only) | `/ztn:resolve-clarifications` (appends rows on owner approval); spec sections never edited by hand |

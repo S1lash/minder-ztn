@@ -207,6 +207,7 @@ a schema violation — audits check this via git diff scope.
 | Write `_system/state/biometric/<source>/{correlations-{week}.json, calibration-history.json, last_weekly_run.txt}` + `_system/views/biometric/<source>/weekly-{week}.md` | `/ztn:maintain` only (biometric Tier II weekly worker, after-batch with weekly idempotency gate, run once per active biometric source) | Derived state — recomputable from `_records/biometric/<source>/`. Weekly-gated per source by `<source>/last_weekly_run.txt` ISO-week comparison; runs at most once per ISO week per source per first /ztn:maintain invocation. |
 | Write `_system/state/activity/<source>/{weekly-{week}.json, last_weekly_run.txt}` + `_system/views/activity/<source>/weekly-{week}.md` | `/ztn:maintain` only (activity weekly worker, Step 6.8 — symmetric to biometric, after-batch with weekly idempotency gate) | Derived state — recomputable from `_records/activity/<source>/`. Activity has no σ-correlations/calibration layer (the heavy aggregation is upstream in the collector); the worker produces a weekly Focus-Engineering rollup (median scores, category/rhythm/switching trend, top death loops). Weekly-gated per source by `<source>/last_weekly_run.txt`. |
 | Write `## Health Snapshot` block in CURRENT_CONTEXT.md | `/ztn:maintain` only (via `render_health_snapshot.py`, integrated into CURRENT_CONTEXT regen chain) | Extension of existing CURRENT_CONTEXT regen — derived view, not new content. ≤15 lines, life-connection focused. |
+| Write AUTO-GENERATED zone of `5_meta/mocs/hub-cognitive-model.md` | `/ztn:maintain` only (via `render_cognitive_model_hub.py`, Step 7.9 — post-loop, after Step 7.8) | Pure projection of constitution `cognitive_axes` fields + candidate buffer; only the zone between the `<!-- AUTO-GENERATED: cognitive-model-hub -->` markers, never the owner's «portrait» above them. |
 
 **Supporting invariants:**
 1. `/ztn:maintain` NEVER creates content — only structural metadata (back-refs).
@@ -1239,6 +1240,7 @@ Before saving each note:
 | _system/CALENDAR.md | All events | Regenerated |
 | _system/POSTS.md | Published posts archive + content strategy | Manual or /ztn:content |
 | _system/views/CONTENT_MAP.md | Content pipeline interface — compact view over hubs + content notes + POSTS.md (ripeness, posts-on-theme) | /ztn:maintain Step 7.8 (canonical writer; regenerable, read-only) |
+| 5_meta/mocs/hub-cognitive-model.md | Cognitive-model hub — per-axis projection of `cognitive_axes`-tagged principles + candidate buffer (axis set is the SoT in `lenses/cognitive-model/prompt.md`); AUTO-GENERATED zone between markers, owner «portrait» above | /ztn:maintain Step 7.9 via `render_cognitive_model_hub.py` (owner-data; managed zone regenerable) |
 | _system/state/content-pipeline-state.json | Content ledger — per-draft state (theme_ids[], ripeness, draft_status, owner_touched) | /ztn:content --maintain (NOT regenerable) |
 | _system/state/CLARIFICATIONS.md | Non-blocking human-in-the-loop questions | All skills (safety valve) |
 | _system/registries/TAGS.md | Tag registry (`tags:` namespace labels) | When new tags |

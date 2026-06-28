@@ -2,6 +2,52 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.39.0 — A visible model of how you think
+
+The `cognitive-model` lens (0.38.0) proposed «you seem to want X» one candidate
+at a time. Now those patterns have a **home you can see**: a single hub —
+*«how you think, as Minder sees it»* — with one row per cognitive /
+communication axis (how you structure thought, what evidence convinces you, what
+feedback lands, how you want directness, how context should carry across
+sessions, …), each showing what's understood, how confidently, and the
+principle + the verbatim quote it rests on.
+
+### What you get
+
+- **The hub** at `5_meta/mocs/hub-cognitive-model.md` — a maintained map of the
+  model across the cognitive axes, updated automatically by `/ztn:maintain`. The
+  «portrait» at the top is yours to write; the table below is auto-rendered —
+  don't hand-edit it. Blank/thin axes show the lens what to look at next.
+- **Source quotes on learned principles.** A principle promoted from a reflection
+  can carry the verbatim quote that grounds it (`source_quote:`) — so «why does
+  Minder believe this about me?» is always answerable, and a future
+  «Your Mind» screen can render principle + quote.
+- **A nightly integrity check** keeps the axis tags honest (valid axis, no
+  duplicates, sensitivity coherence) and surfaces issues for your review — it
+  never edits your constitution on its own.
+
+### To opt in / out
+
+Nothing to do. The hub fills only from principles you've tagged and from the
+`cognitive-model` lens — which still ships **OFF** (enable it deliberately in
+`AGENT_LENSES.md`, same as before). With the lens off and no tagged principles,
+the hub simply stays blank.
+
+### Backward compatibility
+
+Additive — nothing breaks. `cognitive_axes:` and `source_quote:` are optional
+principle fields. A one-time migration (`010-cognitive-model-hub-seed.sh`, run
+automatically on `/ztn:update`) creates the empty hub for existing installs; the
+next `/ztn:maintain` fills it.
+
+### For maintainers
+
+New engine pieces: `render_cognitive_model_hub.py` (deterministic hub renderer,
+`/ztn:maintain` Step 7.9), `lint_cognitive_axes.py` (lint Scan F.8), the axis SoT
+block in `lenses/cognitive-model/prompt.md` (the single source for the axis set),
+and the `source_quote`/`cognitive_axes` fields in the principle schema. The hub
+is a pure projection of the constitution — it holds no truth of its own.
+
 ## 0.38.0 — The assistant learns how to talk to you
 
 Two layers, plus a way the system keeps learning your style — without becoming

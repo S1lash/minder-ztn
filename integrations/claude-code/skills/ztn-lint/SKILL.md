@@ -1133,7 +1133,7 @@ focus only.
 
 ### Scan F — Constitution Alignment
 
-Health + maintenance of the `0_constitution/` layer. Seven sub-scans with
+Health + maintenance of the `0_constitution/` layer. Eight sub-scans with
 explicit cadences; daily scans run every invocation, weekly and monthly
 scans gate on first lint run of the UTC week / month. Scan F never edits
 principle body content (L1 write limit — see `0_constitution/CONSTITUTION.md`
@@ -1231,9 +1231,33 @@ Pipeline:
 1. Read `_system/state/principle-candidates.jsonl`. If empty → skip.
 2. Render ONE CLARIFICATION `principle-candidate-batch` with **all
    candidates inline** (not by reference to the jsonl — entries must stay
-   readable if the file rotates). Per candidate: situation, observation,
-   hypothesis, suggested_type, suggested_domain, origin, session_id,
+   readable if the file rotates). Per candidate render EVERY field that helps
+   the owner judge without re-reading the source: situation, observation (the
+   verbatim quote), hypothesis, `brief_reasoning` (falsifier + alternative
+   reading + record count, when present), suggested_type, suggested_domain,
+   `dimension` (cognitive-model axis slug, if present), origin, session_id,
    record_ref, date captured.
+
+   **Promotion outcomes — the owner's review must land somewhere (this is the
+   help, so nothing he decides is lost):** for each candidate the owner's
+   verdict routes to one of —
+   - **Promote → new principle:** author it; if it carries a `dimension`, set
+     `cognitive_axes: [{dimension}]` AND `source_quote: {observation}` (the
+     DEC-3 anchor); then make the **hot-reach decision** — does this change how
+     an assistant should engage the owner day-to-day? If yes, weigh `core: true`
+     (it reaches actors via `constitution_core_view`; budget is 5–8) or fold the
+     rail into SOUL `Context for Agents`; if it only matters to the owner's own
+     pipelines, leave non-core.
+   - **Sharpen existing principle:** the candidate makes a vague principle
+     specific/conditional → refine that principle's statement; carry
+     `cognitive_axes`/`source_quote` if missing.
+   - **Reject / not-a-principle:** record the owner's reason inline (his
+     reflection IS the audit), candidate stays in the archived jsonl.
+   - **Defer:** keep for a later batch.
+   The owner's free-text reflection on a candidate is itself signal — when it
+   sharpens or contradicts an existing principle, treat it as a new observation
+   (it can seed the next candidate or an Evidence-Trail entry), so the model
+   actualizes from his feedback, not only from the lens.
 3. **Archive + verify + clear** — invoke:
    ```bash
    python3 _system/scripts/archive_buffer.py
@@ -1270,14 +1294,22 @@ dedicated `## Constitution` section:
 - Stale surfaced this month (F.1): {N}
 - Candidates surfaced: {N_total} → accepted {N_accepted} / rejected {N_rejected} / deferred {N_deferred}
 - Auto-merges performed (F.5): {exact: N, llm: N}
+- Cognitive-model axes: {P} promoted / {B} blank{ — blank: {blank list} if B>0}
 - Evidence Trail compactions (F.7 approved): {N}
 - Most-cited principles (top 3 by Evidence Trail length): {id1}, {id2}, {id3}
 - Most-contradicted (top 3 by citation-violated count, if any): ...
 ```
 
 Numbers come from this month's log_lint.md entries + a tree walk at
-write time. This is information for owner's review, not a trigger for
-automation.
+write time. The cognitive-model axes line comes from
+`python3 _system/scripts/render_cognitive_model_hub.py --stats` (reads
+constitution state, prints `{status_counts, blank_axes}`, never touches the
+hub file). This is information for owner's review, not a trigger for
+automation — a long-blank axis is a coverage gap to fill, not an error. It is
+also the low-noise reconciliation surface for the owner-gated promotion step:
+if a cognitive-model candidate was promoted but its principle was never tagged
+with `cognitive_axes`, the affected axis simply shows here as still blank (or
+under-linked), surfaced monthly without per-candidate nagging.
 
 #### F.5 — LLM-judge merge (daily, L2 write)
 
@@ -1292,8 +1324,18 @@ principle (`automerge-exact` event type, reference the candidate record),
 **propagate the candidate's `applies_in_concepts[]` to the principle
 frontmatter** (set-union with existing, then
 `_common.py::normalize_concept_list()` to dedupe/sanitise; write back),
-remove the candidate from the buffer, raise CLARIFICATION
-`principle-automerge-exact` (info-only).
+**and propagate the candidate's `dimension` (if present) into the
+principle's `cognitive_axes:`** (set-union with existing, default `[]`;
+write back — this keeps `hub-cognitive-model` promoting the right axis when
+a cognitive-model candidate merges into an existing principle).
+**If the target principle has no `source_quote:` yet, set it from the
+candidate's `observation`** (the verbatim grounding quote — the DEC-3 anchor;
+never overwrite an existing one).
+Then remove the candidate from the buffer, raise CLARIFICATION
+`principle-automerge-exact` (info-only). When the `cognitive_axes` set-union
+or `source_quote` actually changed the principle, name it in the CLARIFICATION
+«Action taken» line (`cognitive_axes: {old} → {new}`; `source_quote: set`) so
+the field change is directly auditable, not only inferable from the candidate.
 
 **Level 2 — Opus LLM-judge (for everything not resolved by Level 1).**
 Invoke reasoning LLM with prompt:
@@ -1318,11 +1360,16 @@ Invoke reasoning LLM with prompt:
   `applies_in_concepts[]`, run the result through
   `_common.py::normalize_concept_list()` to dedupe and sanitise, write
   back. Never raises — autonomous propagation under the same concept-
-  layer policy as A.7.
+  layer policy as A.7. **Also set-union the candidate's `dimension` (if
+  present) into the target's `cognitive_axes:`, and — if the target has no
+  `source_quote:` yet — set it from the candidate's `observation`** (the
+  DEC-3 anchor; never overwrite an existing one), same write boundary, so
+  the cognitive-model hub promotes the merged axis.
 - `(b) confidence > 0.8` → add candidate to the target principle's
   `## Related` section as an edge-case reference. CLARIFICATION
   `principle-extended-llm` (info, owner may override). Same
-  `applies_in_concepts[]` propagation rule as (a).
+  `applies_in_concepts[]`, `dimension → cognitive_axes`, and
+  `source_quote` (set-if-missing) propagation rules as (a).
 - `(c)` or low-confidence → candidate stays in buffer for F.3 weekly
   aggregate.
 - `(d) confidence > 0.9` → tag candidate as suggested-noise in the
@@ -1344,6 +1391,20 @@ origins represent inferred / batch-extracted / cross-context signals
 where high recall is expected at the cost of precision; auto-merge
 would erode constitution signal density. Only `origin: personal`
 (in-the-moment owner-attended capture) is precise enough to qualify.
+
+**`dimension → cognitive_axes` closure (read with the guard above).** The
+`cognitive-model` lens stamps its candidates `origin: agent-lens`, so they are
+blocked from automatic Level 2 merge — the L2 `dimension → cognitive_axes`
+propagation above therefore does NOT fire for them automatically. For
+cognitive-model candidates the path is: the `dimension` is carried to the F.3
+weekly batch (which renders it per candidate), and the owner sets
+`cognitive_axes` on the principle when promoting (whether merging into an
+existing principle or authoring a new one — see CONSTITUTION.md §3). The Level 1
+exact-match path and the L2 propagation fire automatically only for a future
+`origin: personal` candidate that carries a `dimension`. So the hub's `promoted`
+status for an axis is, by design, owner-gated — consistent with constitution
+sovereignty; the lens contributes the `evidenced` status (live candidate), the
+owner confirms the `promoted` status.
 
 #### F.6 — Core bloat watch (daily)
 
@@ -1378,12 +1439,42 @@ All Scan F output is additive to the existing worklist — Step 4 Apply
 Worklist routes CLARIFICATIONS identically to Scan A-E items via the
 confidence-tier table.
 
+#### F.8 — Cognitive-axes integrity (daily)
+
+Validate the optional `cognitive_axes` field on principles (the field that powers
+`5_meta/mocs/hub-cognitive-model.md`). Deterministic, no LLM:
+
+```bash
+python3 _system/scripts/lint_cognitive_axes.py
+```
+
+JSONL on stdout, one event per finding, exit 0 always. The script reads the axis
+slug SoT (the `<!-- cognitive-axes:begin -->` block in
+`_system/registries/lenses/cognitive-model/prompt.md`) and every principle's
+`cognitive_axes`, and emits:
+
+- `cognitive-axes-malformed` — value is not a list of slug strings.
+- `cognitive-axes-unknown-slug` — a slug not in the axis SoT (the hub silently
+  drops it; lint surfaces it so the typo gets fixed).
+- `cognitive-axes-duplicate` — a slug listed twice on one principle.
+- `cognitive-hub-sensitivity-mismatch` — a `scope: sensitive` principle is tagged
+  but the hub is not `is_sensitive: true` / owner-only (`audience_tags: []`),
+  which would expose the sensitive principle if the hub is shared or surfaced.
+
+Route each finding to a CLARIFICATION of the matching type (Subject = the
+`principle_id`, Quote = the offending slug / value, To resolve = "fix the slug
+against the axis SoT / dedupe / set the hub privacy trio"). Never autofix the
+sacred constitution tree — surface for owner review. The field is optional, so an
+absent `cognitive_axes` is never a finding.
+
 New CLARIFICATION types introduced by Scan F (vocabulary):
 `principle-stale`, `principle-drift`, `principle-drift-retro`,
 `principle-tradeoff`, `principle-candidate-batch`,
 `principle-automerge-exact`, `principle-automerge-llm`,
 `principle-extended-llm`, `principle-automerge-scope-mismatch`,
 `core-bloat`, `evidence-trail-compact`, `lint-archive-failure`,
+`cognitive-axes-malformed`, `cognitive-axes-unknown-slug`,
+`cognitive-axes-duplicate`, `cognitive-hub-sensitivity-mismatch`,
 `soul-manual-edit-to-auto-zone` (emitted by `render_soul_values.py`;
 Scan F consumes / reports on existence).
 

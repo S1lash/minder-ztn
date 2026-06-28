@@ -200,6 +200,15 @@ template:
   # Stub so installer symlink resolves before first /ztn:regen-constitution
   - zettelkasten/_system/views/constitution-core.template.md
 
+  # Cognitive-model hub seed. Ships the empty axis scaffold; on the
+  # friend's first /ztn:maintain, render_cognitive_model_hub.py backfills
+  # it from THEIR own tagged principles. The live owner hub
+  # (5_meta/mocs/hub-cognitive-model.md) is owner-data — never shipped
+  # (the whole 5_meta/mocs/ dir is excluded; only this template uploads).
+  # Spec portion (managed-zone structure) stays in sync with the renderer
+  # via tests/test_render_cognitive_model_hub.py::test_template_matches_blank_render.
+  - zettelkasten/5_meta/mocs/hub-cognitive-model.template.md
+
 
 exclude:
   # Owner's deployment journal — not engine

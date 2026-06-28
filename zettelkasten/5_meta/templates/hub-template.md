@@ -12,6 +12,8 @@ modified: YYYY-MM-DD
 hub_created: YYYY-MM-DD
 
 layer: hub
+hub_kind: project  # project (default) | trajectory | domain — see PROCESSING_PRINCIPLES.md §9
+chronological_map_mode: derived  # derived (project hubs, auto-filled by render_hub_maps.py) | curated (trajectory / domain hubs, hand-curated)
 domains:
   - {work|personal|career}
 projects: []

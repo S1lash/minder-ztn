@@ -176,6 +176,11 @@ def _modified(fm: dict) -> str:
 def _is_excluded_file(path: Path) -> bool:
     if path.name in EXCLUDED_FILENAMES:
         return True
+    # Engine `*.template.md` seeds (e.g. hub-cognitive-model.template.md) may be
+    # co-located in a scanned data dir because release_engine strips the suffix
+    # in-place; they are engine seeds, not owner notes — never index them.
+    if path.name.endswith(".template.md"):
+        return True
     if path.is_symlink():
         return True
     return False

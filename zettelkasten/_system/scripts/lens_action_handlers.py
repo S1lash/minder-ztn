@@ -43,6 +43,7 @@ from pathlib import Path
 from _common import (
     ACTION_HINT_REQUIRED_PARAMS,
     ACTION_HINT_TYPES,
+    ALLOWED_DOMAINS,
     repo_root,
 )
 
@@ -552,10 +553,11 @@ def apply_metric_record_rerender_apply(params: dict, source_lens: str, base: Pat
 
 _PRINCIPLE_CANDIDATES_REL = "_system/state/principle-candidates.jsonl"
 _VALID_SUGGESTED_TYPES = {"axiom", "principle", "rule", "unknown"}
-_VALID_SUGGESTED_DOMAINS = {
-    "identity", "ethics", "work", "tech", "relationships", "health",
-    "money", "time", "learning", "ai-interaction", "meta", "unknown",
-}
+# Single source of truth for the domain vocabulary is `_common.ALLOWED_DOMAINS`
+# (mirrors CONSTITUTION.md §5) plus the candidate-only `unknown` sentinel.
+# Deriving it here avoids drift — a hand-copied set previously omitted
+# `career` / `personal`, silently rejecting valid candidates from any lens.
+_VALID_SUGGESTED_DOMAINS = set(ALLOWED_DOMAINS) | {"unknown"}
 
 
 def _candidate_dedup_key(observation: str, hypothesis: str) -> str:
@@ -629,6 +631,12 @@ def apply_principle_candidate_add(params: dict, source_lens: str, base: Path | N
         "suggested_domain": params["suggested_domain"],
         "source_record_count": int(params["source_record_count"]),
         "applies_in_concepts": params.get("applies_in_concepts") or [],
+        # Optional cognitive-model axis slug. The cognitive-model lens emits it
+        # (it already names the axis per Observation); persisting it lets
+        # render_cognitive_model_hub.py mark the axis `evidenced` deterministically
+        # before promotion. Other lenses omit it → None. Slug validity is checked
+        # downstream against the axis SoT, never here.
+        "dimension": params.get("dimension"),
         "origin": "agent-lens",
         "session_id": f"agent-lens/{source_lens}",
         "record_ref": params.get("record_ref"),

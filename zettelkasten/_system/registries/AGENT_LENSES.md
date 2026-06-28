@@ -1,7 +1,5 @@
 # Agent Lenses Registry
 
-**Last Updated:** 2026-05-09 — biometric pipeline activated. 4 new lenses (`biometric-anomaly-narrator` daily, `biometric-cross-domain` weekly thursday, `training-load-trend` weekly monday with conditional self-skip, `biometric-life-synthesis` weekly monday flagship synthesis) flipped to `status: active`. 4 patches applied to existing prompts (`stated-vs-lived`, `energy-pattern`, `weekly-insights`, `global-navigator`) to read biometric records / Tier II output / new biometric lens runs. Tier I + Tier II already running (61 biometric records, 9 weekly correlations); next nightly /ztn:agent-lens tick will produce the first lens outputs.
-
 Registry of agent-lens definitions. Each row points to a folder under
 `_system/registries/lenses/{id}/` containing the lens prompt and any
 companion files. To add a lens: create folder, add row, set status.
@@ -95,7 +93,7 @@ Each active lens MUST have a summary block here — purpose / value / output for
 
 ### cognitive-model
 
-Runs every other Monday. Mines the owner's own reasoning and reflection (`_records/observations` primarily) for **undeclared** patterns of how they think and want to be communicated with — structure of thought, insight-vs-noise judgement, what praise/criticism lands — and proposes them as `ai-interaction` / `learning` / `meta` principle candidates. The proactive head of the adaptation loop: where `stated-vs-lived` checks drift on EXISTING declarations, this generates NEW candidates from reflection. Output: pattern + ≥2 quoted records + why-it-is-new (which existing principle/SOUL section does NOT already cover it) + alternative reading + confidence, plus `principle_candidate_add` Action Hints (append to the high-recall buffer; owner gates promotion via `/ztn:lint` F.5). Conservative by design — 0-3 high-quality candidates, never a thin list. «No new pattern; existing principles + SOUL cover it» is a valid result.
+Runs every other Monday. Mines the owner's own reasoning and reflection (`_records/observations` primarily) for **undeclared** patterns of how they think and want to be communicated with — structure of thought, insight-vs-noise judgement, what praise/criticism lands — and proposes them as `ai-interaction` / `learning` / `meta` principle candidates. The proactive head of the adaptation loop: where `stated-vs-lived` checks drift on EXISTING declarations, this generates NEW candidates from reflection. Output: pattern + ≥2 quoted records + why-it-is-new (which existing principle/SOUL section does NOT already cover it) + alternative reading + confidence, plus `principle_candidate_add` Action Hints (append to the high-recall buffer; owner gates promotion via `/ztn:lint` F.5). Conservative by design — 0-3 high-quality candidates, never a thin list. «No new pattern; existing principles + SOUL cover it» is a valid result. Self-history: reads `5_meta/mocs/hub-cognitive-model.md` as the axis coverage-map (which axes are `blank` vs `promoted`) before the per-run archive. Each candidate carries a `dimension` axis slug so the hub can show the axis `evidenced` before promotion.
 
 ### stalled-thread
 
@@ -165,7 +163,7 @@ Each lens prompt is calibrated against external frameworks (cited inline in the 
 - **global-navigator**: SRE Four Golden Signals + USE method + Tufte data-ink + multi-doc summarisation hallucination research
 - **knowledge-emergence**: Luhmann Folgezettel (thematic anchor on ≥3 sister-notes) + Matuschak evergreen promotion ladder + Weick retrospective sensemaking + apophenia falsifiability guard
 - **weekly-insights**: Bayesian belief-update + falsification + Munger inversion / pre-mortem + Kahneman reference-class forecasting + de Shazer solution-focused exception finding + Higgins self-discrepancy + Argyris-Schön espoused-vs-in-use + Theory of Constraints (bottleneck) + apophenia falsifiability guard + multi-doc summarisation hallucination research (anti-eye-roll guards on every section, default-silence load-bearing)
-- **cognitive-model**: metacognition + cognitive-styles (analytic-vs-holistic, need-for-cognition, systemising) + Communication Accommodation Theory + trait-vs-state distinction + dual-process (System 1/2) + Argyris-Schön espoused-vs-in-use (shared with stated-vs-lived, opposite lane: undeclared vs drift) + anti-sycophancy guard against mining-for-comfort (no-sycophancy rule in `communication-baseline` / `principle-ai-interaction-012`)
+- **cognitive-model**: metacognition + cognitive-styles (analytic-vs-holistic, need-for-cognition, systemising) + Communication Accommodation Theory + trait-vs-state distinction + dual-process (System 1/2) + Argyris-Schön espoused-vs-in-use (shared with stated-vs-lived, opposite lane: undeclared vs drift) + anti-sycophancy guard against mining-for-comfort (no-sycophancy / rails-not-boxes rule in `communication-baseline`)
 
 ## Operating principles
 

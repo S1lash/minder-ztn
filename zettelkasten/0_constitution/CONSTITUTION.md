@@ -179,6 +179,36 @@ applies_to: [claude-code, ztn, chatgpt]     # REQUIRED. Closed enum subset; see 
 derived_from: []                            # list of {id}; empty for pure axioms
 contradicts: []                             # list of {id}; explicit known conflicts
 
+# Cognitive model (optional)
+cognitive_axes: []                          # OPTIONAL. Slugs of the cognitive /
+                                            # communication axes this principle
+                                            # expresses. Powers the projection
+                                            # 5_meta/mocs/hub-cognitive-model.md
+                                            # (axis → promoted principle). Slug
+                                            # SoT is the cognitive-model lens axis
+                                            # list (_system/registries/lenses/
+                                            # cognitive-model/prompt.md). Omit on
+                                            # principles that are not about HOW the
+                                            # owner thinks / wants to be engaged.
+                                            # Domain-agnostic: any principle of any
+                                            # `domain` may carry it. `scope` still
+                                            # applies — tagging a `scope: sensitive`
+                                            # principle makes the hub carry a
+                                            # sensitive link; lint F.8 surfaces a
+                                            # sensitivity-mismatch if the hub is not
+                                            # is_sensitive / owner-only. Validity is
+                                            # checked by lint F.8, never on parse.
+source_quote: ''                            # OPTIONAL. The single verbatim owner
+                                            # quote that grounds this principle —
+                                            # set when promoting a `dimension`-tagged
+                                            # cognitive-model candidate (copy its
+                                            # `observation`). It is the auditable
+                                            # «why does Minder believe this about me»
+                                            # anchor and the source quote the future
+                                            # «Your Mind» (DEC-3) screen renders. Not
+                                            # required on owner-authored principles
+                                            # that have no single anchoring quote.
+
 # Governance
 confidence: proven                          # proven | working | experimental
 status: active                              # active | candidate | archived |
@@ -211,6 +241,8 @@ source_weight:
 | `applies_to` | subset of `claude-code`, `ztn`, `chatgpt`, `claude-desktop`, `life-advice`, `work-code`, `bootstrap`, `minder` |
 | `confidence` | `proven`, `working`, `experimental` |
 | `status` | `active`, `candidate`, `archived`, `placeholder` |
+| `cognitive_axes` | OPTIONAL list. Slugs from the cognitive-model lens axis SoT (`_system/registries/lenses/cognitive-model/prompt.md`); not a closed enum here — the hub render validates membership and drops unknowns. When promoting a `dimension`-tagged candidate from the buffer into a new principle, copy its `dimension` slug here so `hub-cognitive-model` promotes the axis. |
+| `source_quote` | OPTIONAL string. The verbatim owner quote that grounds the principle; set on promotion of a `dimension`-tagged candidate (copy its `observation`). The auditable «why does Minder believe this» anchor + the quote DEC-3 renders. |
 
 **Closed enums.** Unknown enum values are a validation error. Extending an enum is
 a schema change: add to this document first, then Python scripts pick it up on next
@@ -703,6 +735,17 @@ extracted-from: hand-written (placeholder)
 6. Does `priority_tier` match the domain default, or is there a reason to
    deviate (documented in the body)?
 7. Is `core: true` justified? Target 5–8 total. If unsure — leave as `false`.
-8. Is the first Evidence Trail entry present (`extraction` or `landing`)?
-9. Is `confidence` honest? (`experimental` is fine — aspirational is not.)
-10. `git add` only. Do not `git commit` — owner runs the commit.
+8. Does it describe HOW you want to be engaged (structure, abstraction, evidence,
+   feedback, learning, density, relational tone, cognitive energy, uncertainty,
+   context-continuity)? If yes: (a) add the matching axis slug(s) to
+   `cognitive_axes:` so the hub-cognitive-model projection picks it up (valid
+   slugs: §3 enum reference / the cognitive-model lens axis block); (b) if it was
+   promoted from a `dimension`-tagged candidate, set `source_quote:` to the
+   candidate's verbatim quote (the DEC-3 anchor); (c) **hot-reach:** does it
+   change how an assistant should engage you day-to-day? If yes, weigh `core:
+   true` (reaches actors via `constitution_core_view`) or fold the rail into
+   SOUL `Context for Agents`; if no, leave non-core. Optional — omit (a)/(b) if
+   it's not about that.
+9. Is the first Evidence Trail entry present (`extraction` or `landing`)?
+10. Is `confidence` honest? (`experimental` is fine — aspirational is not.)
+11. `git add` only. Do not `git commit` — owner runs the commit.

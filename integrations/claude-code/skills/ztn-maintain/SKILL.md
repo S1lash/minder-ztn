@@ -1294,11 +1294,49 @@ its last good state (best-effort, like Step 7.7).
 
 ---
 
+## Step 7.9: Cognitive-Model Hub Render
+
+Regenerate the managed zone of `5_meta/mocs/hub-cognitive-model.md` — the visible,
+accumulating projection of «how the owner thinks» across the cognitive /
+communication axes (status `blank` / `evidenced` / `promoted` + source principle
+links + anchor records). A **pure projection** over `0_constitution/` (active
+principles tagged `cognitive_axes`) plus the principle-candidate buffer
+(`dimension`-tagged agent-lens candidates). The hub holds no truth of its own — it
+only links `[[principle-id]]` and reflects current state: archive a principle and
+its axis drops off automatically on the next run. It reads the source principles
+under `0_constitution/` directly (not the regenerated views) plus the candidate
+buffer, so its only ordering dependency is Step 7.5 (the candidate buffer must be
+current); it is placed after Step 7.8 to keep the post-loop renderers together.
+
+**Invocation.**
+
+```bash
+python3 _system/scripts/render_cognitive_model_hub.py
+```
+
+Deterministic, idempotent, pure — no LLM. Writes ONLY between the hub's
+`<!-- AUTO-GENERATED: cognitive-model-hub -->` markers; the owner's frontmatter and
+prose «portrait» outside the markers are never touched. Re-running on unchanged
+source performs **no write at all** (byte-identical tree — stricter than the SOUL
+renderer). Prints a JSON line `{"ok", "changed", "status_counts", "blank_axes"}` to
+stdout — plus `dropped_unknown_slugs: [{principle_id, slug}]` when a principle
+carries a `cognitive_axes` slug not in the SoT (the renderer drops it so the hub
+never carries a typo; the authoritative re-check is lint Scan F.8). Capture the
+status counts, `changed`, and any dropped slugs for the Step 8 log entry.
+
+**Failure mode.** A missing hub, missing markers, or unparseable axis SoT → the
+script prints `{"ok": false, "changed": false, "reason": ...}` and exits 0
+(best-effort, like Step 7.7/7.8). Surface `cognitive-model-hub-render-skipped` to
+log_maintenance.md with the reason and continue; the hub stays in its last good
+state.
+
+---
+
 ## Step 8: Patch last-batch log_maintenance.md entry with regen + pattern-detect confirmation
 
 The per-batch entries were written in Step 6.5 with
 `CURRENT_CONTEXT.md: pending` and `INDEX.md: pending`. After Step 7,
-Step 7.5, Step 7.6, Step 7.7, and Step 7.8 complete successfully:
+Step 7.5, Step 7.6, Step 7.7, Step 7.8, and Step 7.9 complete successfully:
 
 1. Locate the log_maintenance.md entry for the **last batch** of this run
    (highest batch_id processed).
@@ -1310,6 +1348,12 @@ Step 7.5, Step 7.6, Step 7.7, and Step 7.8 complete successfully:
    result: `principle-candidates.jsonl: +{candidate_count} new candidates
    (session_id: {session_id})`. If Step 7.5 produced zero new candidates,
    write `+0 (no recurring rationale patterns)` to keep the trace explicit.
+5. Append the Step 7.9 hub render result:
+   `hub-cognitive-model.md: {changed|no-change} ({P} promoted, {E} evidenced,
+   {B} blank)`. If `dropped_unknown_slugs` is non-empty, append
+   `; dropped {N} unknown slug(s): {principle_id:slug, …}` so the typo is visible
+   without waiting for the nightly lint. If Step 7.9 was skipped, write
+   `hub-cognitive-model.md: skipped ({reason})`.
 
 Earlier batches in the run retain their `pending` notes — readable as
 «covered by the last batch's regen», consistent with invariant that regen
@@ -1477,7 +1521,7 @@ These are structural invariants maintain guarantees:
    log_maintenance.md entry written with zeroed counters. CURRENT_CONTEXT
    and INDEX regen still run post-loop (fresh timestamp even if state
    didn't change).
-9. **Existing threads (pre-Phase-3 format) handled gracefully** — threads
+9. **Existing threads in the legacy flat format handled gracefully** — threads
    created by bootstrap without `Related Tasks` or `hub:` fields do not cause
    errors. Corresponding closure signals are excluded from scoring (Step 5).
 

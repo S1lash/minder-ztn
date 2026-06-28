@@ -601,6 +601,12 @@ honestly with self-reported confidence; judgement is downstream.
 | `decision_update_section` | `decision_note_path`, `update_reason` | decision-review |
 | `principle_candidate_add` | `situation`, `observation`, `hypothesis`, `suggested_type`, `suggested_domain`, `source_record_count` | cognitive-model |
 
+`principle_candidate_add` also accepts one OPTIONAL param: `dimension` — the
+cognitive-model axis slug (SoT: `lenses/cognitive-model/prompt.md`). It is
+persisted on the candidate line and lets `render_cognitive_model_hub.py` mark an
+axis `evidenced` before promotion. Lenses other than `cognitive-model` omit it;
+its absence is never an error.
+
 A lens MAY emit any whitelisted type regardless of its «typical» role —
 the table above is descriptive, not prescriptive. Non-whitelisted types
 are not silently dropped: the resolver routes them into the

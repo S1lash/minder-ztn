@@ -229,7 +229,8 @@ inside the engine and never reach a consumer:
   `agent-lens-runs.jsonl`, `check-decision-runs.jsonl`. Substrate for
   lenses and future cross-source analysis; not consumer-routable.
 - **Derived / regenerable views** — `CURRENT_CONTEXT.md`,
-  `_system/views/INDEX.md`, `lint-context/{daily,monthly}/*`.
+  `_system/views/INDEX.md`, `lint-context/{daily,monthly}/*`, hub-map
+  projections under `5_meta/mocs/`.
 
 If a consumer needs any of these, the right answer is to derive them
 itself from the manifests it does receive — not to reach into engine

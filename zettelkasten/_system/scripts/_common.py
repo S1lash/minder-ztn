@@ -749,6 +749,32 @@ class Principle:
     def statement(self) -> str:
         return str(self.frontmatter["statement"]).strip()
 
+    @property
+    def cognitive_axes(self) -> list[str]:
+        """Optional axis tags powering hub-cognitive-model.
+
+        Slugs from the cognitive-model lens axis list (single source of
+        truth: `_system/registries/lenses/cognitive-model/prompt.md`). The
+        schema validator does NOT enforce slug membership — that coupling
+        belongs to `render_cognitive_model_hub.py`, which validates each
+        slug against the axis SoT and drops unknowns. Here we only expose
+        the raw list; non-list / absent → empty.
+        """
+        val = self.frontmatter.get("cognitive_axes", [])
+        if not isinstance(val, list):
+            return []
+        # Dedup preserving first-seen order — a duplicate slug in the tag must
+        # not produce a duplicated [[principle-id]] link in the hub row.
+        return list(dict.fromkeys(str(x) for x in val))
+
+    @property
+    def source_quote(self) -> str:
+        """Optional verbatim owner quote grounding the principle (set on
+        promotion of a dimension-tagged candidate). The DEC-3 source quote;
+        empty string when absent."""
+        val = self.frontmatter.get("source_quote")
+        return str(val).strip() if isinstance(val, str) else ""
+
 
 # -----------------------------------------------------------------------------
 # Parsing & validation
