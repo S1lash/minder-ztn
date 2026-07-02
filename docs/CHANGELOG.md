@@ -2,6 +2,36 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.40.0 — Scheduled processing self-drains a backlog
+
+If your scheduler is off for a while, the inbox piles up. Previously the first
+catch-up run tried to process the whole backlog at once — and on a cloud
+schedule that single run could run past its time limit, get killed mid-way, and
+strand its work (nothing saved, next run repeats the overload).
+
+Now `/ztn:process` bounds how much it takes per run, so a backlog drains
+steadily across successive runs instead of choking on one.
+
+### What you get
+
+- **A per-run transcript cap (default 12).** Each run processes the oldest
+  transcripts up to the cap; the rest wait in the inbox and are picked up next
+  run — nothing is lost, order is preserved. On a normal daily inflow the cap
+  never binds.
+- **Biometric days are never capped.** `metric-day` sources (Garmin, Oura,
+  ActivityWatch, …) are deterministic and cheap — they always process in full,
+  so no biometric gaps.
+- **Manual escape hatch.** For a supervised local catch-up with no time
+  pressure, `/ztn:process --limit all` drains the whole inbox in one run.
+  `--limit N` sets a custom cap for a single run.
+
+### Behaviour change
+
+A bare `/ztn:process` now processes at most 12 transcripts per run (was:
+unbounded). Pass `--limit all` to restore the old drain-everything behaviour
+for a single run. Scheduled ticks need no change — they pick up the default
+automatically.
+
 ## 0.39.0 — A visible model of how you think
 
 The `cognitive-model` lens (0.38.0) proposed «you seem to want X» one candidate

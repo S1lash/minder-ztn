@@ -38,6 +38,26 @@ Per-batch full-pipeline subagent (Step 3) + producer self-review (Step 3.7) guar
 - `--dry-run` — list new files without processing
 - `--file <path>` — process a single specific file (skip PROCESSED.md comparison)
 - `--reprocess` — re-process files already in PROCESSED.md
+- `--limit N` — cap the **transcript** processing queue at the first `N`
+  (oldest) files after the chronological sort, applied in §2.3 (before the
+  §2.4 move-to-processed) to the `Family: transcript` files only.
+  **`DEFAULT_TRANSCRIPT_LIMIT = 12`** — this line is the single source of truth
+  for the cap; when the flag is absent the queue is capped at that value. Do
+  NOT restate the number anywhere else (scheduler prompts, §2.3, §2.5 refer to
+  "the effective `--limit` / its default", never a literal). Accepted values:
+  integer `N >= 1` → cap at N; `N = 0` → process zero transcripts (metric-day
+  still runs); `all` (or any non-integer) → unbounded, process every
+  transcript. `N >= transcript count` → no-op (full list). `metric-day`
+  (biometric / activity) files are NEVER capped — deterministic, inline, cheap;
+  a cap would leave biometric-day gaps. Files beyond the cap stay in
+  `_sources/inbox/` (not moved in §2.4) and are picked up next run — the queue
+  is inbox-driven, nothing is lost. Purpose: bound per-run subagent work so a
+  large backlog (e.g. after a paused scheduler) self-drains across successive
+  runs instead of exhausting one run's cloud wall-clock. Escape hatch for a
+  supervised manual catch-up with no wall-clock pressure: `--limit all`.
+  Silently ignored under `--file`, `--reprocess`, and `--reprocess-corpus`
+  (the last has its own `--corpus-limit`) — the default cap applies to the
+  plain inbox path only.
 - `--reprocess-corpus` — historical-corpus mode: walk existing records and
   knowledge notes (instead of inbox), re-extract concepts via the matcher
   subagent, UPDATE existing files in place. See **Mode: --reprocess-corpus**
@@ -480,8 +500,25 @@ Chronological order matters: earlier transcripts provide context for later ones 
 within a batch via shared subagent context, across batches via the pre-scan
 briefing (see §3.0.1, §3.0.3).
 
-If 0 new files found: report "No new transcripts to process" and exit.
-If `--dry-run`: list new files with timestamps, then STOP.
+**Transcript cap (`--limit`, transcripts only).** After the sort above, cap
+the `Family: transcript` files (per SOURCES.md Family column — see §2.5) to the
+effective `--limit` — the flag value, or its default when the flag is absent
+(the canonical default lives in §Arguments `--limit`; never restate the number
+here). `--limit all` disables the cap. Files beyond the cap are left untouched
+in `_sources/inbox/` — NOT moved in §2.4 — and are picked up by a later run
+(the queue is inbox-driven, so nothing is lost). `metric-day` files are exempt
+and always process in full. Edge cases: `0` → zero transcripts retained;
+cap `>=` transcript count → no-op. The retained set is the "files to be
+processed" that §2.4 moves. When the cap actually truncated the queue, state it
+in the run's report — «processed the N oldest of M new transcripts; M−N remain
+in inbox for the next run (pass `--limit all` to drain in one go)» — so a bound
+run never looks like silent under-processing. Purpose: bound per-run subagent
+work so a large backlog self-drains across runs instead of exhausting one run's
+cloud wall-clock.
+
+If 0 new files found (after any `--limit` truncation): report "No new
+transcripts to process" and exit. If `--dry-run`: list new files with
+timestamps (reflecting `--limit`), then STOP.
 
 ### 2.4 Move to Processed (before processing)
 
@@ -507,7 +544,9 @@ After Step 2 produces a chronological file list, partition by the
 SOURCES.md `Family` column before Step 3 dispatch:
 
 - `Family: transcript` (default) → flows into Step 3 batch + subagent
-  + LLM pipeline as before. No change.
+  + LLM pipeline as before. No change. (This partition was already capped in
+  §2.3 by the effective `--limit` — default-on unless `--limit all` — the
+  `metric-day` branch below is never capped.)
 - `Family: metric-day` → processed **inline, synchronously, in the
   main orchestrator process** by `_system/scripts/process_metric_day.py`.
   NO subagent dispatch, NO LLM. Each file goes through
@@ -2701,6 +2740,8 @@ Output to user:
 ```
 /ztn:process
 /ztn:process --dry-run
+/ztn:process --limit all       # drain the whole inbox in one run (supervised manual catch-up; bypasses the default transcript cap)
+/ztn:process --limit 6         # cap this run to the 6 oldest transcripts
 /ztn:process --file _sources/inbox/plaud/2026-01-25_meeting/transcript_with_summary.md
 /ztn:process --reprocess
 /ztn:process --reprocess-corpus --scope records --dry-run

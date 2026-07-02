@@ -75,9 +75,17 @@ Then exit `partial` immediately. Do not retry.
      `"sync-data blocked, owner action needed"`, exit `sync-blocked`.
 
 4. `/ztn:process` — exactly ONE invocation. The skill runs the full
-   pipeline including the inline `/ztn:maintain` tail. Per-batch
-   sub-agent dispatch fires inside the skill (Step 3) — that is the
-   skill's own architecture and IS preserved.
+   pipeline including the inline `/ztn:maintain` tail. Per-batch sub-agent
+   dispatch fires inside the skill (Step 3) — that is the skill's own
+   architecture and IS preserved.
+
+   The skill caps its transcript queue per run by default (see
+   `/ztn:process` §Arguments `--limit`; metric-day / biometric files are
+   never capped). That bound is what keeps a large backlog — e.g. after a
+   paused scheduler — self-draining across successive ticks instead of
+   exhausting one tick's cloud wall-clock and orphaning in-flight sub-agents.
+   Do NOT pass `--limit` here — the default is the intended scheduler
+   behaviour, and passing a number would duplicate the canonical value.
    - On skill error → run failure-handling, exit `partial`.
    - When the skill returns, the immediate next action is step 5 with
      no intermediate text.
