@@ -137,6 +137,17 @@ For each path marked overwrite:
 git checkout <remote>/<branch> -- <path>
 ```
 
+**`.claude/skills/` — pre-clean before checkout.** Upstream ships this path as
+a real-file tree; a local clone may hold it as symlinks or, on a Windows clone
+(`core.symlinks=false`), as text files masquerading as symlinks. A plain
+`git checkout` then aborts on the file→dir type change. When `.claude/skills`
+is among the overwrite paths, remove it first so the real-file tree lands
+cleanly (it carries no owner data):
+```
+rm -rf .claude/skills
+git checkout <remote>/<branch> -- .claude/skills
+```
+
 For each path marked keep — leave local copy.
 
 For each path absent upstream (deleted in upstream) — leave local copy
