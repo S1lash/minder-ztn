@@ -58,6 +58,33 @@ into it:
 it and never call `git commit` / `git push` / `git add` outside the
 helper scripts (with one narrow exception below for the MCP fallback).
 
+## Skill discovery — the Step 0 preflight
+
+Every tick invokes `/ztn:*` skills as slash commands. The runtime discovers
+them from `.claude/skills/<name>/SKILL.md` in the clone. If that layout is
+broken, the tick dies at its first slash invocation — historically the most
+common scheduler failure.
+
+The layout is cross-platform by construction: the skeleton ships
+`.claude/skills/<name>/SKILL.md` as **real files**, not symlinks. Git symlinks
+do not survive a Windows clone (`core.symlinks=false` materialises the symlink
+blob as a text file, so `.claude/skills/ztn-process` becomes a file and its
+`SKILL.md` disappears). The owner repo keeps symlinks for the dev loop;
+`scripts/release_engine.py` dereferences them into real files on release, and
+`scripts/sync_engine.sh` replaces a broken local `.claude/skills/` with the
+real-file tree on `/ztn:update`.
+
+As a fail-fast guard, **Step 0** of every tick runs
+`scripts/scheduler/ensure-skills.sh` (check-only) and, if any skill does not
+resolve, ships a precise failure note and exits `partial` instead of cascading
+into confused recovery. The tick does **not** try to repair the layout
+in-session: the runtime scans skills at clone time, so a mid-tick fix cannot
+make the slash commands load, and a cloud sandbox is ephemeral so it cannot
+persist either. Repair belongs to persistent local setups — `install.sh` runs
+`ensure-skills.sh --repair` there (symlink where supported, real-file copy as
+fallback). The durable fix for a broken clone is the real-file skeleton layout
+delivered via `/ztn:update`.
+
 ## Delivery model — two modes with an MCP fallback
 
 `finalize-tick.sh` auto-detects how to deliver the tick's commit:

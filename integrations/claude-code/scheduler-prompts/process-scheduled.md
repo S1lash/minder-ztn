@@ -5,10 +5,10 @@ no human in this loop. The contract below is load-bearing.
 
 The ZTN skills in this prompt — `/ztn:sync-data`, `/ztn:process` — are
 invoked **as slash commands in this same conversation**. Skills are
-committed to the cloned repo at `.claude/skills/<name>/SKILL.md` (symlinks
-into `integrations/claude-code/skills/<name>/`), so the runtime loads them
-automatically — write the slash command literally as the next action and
-it executes.
+committed to the cloned repo at `.claude/skills/<name>/SKILL.md`, so the
+runtime loads them automatically — write the slash command literally as
+the next action and it executes. Step 0 verifies this layout resolved in
+the clone before any slash invocation.
 
 **Single-commit guarantee.** This tick produces **exactly one git commit
 + one git push**, both from `bash scripts/scheduler/finalize-tick.sh` at
@@ -34,6 +34,13 @@ scripts listed below is a contract violation.
   conversation. (The skill's own internal Task dispatch — specifically
   `/ztn:process` Step 3 per-batch sub-agents — IS preserved; that fires
   inside the skill invocation as the skill's own architecture.)
+- Do NOT `git commit --amend`, `--reset-author`, or otherwise rewrite an
+  existing commit, and do NOT change git author/committer identity
+  (`git config user.email/user.name`, `GIT_AUTHOR_*`, `GIT_COMMITTER_*`).
+  A sandbox commit whose author shows as "unverified" is EXPECTED and
+  harmless — delivery (`finalize-tick.sh` / Step 5b) does not depend on
+  commit-author identity. Never amend to "fix" it; that is a contract
+  violation and strands the tick.
 - Do NOT poll locks, `git status`, or any state file to infer skill
   progress. Slash invocations are synchronous; their return IS completion.
 - Do NOT narrate or summarise between steps. After each step returns, the
@@ -58,6 +65,19 @@ bash scripts/scheduler/ship-failure-note.sh "<one-line cause>" process-scheduled
 Then exit `partial` immediately. Do not retry.
 
 ## Steps
+
+0. `bash scripts/scheduler/ensure-skills.sh` — verify the project-level
+   ZTN skills resolve at `.claude/skills/<name>/SKILL.md` before any slash
+   invocation. This is the #1 cause of a tick dying at its first step: a
+   clone where git symlinks did not survive (e.g. a Windows commit with
+   `core.symlinks=false` materialises them as text files). On non-zero
+   exit, do NOT attempt to repair or hand-load skills in this session —
+   the runtime already scanned skills at clone time and a cloud sandbox is
+   ephemeral, so an in-session fix cannot make the slash commands load and
+   cannot persist. Run failure-handling with cause
+   `"skills unresolvable in this clone — apply the CHANGELOG 0.41.0 recovery, then re-run"`
+   and exit `partial`. The durable fix is real-file skills delivered via
+   the skeleton + `/ztn:update`, not an in-tick repair.
 
 1. `bash scripts/scheduler/pin-main.sh` — get on fresh `origin/main`,
    capture the starting sandbox branch, and best-effort recover any

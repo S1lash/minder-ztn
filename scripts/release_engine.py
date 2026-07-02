@@ -102,6 +102,63 @@ def _copy_symlink(src: Path, dst: Path, dry_run: bool, label: Path) -> None:
     os.symlink(target, dst)
 
 
+# Paths whose committed symlinks must ship to the skeleton as REAL files rather
+# than being preserved as symlinks. `.claude/skills/<name>` are symlinks into
+# `integrations/claude-code/skills/` in the owner repo (native on macOS/Linux,
+# convenient for the dev loop) — but git symlinks do NOT survive a Windows
+# clone: with `core.symlinks=false` git materialises the symlink blob as a text
+# file containing the target path, so `.claude/skills/ztn-process` becomes a
+# FILE and `.claude/skills/ztn-process/SKILL.md` no longer exists. That breaks
+# skill discovery for Cloud Routines and project-CWD sessions on friends'
+# machines. Dereferencing at release time makes the skeleton cross-platform.
+_DEREF_SYMLINK_PREFIXES: tuple[str, ...] = (".claude/skills/",)
+
+
+def _under_deref(rel: Path) -> bool:
+    """True if this manifest-relative path must be dereferenced on release."""
+    posix = rel.as_posix()
+    return any(
+        posix == pref.rstrip("/") or posix.startswith(pref)
+        for pref in _DEREF_SYMLINK_PREFIXES
+    )
+
+
+def _copy_deref_symlink(src: Path, dst: Path, dry_run: bool, label: Path) -> int:
+    """Dereference a symlink and copy its target as real file(s) at dst.
+
+    Returns the count of files written. A broken symlink is reported and
+    skipped (returns 0) rather than aborting the release.
+    """
+    resolved = src.resolve()
+    if not resolved.exists():
+        print(f"  ! broken symlink, cannot dereference: {label}", file=sys.stderr)
+        return 0
+
+    if not resolved.is_dir():
+        if dry_run:
+            print(f"  + {label} (dereferenced file)")
+        else:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(resolved, dst)
+        return 1
+
+    count = 0
+    for f in sorted(resolved.rglob("*")):
+        rel_in = f.relative_to(resolved)
+        if any(part in _SKIP_DIRS or part.endswith(_SKIP_SUFFIXES) for part in rel_in.parts):
+            continue
+        if f.is_dir():
+            continue
+        target = dst / rel_in
+        if dry_run:
+            print(f"  + {label}/{rel_in.as_posix()} (dereferenced)")
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, target)
+        count += 1
+    return count
+
+
 # Lenses that ship `status: draft` to the skeleton even though the maintainer
 # runs them `active` locally — for one of two reasons:
 #   (1) prerequisite-gated: friends lack the source data (biometric records,
@@ -215,9 +272,12 @@ def copy_path(src_root: Path, dst_root: Path, rel: str, *, strip_template: bool,
     rel_clean = rel.rstrip("/")
     src = src_root / rel_clean
 
-    # Top-level symlink — preserve as symlink (do not deref).
+    # Top-level symlink — dereference to real files under a deref-prefix
+    # (e.g. .claude/skills/), otherwise preserve as symlink.
     if src.is_symlink():
         sub_rel = Path(rel_clean)
+        if _under_deref(sub_rel):
+            return _copy_deref_symlink(src, dst_root / sub_rel, dry_run, sub_rel)
         _copy_symlink(src, dst_root / sub_rel, dry_run, sub_rel)
         return 1
 
@@ -241,8 +301,11 @@ def copy_path(src_root: Path, dst_root: Path, rel: str, *, strip_template: bool,
             # and rglob would otherwise either descend into them (duplicating
             # content under a different path) or skip them silently.
             if sub.is_symlink():
-                _copy_symlink(sub, dst, dry_run, sub_rel)
-                count += 1
+                if _under_deref(sub_rel):
+                    count += _copy_deref_symlink(sub, dst, dry_run, sub_rel)
+                else:
+                    _copy_symlink(sub, dst, dry_run, sub_rel)
+                    count += 1
                 continue
             if sub.is_dir():
                 continue

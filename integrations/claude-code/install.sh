@@ -137,6 +137,20 @@ for skill_dir in "$SRC_SKILLS"/*/; do
   link "${skill_dir%/}" "$TARGET_SKILLS/$skill_name"
 done
 
+# Repair project-level `.claude/skills/` at the repo root. Cloud Routines and
+# project-CWD sessions load skills from there, not from the user-level links
+# above. On a clone where the committed symlinks did not survive (a Windows
+# checkout with core.symlinks=false materialises them as text files), this
+# heals the layout — symlink where supported, real-file copy as fallback.
+ENSURE_SKILLS="$REPO_ROOT/scripts/scheduler/ensure-skills.sh"
+if [ -f "$ENSURE_SKILLS" ]; then
+  if ( cd "$REPO_ROOT" && bash "$ENSURE_SKILLS" --repair ); then
+    log "verified project-level .claude/skills/ resolves"
+  else
+    log "WARNING: could not repair project-level .claude/skills/ — run 'bash scripts/sync_engine.sh' or re-clone"
+  fi
+fi
+
 # --- Auto-wire @-imports into ~/.claude/CLAUDE.md ---
 # Idempotent: managed block delimited by markers. Re-running install.sh
 # rewrites the block in place. uninstall.sh strips it.

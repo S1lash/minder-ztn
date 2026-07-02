@@ -2,6 +2,46 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.41.0 — Scheduled ticks work on Windows clones
+
+Scheduled runs discover the `/ztn:*` skills from `.claude/skills/<name>/SKILL.md`
+in your clone. That layout was shipped as git symlinks — which **do not survive
+a Windows clone** (`core.symlinks=false` turns each symlink into a text file, so
+the skill folder vanishes). On such a clone every scheduled tick died at its
+first step, and the agent could spiral into out-of-contract recovery.
+
+### What you get
+
+- **Cross-platform skills.** The skeleton now ships `.claude/skills/` as real
+  files, not symlinks — they clone correctly on Windows, macOS, Linux, and in
+  Cloud Routines. (The maintainer's own repo keeps symlinks for the dev loop;
+  they are dereferenced to real files at release.)
+- **Self-healing update.** `/ztn:update` now replaces a broken local
+  `.claude/skills/` with the real-file layout.
+- **A pre-flight guard.** Every tick verifies skills resolve before running and,
+  if something is still wrong, ships a precise failure note instead of failing
+  obscurely. Scheduler prompts also explicitly forbid rewriting commit identity
+  (`git commit --amend` / `--reset-author`) — an "unverified" sandbox author is
+  normal and never needs fixing.
+
+### If a scheduled tick was already failing on Windows
+
+An already-broken clone cannot self-heal on the first `/ztn:update` (the old
+update path and a stale `.gitignore` block it). Run this once to repair and
+push the fix so your Cloud Routines pick it up, then future updates self-heal:
+
+```
+git fetch upstream
+rm -rf .claude/skills
+git checkout upstream/main -- .gitignore .claude/skills
+git add -A .gitignore .claude/skills
+git commit -m "fix: cross-platform real-file skills layout"
+git push
+```
+
+No personal data is affected — `.gitignore` and `.claude/skills/` hold only
+engine files. If unsure, ask your Claude to run these for you.
+
 ## 0.40.0 — Scheduled processing self-drains a backlog
 
 If your scheduler is off for a while, the inbox piles up. Previously the first

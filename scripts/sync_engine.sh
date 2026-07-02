@@ -96,10 +96,25 @@ if [ $DRY_RUN -eq 1 ]; then
   exit 0
 fi
 
+# Engine paths whose upstream layout is a real-file directory but whose local
+# copy may be a symlink or — on a Windows clone with core.symlinks=false — a
+# text file masquerading as a symlink. A plain `git checkout` of the directory
+# then aborts with "blocked by existing file" on the file→dir type change. These
+# paths carry no owner data, so removing the local copy before checkout is safe
+# and lets the real-file tree land cleanly. This is what heals a Windows clone's
+# broken `.claude/skills/` on `/ztn:update`.
+DEREF_CLEAN_PATHS=(".claude/skills")
+
 echo "[sync] checking out engine paths from $REMOTE/$BRANCH ..."
 for p in "${ENGINE_PATHS[@]}"; do
   # `git checkout <ref> -- <path>` works for both files and directories.
   if git cat-file -e "$REMOTE/$BRANCH:$p" 2>/dev/null; then
+    for clean in "${DEREF_CLEAN_PATHS[@]}"; do
+      if [ "$p" = "$clean" ]; then
+        rm -rf "$p"
+        break
+      fi
+    done
     git checkout "$REMOTE/$BRANCH" -- "$p"
     echo "  + $p"
   else
