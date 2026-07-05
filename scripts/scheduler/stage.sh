@@ -38,7 +38,14 @@ extract_paths() {
   done
 }
 
-CLASSIFIED="$(git status --porcelain | extract_paths | python3 "$SCRIPT_DIR/_classify_paths.py")"
+# `-c core.quotepath=false` is load-bearing: with the default (true), git
+# octal-escapes non-ASCII bytes in `git status --porcelain` output (e.g. a
+# Cyrillic filename becomes "…\320\222…"). extract_paths strips the wrapping
+# quotes but cannot decode those escapes, so the literal backslash-octal string
+# reaches `git add` and fails with "pathspec did not match". With quotepath
+# off, non-ASCII prints as raw UTF-8; spaces still wrap the path in quotes,
+# which extract_paths already handles.
+CLASSIFIED="$(git -c core.quotepath=false status --porcelain | extract_paths | python3 "$SCRIPT_DIR/_classify_paths.py")"
 CLASSIFY_RC=$?
 if [ "$CLASSIFY_RC" -ne 0 ]; then
   echo "stage: path classifier failed (rc=$CLASSIFY_RC)" >&2
@@ -78,7 +85,7 @@ git add -- "${OWNER_DIRTY[@]}" || exit 2
 # Defence-in-depth: re-classify what actually landed in the index. The
 # manifest is authoritative; this catches index races where a stat-only
 # refresh might let an engine path slip through.
-INDEX_CLASSIFIED="$(git diff --cached --name-only | python3 "$SCRIPT_DIR/_classify_paths.py")"
+INDEX_CLASSIFIED="$(git -c core.quotepath=false diff --cached --name-only | python3 "$SCRIPT_DIR/_classify_paths.py")"
 STAGED_ENGINE=()
 while IFS=$'\t' read -r label path; do
   [ -z "${path:-}" ] && continue

@@ -102,7 +102,7 @@ declare -a STAGED=()
 while IFS= read -r p; do
   [ -z "$p" ] && continue
   STAGED+=("$p")
-done < <(git diff --cached --name-only)
+done < <(git -c core.quotepath=false diff --cached --name-only)
 
 categorize() {
   local p="$1"

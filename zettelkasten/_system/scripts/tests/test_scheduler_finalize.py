@@ -129,6 +129,41 @@ def test_engine_paths_not_committed(repo: Path) -> None:
     assert "engine drift" in clar.read_text()
 
 
+def test_commits_non_ascii_filenames(repo: Path) -> None:
+    """Regression: Cyrillic / spaced filenames must not break staging.
+
+    Under the default core.quotepath=true, `git status --porcelain`
+    octal-escapes non-ASCII bytes (a Cyrillic name becomes "…\\320\\222…").
+    stage.sh must read paths with quotepath disabled, otherwise the escaped
+    pathspec never matches on `git add` and the whole tick fails to commit —
+    stranding every processed record. Observed in production on a friend's
+    Russian-named transcripts.
+    """
+    name = "20260703-встреча SPV инвестиции.md"
+    f = repo / "zettelkasten/_records" / name
+    # Seed + commit so the file is TRACKED. git status then reports it as an
+    # individual (escaped-under-quotepath=true) path on the next change — the
+    # exact condition that broke production. A brand-new untracked dir would
+    # instead collapse to an unescaped dir name and mask the bug.
+    f.write_text("v1\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "seed cyrillic record")
+    _git(repo, "push", "-q", "origin", "main")
+
+    f.write_text("v2\n", encoding="utf-8")  # -> " M <escaped path>"
+
+    result = _run_script(repo, "finalize-tick.sh", "scheduler/process")
+    assert result.returncode == 0, result.stderr
+
+    # Committed and pushed — no local commits ahead of origin.
+    ahead = _git(repo, "log", "--oneline", "origin/main..HEAD")
+    assert ahead.stdout.strip() == ""
+
+    # The Cyrillic-named file's change actually landed in the commit.
+    head_files = _git(repo, "-c", "core.quotepath=false", "show", "--name-only", "--format=", "HEAD")
+    assert name in head_files.stdout, head_files.stdout
+
+
 def test_stage_is_idempotent(repo: Path) -> None:
     (repo / "zettelkasten/_records/r1.md").write_text("rec1\n")
 

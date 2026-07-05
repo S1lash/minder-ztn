@@ -2,6 +2,21 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.41.1 — Scheduled ticks commit non-ASCII (Cyrillic, etc.) filenames
+
+A scheduled tick could process everything correctly and then fail at the very
+last step — the single commit — if any changed file had a non-ASCII name (e.g.
+a Russian-titled transcript). All processed records, notes, and people would be
+stranded uncommitted.
+
+Cause: `git status --porcelain` octal-escapes non-ASCII bytes by default, and
+the staging helper passed those escaped strings straight to `git add`, which
+never matched them. Fixed by reading paths with escaping disabled. Covered by a
+regression test.
+
+If a tick was failing this way, just re-run it after `/ztn:update` — no data was
+lost (source transcripts stay in the inbox until a tick commits successfully).
+
 ## 0.41.0 — Scheduled ticks work on Windows clones
 
 Scheduled runs discover the `/ztn:*` skills from `.claude/skills/<name>/SKILL.md`
