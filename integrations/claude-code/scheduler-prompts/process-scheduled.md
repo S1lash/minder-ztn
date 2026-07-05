@@ -34,8 +34,11 @@ scripts listed below is a contract violation.
   conversation. (The skill's own internal Task dispatch — specifically
   `/ztn:process` Step 3 per-batch sub-agents — IS preserved; that fires
   inside the skill invocation as the skill's own architecture.)
-- Do NOT `git commit --amend`, `--reset-author`, or otherwise rewrite an
-  existing commit, and do NOT change git author/committer identity
+- Do NOT run any history-rewriting or work-discarding git command directly:
+  `git commit --amend`, `--reset-author`, `git reset` (any mode), `git checkout
+  --force`, `git rebase`. The helper scripts do their own internal recovery
+  (finalize-tick.sh may `git reset --soft`); you never run these yourself. And
+  do NOT change git author/committer identity
   (`git config user.email/user.name`, `GIT_AUTHOR_*`, `GIT_COMMITTER_*`).
   A sandbox commit whose author shows as "unverified" is EXPECTED and
   harmless — delivery (`finalize-tick.sh` / Step 5b) does not depend on

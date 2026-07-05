@@ -91,7 +91,12 @@ device pulling it.
 
 ### Step 1 — Snapshot working tree
 
-Run `git status --porcelain=v1`. Build a categorisation:
+Run `git -c core.quotepath=false status --porcelain=v1`. The
+`core.quotepath=false` is load-bearing: with the default (`true`) git
+octal-escapes non-ASCII bytes in the output (a Cyrillic filename becomes
+`"…\320\222…"`), and a later `git add` of that escaped string fails with
+«pathspec did not match». With it off, paths print as raw UTF-8 (spaces still
+wrap a path in quotes, which you strip). Build a categorisation:
 
 | Category | Path globs | Default action |
 |---|---|---|

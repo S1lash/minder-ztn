@@ -2,6 +2,19 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.41.2 — Non-ASCII filenames + no git improvisation, everywhere
+
+Hardening pass so the two failure modes from 0.41.0/0.41.1 cannot recur through
+any other path:
+
+- **`/ztn:save`** now reads the working tree with `core.quotepath=false`, so
+  the interactive "save my work" button stages Cyrillic (and any non-ASCII)
+  filenames instead of failing the same way a scheduled tick did.
+- **Scheduler prompts** now explicitly forbid every history-rewriting or
+  work-discarding git command run by hand — `--amend`, `git reset` (any mode),
+  `git checkout --force`, `git rebase`, and identity edits. Recovery is the
+  helper scripts' job; a tick never does git surgery itself.
+
 ## 0.41.1 — Scheduled ticks commit non-ASCII (Cyrillic, etc.) filenames
 
 A scheduled tick could process everything correctly and then fail at the very
