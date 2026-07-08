@@ -406,7 +406,10 @@ Suppression applies к ALL scans (A–H) producing surfaced-tier CLARIFICATIONS.
 - Missing `layer:` → infer from folder path (`strong` → silent)
 - Missing `tags:` → empty list `tags: []` (`strong` → silent)
 - `tags:` string not list → wrap in list (`strong` → silent)
-- Frontmatter invalid YAML → `weak`, CLARIFICATION `frontmatter-unfixable-schema`
+- Frontmatter invalid YAML → **first attempt deterministic fence repair** via `_common.repair_misplaced_fence(path)`. This fixes the producer corruption where a `## ` body heading (typically `## Evidence Trail` and its `- **date** …` bullet) was written inside the frontmatter fence, captured into the YAML, and broke `yaml.safe_load`. Detection is `_common.frontmatter_closed_before_body(path)` False AND `_common.read_frontmatter(path)` None.
+  - Repair returns True → `strong` → silent autofix, fix-id `frontmatter-fence-repair-autofix` logged in `log_lint.md` (same shape as other Scan A fixes).
+  - Repair returns False (ambiguous split point) → `weak`, CLARIFICATION `frontmatter-fence-misplaced`.
+  - Invalid YAML for any other reason (not a misplaced fence) → `weak`, CLARIFICATION `frontmatter-unfixable-schema`.
 
 **A.3 Duplicate hub bullets:**
 - For each hub в `5_meta/mocs/`, scan `## Открытые вопросы` for exact-duplicate bullets (same wikilink + same text)
@@ -456,6 +459,57 @@ Pipeline:
 The 7-day grace window absorbs the «no maintain run for a few days»
 case (e.g. owner travelling) without spamming. Beyond 7 days drift
 warrants surfacing — the catalog is materially behind the corpus.
+
+**A.6.1 Task aggregation reconciliation:**
+
+Deterministic backstop for the aggregation silent-drop: `/ztn:process`
+Step 4.1 aggregates note `- [ ]` items into `TASKS.md` incrementally,
+and at scale an autonomous tick can leave tasks un-aggregated. This scan
+re-derives the full picture cheaply and surfaces any gap.
+
+Pipeline:
+1. Run `python3 _system/scripts/reconcile_tasks.py --base . --report --json`.
+   It walks all note roots (`_records` + PARA excluding `4_archive`) for
+   open `^task-id` items and diffs against active + Stale ids in `TASKS.md`.
+2. If `orphan_count > 0` → `weak` floor, CLARIFICATION
+   `task-aggregation-orphans`. Subject = «{orphan_count} task(s) present
+   in notes but not aggregated into TASKS.md — run `/ztn:process
+   --reconcile-tasks` to classify + file them». Surfaced tier (never
+   auto-apply — classification Action/Waiting/Delegate is process
+   territory, not lint's). Read-only: this scan never writes TASKS.md.
+3. `dangling_active_count` (aggregate ids no longer open in any note —
+   completion / deletion candidates) is informational only; it feeds the
+   existing Stale-candidate flow, not a CLARIFICATION here.
+
+**A.6.2 Hub index completeness:**
+
+Deterministic drift check for `_system/views/HUB_INDEX.md` (LLM-maintained by
+`/ztn:maintain`, so it can silently lag the hub files at scale).
+
+Pipeline:
+1. Count hub files on disk: `5_meta/mocs/hub-*.md` (exclude `*.template.md`).
+2. Extract the `[[hub-*]]` ids listed in HUB_INDEX.md.
+3. If any on-disk hub is missing from HUB_INDEX → `weak` floor, CLARIFICATION
+   `hub-index-incomplete`. Subject = «HUB_INDEX lists {listed} of {on-disk}
+   hubs; missing: {ids}». Surfaced tier — `/ztn:maintain` regenerates the index
+   (owner action), not lint. Read-only.
+
+**A.6.3 Calendar aggregation reconciliation:**
+
+Coarse BEST-EFFORT detector for the calendar silent-drop (the aggregate carries
+no stable `^meeting-id`, so per-event keying is not possible). Coverage is partial:
+it catches drops of events authored as `- 📅` BODY lines only — events synthesized
+from meeting prose have no anchor and are out of reach. Not a completeness guarantee.
+
+Pipeline:
+1. Run `python3 _system/scripts/reconcile_calendar.py --base . --report --json`.
+   It reports notes with a FUTURE `📅` event whose `[[note-link]]` is absent from
+   every forward-facing CALENDAR section (parseable future dates only — fuzzy /
+   past dates never flagged).
+2. If `orphan_note_count > 0` → `weak` floor, CLARIFICATION
+   `calendar-aggregation-orphans`. Subject = «{orphan_note_count} note(s) with a
+   future event dropped from CALENDAR — run `/ztn:process --reconcile-calendar`».
+   Surfaced tier; read-only.
 
 **A.7 Concept and audience-tag format autofix (autonomous, no CLARIFICATIONs):**
 
@@ -2105,10 +2159,14 @@ The skill clusters items by theme, reminds context + verbatim quotes inline, and
 - `link-broken-2plus-candidates` — broken wikilink с 2+ possible targets
 - `link-broken-unresolvable` — broken wikilink с 0 candidates
 - `frontmatter-unfixable-schema` — schema mismatch not auto-fixable
+- `frontmatter-fence-misplaced` — a `## ` body heading sits inside the YAML fence (A.2) and `repair_misplaced_fence` refused as ambiguous (multiple `---` in the displaced region); owner relocates the fence
 - `orphan-file` — file без any inbound references
 - `index-missing` — `_system/views/INDEX.md` does not exist (A.6)
 - `index-stale` — INDEX.generated > 7 days behind newest knowledge note modified (A.6)
 - `index-frontmatter-malformed` — INDEX frontmatter missing `generated:` or `generator:` (A.6)
+- `task-aggregation-orphans` — tasks present in notes as open `- [ ]` but absent from TASKS.md (A.6.1); owner runs `/ztn:process --reconcile-tasks`
+- `hub-index-incomplete` — HUB_INDEX.md is missing one or more on-disk hub files (A.6.2); regen via `/ztn:maintain`
+- `calendar-aggregation-orphans` — a note's future `📅` event is absent from CALENDAR.md (A.6.3); owner runs `/ztn:process --reconcile-calendar`
 - `portable-name-collision` — non-portable inbox name whose normalised form already exists in the same directory, or normalisation returned None (A.10 — no autofix, owner resolves)
 - `portable-name-escape` — non-portable tracked path outside inbox and not grandfathered via PROCESSED.md (A.10 — surfaced only; rename + reference rewrite is an owner-reviewed action)
 

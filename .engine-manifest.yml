@@ -113,6 +113,7 @@ engine:
 
   # Root meta (no CI ships to skeleton — see exclude:)
   - .gitignore
+  - .gitattributes    # forces LF on shell/python — Windows friends must not get CRLF
   - .engine-manifest.yml
   - LICENSE
   - integrations/VERSION

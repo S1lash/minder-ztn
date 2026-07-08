@@ -562,8 +562,17 @@ LLM error:
 
 ### 5.4 Validator (structural, deterministic)
 
-Validator rules canonical in `_frame.md` Stage 3. Apply the branch
-matching the lens's `output_schema`:
+**Frontmatter fence integrity (universal, runs first for every `output_schema`).**
+A Stage 2 output is an LLM-composed file (frontmatter + `## Observation N` body) —
+structurally identical to a knowledge note, so it carries the same risk of a `## `
+body heading being captured inside the YAML fence (breaks `yaml.safe_load`). Before
+the schema branches: `_common.frontmatter_closed_before_body(path)` must be True AND
+`_common.read_frontmatter(path)` non-None. On failure, attempt
+`_common.repair_misplaced_fence(path)`; if it still does not parse, treat as a
+validator **Fail** (save to rejected, do not write to `_system/agent-lens/`) — never
+ship an unparseable observation file. Deterministic, no LLM.
+
+Then apply the branch matching the lens's `output_schema`:
 
 - `output_schema: standard` → full canonical-schema validation
   (frontmatter privacy trio, `## Observation N` structure with
@@ -785,7 +794,7 @@ Total duration: {seconds}
 - Never delete from `_sources/`. (This skill does not touch
   `_sources/` content — only writes its own `.lock` file there.)
 - Never modify `0_constitution/`, `5_meta/mocs/`, `_system/SOUL.md`,
-  `_system/registries/PEOPLE.md`, `_system/registries/PROJECTS.md`,
+  `3_resources/people/PEOPLE.md`, `1_projects/PROJECTS.md`,
   `_system/state/OPEN_THREADS.md`. The lens **reads** these (via the
   thinker); the runner never writes to them.
 - Never include lens outputs (`_system/agent-lens/`) or rejected

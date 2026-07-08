@@ -75,6 +75,8 @@ Per-batch full-pipeline subagent (Step 3) + producer self-review (Step 3.7) guar
   Early Exit Check fires). `N >= corpus size` → full list (no-op of the
   flag). Silently ignored without `--reprocess-corpus`. The deterministic
   substrate is `_common.py::select_reprocess_corpus_files`.
+- `--reconcile-tasks` — recovery mode: run `reconcile_tasks.py --report`, classify the reported orphans (task-ids in notes but absent from TASKS.md) and file them into the right section + stream, recompute the header. Bounded to the orphan delta. No transcript processing. Entry point for the lint `task-aggregation-orphans` CLARIFICATION and the update-migration nudge (Step 4.1).
+- `--reconcile-calendar` — recovery mode: re-aggregate the future `📅` events of the notes `reconcile_calendar.py --report` flags as dropped. No transcript processing (Step 4.2).
 - `--no-sync-check` — skip the data-freshness pre-flight (see below)
 
 ---
@@ -1678,7 +1680,29 @@ When a knowledge stream's primary type is `idea`:
    - Multiple matches ≥ 80%: pick highest confidence, log runner-ups to CLARIFICATIONS
    - Cross-subfolder match (business↔products): treat as AMBIGUOUS regardless of score
 
-Body structure for knowledge notes:
+Body structure for knowledge notes — the frontmatter fence (`---`) closes FIRST,
+then the body headings follow. Skeleton:
+
+```markdown
+---
+{frontmatter fields}
+---
+
+## Контекст
+## Ключевая мысль
+## Применение / Следствие
+## Связи
+## Evidence Trail
+## Source
+```
+
+**Structural invariant (hard).** Every `## ` section is BODY, written AFTER the
+closing `---`. A `## ` heading placed before the closing fence (the common failure
+is `## Evidence Trail` and its `- **date** …` bullet) is captured into the YAML
+block, breaks `yaml.safe_load`, and makes the note unparseable to every frontmatter
+consumer. Step 3.6 enforces this deterministically.
+
+Section meanings:
 - ## Контекст — where/when this came up
 - ## Ключевая мысль — the core insight/decision/idea (with `^insight-{slug}` anchor if needed)
 - ## Применение / Следствие — so what? how does this change things?
@@ -1692,9 +1716,16 @@ Every new knowledge note (`layer: knowledge`, any type: decision / insight / ref
 idea / technical) MUST include a `## Evidence Trail` section placed **before** `## Source`.
 Records (`layer: record`) and people profiles do NOT get Evidence Trail.
 
-Format:
+Format — the closing `---` fence sits ABOVE this; Evidence Trail is a BODY section,
+never inside the frontmatter:
 
 ```markdown
+---
+{last frontmatter field}
+---
+
+… other body sections …
+
 ## Evidence Trail
 
 - **YYYY-MM-DD** | [[{source-record-or-note-id}]] — {≤1-2 sentences: what was extracted / confirmed / contradicted / raised}
@@ -1738,11 +1769,22 @@ in frontmatter, not content).
 
 #### C) Hub updates → UPDATE existing hub in `5_meta/mocs/`
 
+Process is a per-BATCH actor with a single-batch view; a hub is a cross-batch
+synthesis (Layer 3). So a hub UPDATE here is **additive and non-destructive** —
+it records what THIS batch contributed, never overwrites the accumulated synthesis.
+
 For each matching hub (from Q11):
 1. Read current hub file
-2. REWRITE "Текущее понимание" — integrate new information with existing understanding.
-   This is a FULL REWRITE of the section, reflecting the latest synthesized state.
-   Written in first person, as a summary for future self.
+2. **Integrate into "Текущее понимание" — non-destructively.** Weave this batch's
+   new understanding into the existing text, PRESERVING prior synthesis. Never
+   full-rewrite the section: a single-batch view rewriting the six-month synthesis
+   overwrites accumulated cross-batch understanding with a keyhole view (a
+   non-idempotent destruction). When new info genuinely supersedes prior text, add
+   it as an evolution and record the shift in the Changelog (step 5) — do not
+   silently discard the prior state. A true from-scratch re-synthesis (reading the
+   hub's full membership) is a periodic action surfaced by `/ztn:lint` D.4
+   (`hub-stale-vs-material` — the synthesis layer is never auto-rewritten), not a
+   per-batch overwrite. Process must not bypass that gate with a destructive rewrite.
 3. ADD row to "Хронологическая карта" — date, `[[note-ref|title]]`, type, what happened
 4. ADD entries to "Связанные знания" — decisions, insights, cross-domain links
 5. ADD entry to "Changelog" (newest first) — date + what shifted in understanding
@@ -1825,9 +1867,10 @@ If minor:
 
 ### 3.6 Structural Verification
 
-After creating EACH note (record or knowledge), verify:
+After creating EACH file with frontmatter + body that the subagent writes (record, knowledge note, or hub), verify:
 
-- [ ] Frontmatter is valid YAML — no syntax errors, all required fields present
+- [ ] **Frontmatter fence integrity (deterministic — the load-bearing check).** The frontmatter `---` fence closes BEFORE any `## ` body heading. Verify with `_common.frontmatter_closed_before_body(path)` returning True AND `_common.read_frontmatter(path)` returning non-None. On failure a body heading (typically `## Evidence Trail`) was written before the closing `---` and captured into the YAML — re-emit the note moving the closing `---` to sit immediately after the last frontmatter field and before the first `## ` heading, then re-verify. Deterministic autofix, never a CLARIFICATION. This is the load-bearing check: a valid-YAML self-assertion cannot catch a comment-tolerated misplaced fence, but the helper's column-0 line invariant can. Applies to every note the run writes — both freshly created and updated in place (e.g. the idea Living-Document append).
+- [ ] Frontmatter has all required fields present
 - [ ] `layer:` field is correct — `record` for records, `knowledge` for knowledge notes
 - [ ] People IDs in `people:` exist in PEOPLE.md OR will be created in Step 3.8
 - [ ] Project IDs in `projects:` exist in PROJECTS.md AND are `hub_kind: project` (NOT trajectory/domain hubs); array length ≤ 2 with boundary annotation if 2; default length 1. See §3.3 step 4 / PROCESSING_PRINCIPLES §9.
@@ -2245,17 +2288,22 @@ After ALL files in the batch are processed:
 **Canonical structure & format: see `_system/docs/SYSTEM_CONFIG.md` → "Task Format" section.**
 Source of truth for section names, classification rules, header format, and stream grouping.
 
-**Regeneration algorithm:**
+**Incremental algorithm:**
 
 1. **Read existing TASKS.md first** — extract the set of `^task-id` values currently
    in the `## Stale` section. These IDs MUST be preserved in Stale, never moved back
    to active sections, even if the source note still has them as `- [ ]`.
    Stale = result of user's manual review; pipeline doesn't override it.
 
-2. **Scan ALL notes** (records + knowledge) for `- [ ]` items. Extract task description,
-   linked note, `^task-id`, and any `→ [[person-id]]` reference.
+2. **Incremental scan (this batch only).** Extract `- [ ]` items from the notes
+   created OR updated in THIS batch — already in memory from Step 3, not a walk of
+   the whole corpus. Each yields task description, linked note, `^task-id`, and any
+   `→ [[person-id]]` reference. (A full corpus walk is unsustainable at scale — an
+   autonomous tick would silently downgrade it and drop tasks. Completeness is
+   guaranteed deterministically by the reconciler in step 8, not by re-walking
+   everything each run.)
 
-3. **Classify each task** using the table in SYSTEM_CONFIG (Action / Waiting / Delegate).
+3. **Classify each new task** using the table in SYSTEM_CONFIG (Action / Waiting / Delegate).
    Key distinctions:
    - **Action**: «{owner-first-name from SOUL.md Identity}: ...», first-person speech (`I:`/`я:`), or task clearly for owner to execute
    - **Waiting**: «@person: ...» AND owner is the recipient of the output (blocker for owner)
@@ -2263,22 +2311,52 @@ Source of truth for section names, classification rules, header format, and stre
    - **Someday** / **Personal**: separate sections (low priority; non-work)
    - **Unclear**: → Action (safe default)
 
-4. **Apply Stale preservation** — any task whose `^task-id` was in old Stale section →
-   new Stale section. All other tasks → appropriate active section.
+4. **Merge by `^task-id` into the existing structure.** For each extracted id:
+   - id in the `## Stale` set → leave in Stale (never resurrect; owner's manual review).
+   - id already in an active section → update text/link in place, keep its current
+     section and stream (do not re-litigate a prior classification).
+   - new id → classify (step 3) and insert into the right section + stream.
 
 5. **Group within each section by stream** (`### Stream Name`). Use existing streams
    from the current TASKS.md; create new stream when a clear topic cluster emerges
    (≥3 related tasks). Stream list is organic and evolves.
 
-6. **Semantic dedup** — if two tasks express the same work from different notes,
-   merge into one entry with both `[[note-link]]` references and a single `^task-id`
-   (keep the more descriptive ID). Log merges in the report.
+6. **Semantic dedup — keyed by `(note-link, ^task-id)`, not id alone.** The same
+   `^task-id` intentionally recurs across a record and its derived knowledge notes
+   (one logical task, many notes) → merge those into one entry (union the note-links).
+   But `^task-id` is unique only *within a file* (SYSTEM_CONFIG Task Format), so two
+   genuinely different tasks in different notes can collide on an id — keying dedup by
+   id alone would silently drop one. Merge only when the task text matches; on a true
+   collision keep both, disambiguating the id, and log it.
 
 7. **Update header** — recompute `Last Updated`, per-section counts, `Total unique`.
 
-NOTE: At 500+ notes, switch to incremental update (scan only new/modified notes,
-merge into existing TASKS.md structure). For now, regenerate from all notes
-while preserving Stale.
+8. **Completeness gate (deterministic backstop — the load-bearing anti-drop check).**
+   Run `python3 _system/scripts/reconcile_tasks.py --base . --report --json` (paths are
+   relative to the zettelkasten base, the working directory for the run).
+   It walks ALL notes (cheap, unbounded, no LLM) and reports `orphan_count` — task-ids
+   present in notes but in no active/Stale section of TASKS.md. If `orphan_count > 0`,
+   the incremental pass left tasks un-aggregated (tasks in notes not touched this
+   batch): classify and file each reported orphan, then re-run until `consistent: true`.
+   Never self-certify "TASKS.md updated" without this reconciliation passing — a
+   checkbox the agent ticks while having appended only the batch's own tasks silently
+   drops every task in a note it did not touch this run. The nightly lint A.6.1 scan
+   is the durable backstop that catches the gap regardless of what a tick did.
+
+**On-demand reconcile — `/ztn:process --reconcile-tasks`.** Runs
+`reconcile_tasks.py --report --json`, then classifies each reported orphan per step 3
+and files it into the right section + stream, and recomputes the header. Bounded to
+the orphan delta — cheap, never downgraded. This is the classifier half of the
+reconciler; the script is the deterministic scanner half. Entry point for the weekly
+lint `task-aggregation-orphans` CLARIFICATION and the update-migration nudge — both
+detect orphans and point the owner here. The reconciler never writes (orphans are
+always re-derivable from the notes), so nothing is lost between detection and
+classification. **Finish with a re-verification: re-run `reconcile_tasks.py --report`
+and confirm `consistent: true` (orphan_count 0) before reporting done — the owner's
+immediate proof the backfill actually landed. If orphans remain, repeat until clean.**
+`--reconcile-calendar` mirrors this: re-aggregate the flagged notes' future events, then
+re-run `reconcile_calendar.py --report`; any residue is prose-only events out of the
+coarse check's reach (report that honestly rather than looping).
 
 ### 4.2 Update CALENDAR.md
 
@@ -2286,17 +2364,28 @@ while preserving Stale.
 
 **Canonical structure & format: see `_system/docs/SYSTEM_CONFIG.md` → "Event/Meeting Format" section.**
 
-Scan ALL notes for dated events (`📅` items) and future meetings.
-
-**Regeneration algorithm:**
-1. Extract all `📅 **YYYY-MM-DD**` items with descriptions and note links.
+**Incremental algorithm:**
+1. Extract `📅 **{date}**` items — with descriptions and note links — from the notes
+   created OR updated in THIS batch (not a walk of the whole corpus — a full
+   corpus walk is unsustainable at scale; an autonomous tick would silently
+   downgrade it and drop events).
 2. Separate Recurring (explicit regular meetings in note content) from one-off events.
 3. Identify Deadlines — events framed as «@person должен сделать X к дате» — move to Deadlines section.
-4. Split one-off events by date vs today:
-   - Future → Upcoming
+4. Merge each event into the existing CALENDAR.md sections by (date, note-link); split by date vs today:
+   - Future → Upcoming (Deadlines if `@person`)
    - Past but within 2 weeks → Past
    - Older than 2 weeks → DROP (don't carry forward)
 5. Update `Last Updated` in header.
+6. **Best-effort completeness check (NOT a deterministic gate).** Run
+   `python3 _system/scripts/reconcile_calendar.py --base . --report --json`.
+   It reports notes carrying a FUTURE `📅` BODY line whose `[[note-link]]` is absent
+   from every forward-facing CALENDAR section. Coverage is partial: unlike tasks
+   (real `^task-id` anchors), many events are synthesized from meeting PROSE and
+   never appear as a `- 📅` line, so a drop of a prose-only event is invisible to
+   this check — it catches `📅`-anchored drops only. If `orphan_note_count > 0`,
+   re-aggregate those notes' future events. The durable protection is the nightly
+   lint A.6.3 scan surfacing what it CAN see; this in-process check is an assist,
+   not a guarantee. On-demand: `/ztn:process --reconcile-calendar`.
 
 ### 4.3 Update HUB_INDEX.md
 
@@ -2319,6 +2408,7 @@ POSTS.md tracks only published posts.
 Run these checks over the ENTIRE processing run's output:
 
 - [ ] Count match: every transcript-grounded source produced exactly one record (kind = meeting | observation per Q9 routing)
+- [ ] **Fence integrity (batch-wide, defence-in-depth):** for every file created OR updated in this run that carries frontmatter + body — knowledge notes, records, **hubs (`5_meta/mocs/`), and person profiles (`3_resources/people/`)** — `_common.frontmatter_closed_before_body(path)` is True and `_common.read_frontmatter(path)` is non-None. Any failure is repaired via `_common.repair_misplaced_fence(path)`; if repair returns False (ambiguous shape), raise a `frontmatter-fence-misplaced` CLARIFICATION rather than shipping an unparseable file. The same corruption (a `## ` body heading captured inside the YAML) can occur in any LLM-composed file, not only knowledge notes.
 - [ ] No orphan path-link Evidence Trails: every new knowledge note's `## Evidence Trail` wikilink points at a record-id or note-id, never at `_sources/...`
 - [ ] No orphan extracted_from: every `extracted_from:` reference points to an existing record
 - [ ] All hubs exist: every hub referenced in notes exists as a file in `5_meta/mocs/`
@@ -2471,13 +2561,13 @@ If any item is incomplete, go back and complete it. No deferring as "follow-up."
 - [ ] People profiles: new people added to PEOPLE.md + profile files created in `3_resources/people/`
 - [ ] People profiles: existing people's `## Упоминания` updated with new mentions
 - [ ] Tags: new `person/{id}` tags added to TAGS.md for new people
-- [ ] Hubs: existing hubs updated (rewrite "Текущее понимание", add to chronological map, changelog)
+- [ ] Hubs: existing hubs updated **non-destructively** (integrate into "Текущее понимание" preserving prior synthesis — never full-rewrite; add to chronological map, changelog)
 - [ ] Hubs: new hubs CREATED for topics reaching 3+ knowledge notes threshold
-- [ ] HUB_INDEX.md rebuilt
+- [ ] HUB_INDEX.md rebuilt **AND every on-disk `5_meta/mocs/hub-*.md` appears as a `[[hub-*]]` row** (deterministic completeness — the same check as lint A.6.2; count hub files vs listed ids, not a self-certified checkbox)
 - [ ] PROCESSED.md updated for all processed source paths
 - [ ] log_process.md entry added (newest first)
-- [ ] TASKS.md updated (header counts refreshed; Stale section preserved from previous TASKS.md; classification Action/Waiting/Delegate applied per SYSTEM_CONFIG rules)
-- [ ] CALENDAR.md updated (Past section pruned to last 2 weeks; Deadlines have `@person-id` prefix)
+- [ ] TASKS.md updated (header counts refreshed; Stale section preserved from previous TASKS.md; classification Action/Waiting/Delegate applied per SYSTEM_CONFIG rules) **AND `reconcile_tasks.py --report` returns `consistent: true` (orphan_count 0)** — the deterministic anti-drop invariant, not a self-certified checkbox
+- [ ] CALENDAR.md updated (Past section pruned to last 2 weeks; Deadlines have `@person-id` prefix); `reconcile_calendar.py --report` run as a **best-effort** assist (it catches only `📅`-anchored future-event drops — the nightly lint A.6.3 scan is the durable check)
 - [ ] Content potential fields verified (content_potential + content_type + content_angle)
 - [ ] Knowledge notes placed in correct PARA folder (NOT in deprecated `2_areas/work/meetings/`)
 - [ ] New records in `_records/{meetings,observations}/` per Q9 routing (NOT in `2_areas/work/meetings/`); every transcript anchored to exactly one record
@@ -2710,7 +2800,7 @@ Output to user:
 - [x] Self-review (Step 3.7) coverage manifests returned for every transcript
 - [x] People profiles created/updated
 - [x] Hubs created/updated
-- [x] System views regenerated (TASKS, CALENDAR, HUB_INDEX)
+- [x] System aggregates updated (TASKS, CALENDAR, HUB_INDEX)
 - [x] PROCESSED.md + log_process.md updated
 - [x] Batch verification passed
 - [x] Evidence Trail present in every new knowledge note

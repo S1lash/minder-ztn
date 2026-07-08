@@ -1,0 +1,22 @@
+# Cross-platform line endings — HARD REQUIREMENT (Windows + macOS + Linux).
+#
+# Shell scripts and Python are executed on Windows via Git Bash / python3. A
+# CRLF checkout — the Windows default (core.autocrlf=true) — puts a `\r` on
+# every line, which breaks bash (`$'\r': command not found`, broken shebang)
+# and can corrupt the engine's scripts. That would break EVERY migration,
+# sync_engine.sh, install.sh, and the python pipeline for a friend on Windows.
+# So every text file the engine ships is normalised to LF on all platforms.
+
+* text=auto eol=lf
+
+# Belt-and-suspenders for the executable/parsed formats that MUST stay LF.
+*.sh    text eol=lf
+*.py    text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+
+# PowerShell (if ever added as the Windows-equivalent of a shell path) is the
+# one exception — it prefers CRLF.
+*.ps1   text eol=crlf

@@ -84,12 +84,29 @@ migrating existing open items.
 | `content-type-unknown` | `/ztn:lint` A.11 | `content_type` drift value not in `CANON_MAP` | No apply; owner picks a canonical mapping (optionally extends `CANON_MAP`) |
 | `content-type-missing` | `/ztn:lint` A.11 | Note has `content_potential` but no `content_type` | No apply; owner sets the canonical type |
 | `content-angle-missing` | `/ztn:lint` A.11 | Note has `content_potential` but empty/absent `content_angle` | Informational; the draft-maintainer proposes the hook on its next run |
+| `frontmatter-unfixable-schema` | `/ztn:lint` A.2 | Frontmatter YAML does not parse and is not a repairable misplaced-fence case | Surface; owner fixes the schema by hand |
+| `frontmatter-fence-misplaced` | `/ztn:lint` A.2, `/ztn:process` Step 4.5 | A `## ` body heading sits inside the YAML fence and `_common.repair_misplaced_fence` refused as ambiguous (multiple `---` in the displaced region) | Surface; owner relocates the closing `---` above the body |
+| `task-aggregation-orphans` | `/ztn:lint` A.6.1 | `reconcile_tasks.py` finds open `- [ ]` task-ids in notes absent from every active/Stale section of TASKS.md | Surface count; owner runs `/ztn:process --reconcile-tasks` to classify + file them (read-only detection, no auto-write) |
+| `hub-index-incomplete` | `/ztn:lint` A.6.2 | An on-disk `5_meta/mocs/hub-*.md` file is absent from HUB_INDEX.md | Surface missing ids; owner regenerates the index via `/ztn:maintain` |
+| `calendar-aggregation-orphans` | `/ztn:lint` A.6.3 | `reconcile_calendar.py` finds a note with a future `📅` event whose link is absent from every forward-facing CALENDAR section | Surface count; owner runs `/ztn:process --reconcile-calendar` (read-only detection, no auto-write) |
 
 Per-skill SKILL.md may add narrower types for skill-internal flows;
 this table covers the cross-skill canonical set referenced in
 ENGINE_DOCTRINE §3.1.
 
 ---
+
+## Cross-platform — Windows + macOS + Linux (HARD RULE)
+
+Every engine artifact — migration, script, command, hook, path, symlink, doc
+instruction — MUST work identically on all three platforms friends run: Windows
+(Git Bash + `python3`), macOS (system **bash 3.2** + `python3`), Linux. Shell
+must be bash-3.2-safe (no `mapfile`/`readarray`/`declare -A`/`${x^^}`) and use
+portable commands only (no `md5`/`md5sum` split; `sed -i.bak` not `sed -i`; no
+`readlink -f`); prefer `python3` for logic; resolve paths from repo-root, never
+hardcode `/` or `C:\`; run scripts via `bash`/`python3` (no exec-bit); keep
+`.sh`/`.py` LF (`.gitattributes` enforces it). Full statement + rationale:
+`ENGINE_DOCTRINE.md §3.9`.
 
 ## Data & Processing Rules
 
@@ -183,18 +200,27 @@ Order mandatory: frontmatter → `# Name` → `**Role:**` → `## Контекс
 
 ### Skill Write Territory (HARD RULES)
 
-Pipeline skills have non-overlapping write territories. Territory violation is
-a schema violation — audits check this via git diff scope.
+Pipeline skills have well-defined write territories: **each write-mode of a file
+has exactly one owning skill.** A few files carry more than one write-mode (e.g.
+OPEN_THREADS.md `## Active` is opened by maintain at strategic grain and appended
+by resolve for lens/owner additions) — that is not an overlap, it is distinct
+lanes with distinct owners. Writing outside your lane is a schema violation —
+audits check this via git diff scope. This table is the single source of truth for
+write territory; ENGINE_DOCTRINE §4 and `.claude/CLAUDE.md` point here rather than
+restating it.
 
 | Operation | Authorised skill | Rationale |
 |---|---|---|
 | Create new records / notes / tasks / events | `/ztn:process` only | Extraction from sources is the process domain |
+| Aggregate note `- [ ]` tasks → `TASKS.md`; note `📅` events → `CALENDAR.md` | `/ztn:process` only | Derived aggregates (views over note items), NOT owner-authored files. Owner owns only the `## Stale` task section (preserved across regens). Completeness is guaranteed by `reconcile_tasks.py` / `reconcile_calendar.py` (Step 4.1/4.2 gate), not a full re-walk each run |
+| Create a **full** hub (3+ note threshold) / update hub content (`Текущее понимание`, chronological map, changelog) in `5_meta/mocs/` | `/ztn:process` (additive, non-destructive) | Process records a batch's contribution; it MUST NOT full-rewrite `Текущее понимание` (single-batch view would destroy cross-batch synthesis). From-scratch re-synthesis is surfaced by `/ztn:lint` D.4 (`hub-stale-vs-material`), applied by owner — the synthesis layer is never auto-rewritten. (A lens-proposed **stub** hub is the separate lane below — `/ztn:resolve-clarifications`.) |
+| Regenerate `HUB_INDEX.md` | `/ztn:maintain` (full rebuild) + `/ztn:process` (additive: append a newly-created hub) | Derived index of hub files. Drift (index behind on-disk hubs) is caught deterministically by `/ztn:lint` A.6.2 (`hub-index-incomplete`) → owner regens via `/ztn:maintain` |
 | Increment PEOPLE.md `Mentions` column | `/ztn:process` only | Per-file counting happens inline at batch write |
 | Modify body of existing records/notes | `/ztn:process` (initial) + `/ztn:lint` (dedup merge only) | No other skill touches content |
 | Append `threads:` back-ref to record/note frontmatter | `/ztn:maintain` only | Structural metadata — body never touched |
 | Tier change in PEOPLE.md (promote or demote) | **via `/ztn:resolve-clarifications` only** | Never auto-applied — surfaces CLARIFICATION |
 | Thread closure (Active → Resolved in OPEN_THREADS.md) | **via `/ztn:resolve-clarifications` only** | Never auto-applied regardless of signal strength |
-| Append row to OPEN_THREADS.md `## Active` | `/ztn:resolve-clarifications` (auto-mode or owner click on `open_thread_add` lens hint) | Additive — provenance via inline `from_lens` comment |
+| Append row to OPEN_THREADS.md `## Active` | `/ztn:maintain` (strategic-grain thread opening) + `/ztn:resolve-clarifications` (auto-mode or owner click on `open_thread_add` lens hint) | Two write-modes, one owner each: maintain opens threads it detects at strategic grain; resolve applies lens/owner additions. Both additive; provenance via inline `from_lens` comment. `/ztn:process` never writes here (context-only) |
 | Create new hub stub in `5_meta/mocs/` | `/ztn:resolve-clarifications` (`hub_stub_create` lens hint) OR owner-curated | New hub carries `from_lens:` in frontmatter; lint_hub_integrity passes the stub |
 | Add wikilink to `## Связи (auto)` section in a knowledge note | `/ztn:resolve-clarifications` (`wikilink_add` lens hint) | Distinct section from manually curated `## Связи` so owner edits and auto edits don't collide |
 | Append `## Update {today}` section to a decision note | `/ztn:resolve-clarifications` (`decision_update_section` lens hint) | Scaffold only — owner fills the body |
@@ -210,7 +236,11 @@ a schema violation — audits check this via git diff scope.
 | Write AUTO-GENERATED zone of `5_meta/mocs/hub-cognitive-model.md` | `/ztn:maintain` only (via `render_cognitive_model_hub.py`, Step 7.9 — post-loop, after Step 7.8) | Pure projection of constitution `cognitive_axes` fields + candidate buffer; only the zone between the `<!-- AUTO-GENERATED: cognitive-model-hub -->` markers, never the owner's «portrait» above them. |
 
 **Supporting invariants:**
-1. `/ztn:maintain` NEVER creates content — only structural metadata (back-refs).
+1. `/ztn:maintain` NEVER creates knowledge content — no records, notes, or hub
+   synthesis prose. It writes only structural state: back-references and
+   strategic-grain thread opening in `OPEN_THREADS.md ## Active` (a tracking
+   entry, not synthesis). Hub `Текущее понимание` synthesis is explicitly NOT
+   maintain's — that stays with process (additive) + owner via lint D.4.
 2. `/ztn:lint` NEVER applies closure or tier changes — only surfaces CLARIFICATIONS.
 3. Hub `topic_relevance ≥ 1` required for hub ↔ thread linkage — pure people-overlap never links (prevents hub bloat).
 4. Dedup (similarity ≥ 95%) is the ONLY body-edit `/ztn:lint` performs — it merges, never deletes unilaterally.
@@ -826,7 +856,7 @@ Where the archived sub-table lives per registry:
 
 | Registry | Active section | Archived sub-table |
 |---|---|---|
-| `_system/registries/PEOPLE.md` | `## People` (tier 1 / 2 / 3) | `## Stale People` (tier `stale`) |
+| `3_resources/people/PEOPLE.md` | `## People` (tier 1 / 2 / 3) | `## Stale People` (tier `stale`) |
 | `1_projects/PROJECTS.md` | `## Active Projects`, `## Completed Projects` | `## Archived Projects` (status `archived` — dropped before completion; completed projects are not an archival event and do not require Reason) |
 | `_system/registries/SOURCES.md` | `## Active Sources`, `## Reserved Sources` | `## Deprecated Sources` |
 | `_system/registries/AGENT_LENSES.md` | `## Active Lenses`, `## Draft Lenses` | `## Paused/Archived Lenses` (status `paused` / `archived`) |
@@ -1093,7 +1123,7 @@ tags:
 Task IDs: уникальные в рамках файла, формат `^task-short-description`.
 Примеры: `^task-write-letter-ivan-petrov`, `^task-prepare-presentation`.
 
-### Aggregate в TASKS.md (regenerated by /ztn:process)
+### Aggregate в TASKS.md (maintained by /ztn:process — incremental merge + reconciler backstop)
 
 **Структура (6 секций):**
 
@@ -1160,7 +1190,7 @@ Stale — это результат ручного ревью пользоват
 - 📅 **YYYY-MM-DD HH:MM** — Описание события ^meeting-id
 ```
 
-### Aggregate в CALENDAR.md (regenerated by /ztn:process)
+### Aggregate в CALENDAR.md (maintained by /ztn:process — incremental merge; best-effort reconciler)
 
 **Структура (4 секции):**
 
@@ -1215,7 +1245,7 @@ Before saving each note:
 |------|---------|---------|
 | _system/docs/SYSTEM_CONFIG.md | This file — runtime config (formats, routing, types) | Manual |
 | _system/SOUL.md | Identity + Focus + Working Style | Manual + /ztn:bootstrap (once) |
-| _system/state/OPEN_THREADS.md | Active open threads + resolved history | /ztn:bootstrap, /ztn:maintain |
+| _system/state/OPEN_THREADS.md | Active open threads + resolved history | /ztn:bootstrap, /ztn:maintain, /ztn:resolve-clarifications (writers per Skill Write Territory) |
 | _system/views/CURRENT_CONTEXT.md | Live state snapshot for thin orientation | /ztn:maintain, /ztn:lint |
 | _system/views/INDEX.md | Surface catalog of knowledge + archive + constitution + hubs (PARA / domains / cross-domain / hubs facets); records and posts intentionally out of scope | /ztn:bootstrap Step 5.5, /ztn:maintain Step 7.6, regen_all.py — all via `_system/scripts/render_index.py` |
 | _system/state/log_lint.md | Append-only log of /ztn:lint runs | Each /ztn:lint |
@@ -1249,6 +1279,6 @@ Before saving each note:
 | 1_projects/PROJECTS.md | Project registry | When new projects |
 | 3_resources/people/PEOPLE.md | People registry | When new people |
 | _system/registries/FOLDERS.md | Folder structure | Rarely |
-| _system/views/HUB_INDEX.md | Index of all hub notes | Each /ztn:process |
+| _system/views/HUB_INDEX.md | Index of all hub notes | /ztn:maintain (rebuild) + /ztn:process (additive on hub create) — writers per Skill Write Territory |
 | 5_meta/CONCEPT.md | Architecture, philosophy, ADRs (human reference) | Manual |
 | 5_meta/PROCESSING_PRINCIPLES.md | 8 principles + values profile (LLM guidance) | Manual |

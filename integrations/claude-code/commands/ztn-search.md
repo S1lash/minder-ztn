@@ -41,8 +41,8 @@ grep -rl "tag-pattern" {{MINDER_ZTN_BASE}}/
 **b) Content search** — grep note bodies for keywords (use Grep tool, not bash grep)
 
 **c) Registry lookup** — check registries for entity resolution:
-- `_system/registries/PEOPLE.md` — resolve person names to IDs
-- `_system/registries/PROJECTS.md` — resolve project names to IDs
+- `3_resources/people/PEOPLE.md` — resolve person names to IDs
+- `1_projects/PROJECTS.md` — resolve project names to IDs
 - `_system/registries/TAGS.md` — find relevant tags
 
 **d) Tasks/Calendar** — if query is about tasks or events:

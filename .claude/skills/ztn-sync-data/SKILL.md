@@ -78,7 +78,7 @@ Show preview:
 
 Затронутые файлы (overlap):
   zettelkasten/_records/2026-04-28-*.md   (local + remote)
-  zettelkasten/_system/registries/PEOPLE.md (local + remote)
+  zettelkasten/3_resources/people/PEOPLE.md (local + remote)
 
 [y] continue   [n] abort
 ```

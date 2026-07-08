@@ -2,6 +2,34 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.42.0 — Aggregates never silently drop; broken notes self-repair
+
+Three integrity fixes so the pipeline can no longer quietly do less than it
+claims. Each ships with a migration that DETECTS your existing backlog and points
+you at a one-command recovery — the migrations never touch your data and never
+fail the update.
+
+- **Tasks & calendar no longer leak.** At scale, a processing tick could quietly
+  stop aggregating every note's `- [ ]` tasks and `📅` events into `TASKS.md` /
+  `CALENDAR.md`, so items accumulated un-aggregated. Now a deterministic
+  reconciler (`reconcile_tasks.py` / `reconcile_calendar.py`) checks completeness
+  every run, the nightly lint catches any gap, and `/ztn:process --reconcile-tasks`
+  (or `--reconcile-calendar`) recovers what was missed. Nothing was ever lost —
+  the tasks live in your notes; they just weren't indexed.
+- **Notes with a misplaced YAML fence self-repair.** A note whose
+  `## Evidence Trail` heading landed inside the frontmatter fence became
+  unparseable to the whole system. The producer now structurally prevents it, and
+  `/ztn:lint` deterministically moves the fence back (the note's body is preserved,
+  never deleted).
+- **Hub synthesis stops being overwritten.** A hub's "current understanding"
+  section was being wholesale-rewritten from a single batch's view, discarding
+  cross-batch synthesis. It's now updated additively; a from-scratch re-synthesis
+  only happens through the existing owner-reviewed staleness path.
+
+After `/ztn:update`, if a migration reports a backlog: run the command it prints
+(`/ztn:process --reconcile-tasks`, `/ztn:lint`, or `/ztn:maintain`). If it reports
+nothing, you're already clean.
+
 ## 0.41.2 — Non-ASCII filenames + no git improvisation, everywhere
 
 Hardening pass so the two failure modes from 0.41.0/0.41.1 cannot recur through

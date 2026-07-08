@@ -31,7 +31,9 @@ from _common import (
     EVIDENCE_TRAIL_HEADING,
     die,
     find_evidence_trail_bounds,
+    frontmatter_closed_before_body,
     parse_file,
+    read_frontmatter,
 )
 
 
@@ -208,6 +210,12 @@ def main(argv: list[str] | None = None) -> int:
     # Atomic write — never leave a partial file on interrupt.
     tmp = args.file.with_suffix(args.file.suffix + ".tmp")
     tmp.write_text(new_full, encoding="utf-8")
+    # Defence-in-depth via the canonical fence helpers (single SoT for
+    # frontmatter integrity) — never replace the live file with output whose
+    # YAML fence no longer closes before the body or no longer parses.
+    if not frontmatter_closed_before_body(tmp) or read_frontmatter(tmp) is None:
+        tmp.unlink(missing_ok=True)
+        die(f"{args.file}: refusing to write — compacted output failed frontmatter integrity check")
     tmp.replace(args.file)
     print(f"compacted {count} entries in {args.file}")
     return 0

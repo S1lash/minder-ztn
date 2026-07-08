@@ -593,7 +593,7 @@ def parse_extensions_table(
         return set()
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return set()
     m = _EXTENSIONS_BLOCK_RE.search(text)
     if not m:
@@ -794,7 +794,7 @@ def read_frontmatter(path: Path) -> tuple[dict, str] | None:
     """
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
     m = _FRONTMATTER_RE.match(text)
     if not m:
@@ -822,6 +822,104 @@ def write_frontmatter(path: Path, fm: dict, body: str) -> None:
     path.write_text(f"---\n{yaml_text}\n---\n{body}", encoding="utf-8")
 
 
+def frontmatter_closed_before_body(path: Path) -> bool:
+    """True when the YAML fence closes before any body ``## `` heading.
+
+    Detects the producer corruption where a body section (e.g.
+    ``## Evidence Trail``) and its bullets are written *inside* the
+    frontmatter block, before the closing ``---``. That makes
+    ``yaml.safe_load`` fail (a ``- ...`` bullet becomes a root sequence
+    item mixed with the mapping) and ``read_frontmatter`` return None.
+
+    The closing fence is matched at column 0 only (``line == "---"``), so an
+    indented ``---`` inside a block-scalar value — which ``yaml.safe_dump``
+    can emit for a value that itself contains ``---`` — cannot be mistaken
+    for the fence and mask a real heading below it. The opening probe stays
+    tolerant (it only decides "is this a frontmatter file at all").
+
+    This is a structural line invariant; a caller that must be certain a
+    note is *usable* combines it with ``read_frontmatter(path) is not None``
+    — the genuine corruption fails both, a benign parseable shape fails
+    neither (so the AND at the call site suppresses false positives).
+
+    Returns True when the file has no opening fence (nothing to misplace)
+    or the column-0 closing fence precedes every ``## `` heading. Returns
+    False when a ``## `` heading appears before the closing fence, or the
+    opening fence never closes.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return True  # unreadable — not this defect; caller handles I/O
+    lines = text.split("\n")
+    if not lines or lines[0].rstrip("\r").strip() != "---":
+        return True  # no frontmatter block — nothing to misplace
+    for line in lines[1:]:
+        s = line.rstrip("\r")
+        if s == "---":
+            return True  # column-0 closing fence reached before any heading
+        if s.startswith("## "):
+            return False  # body heading inside the fence — corruption
+    return False  # opening fence never closes
+
+
+def repair_misplaced_fence(path: Path) -> bool:
+    """Deterministically move a misplaced closing fence above the body.
+
+    For a note broken per :func:`frontmatter_closed_before_body` — where
+    ``## Evidence Trail`` / ``## Source`` blocks landed inside the YAML
+    fence — insert the closing ``---`` immediately after the last YAML
+    line and drop the original misplaced fence, so the body sections move
+    out of the frontmatter intact.
+
+    The return value is honest: True means the note is now (or already was)
+    well-formed AND parses. Returns False, writing nothing, when the note is
+    not the misplaced-fence defect (a well-formed fence but some other YAML
+    error), or the shape is ambiguous — no YAML keys before the heading, or
+    more than one column-0 ``---`` in the displaced region (an owner
+    horizontal rule makes the intended fence indistinguishable). Ambiguous
+    notes are left for a CLARIFICATION rather than risk silent content
+    mutation. Idempotent: re-running on a repaired note is a no-op True.
+    """
+    if frontmatter_closed_before_body(path):
+        # No misplaced fence. True only if the note actually parses — a
+        # clean fence with unrelated broken YAML is not this helper's to fix.
+        return read_frontmatter(path) is not None
+    try:
+        lines = path.read_text(encoding="utf-8").split("\n")
+    except (OSError, UnicodeDecodeError):
+        return False
+    if not lines or lines[0].rstrip("\r").strip() != "---":
+        return False
+    first_heading_idx = next(
+        (i for i in range(1, len(lines)) if lines[i].startswith("## ")), None
+    )
+    if first_heading_idx is None:
+        return False
+    insertion_after = first_heading_idx - 1
+    while insertion_after >= 1 and lines[insertion_after].rstrip("\r").strip() == "":
+        insertion_after -= 1
+    if insertion_after < 1:
+        return False  # no YAML keys before the heading — unexpected shape
+    head, tail = lines[: insertion_after + 1], lines[insertion_after + 1 :]
+    fence_positions = [j for j, line in enumerate(tail) if line.rstrip("\r") == "---"]
+    if len(fence_positions) != 1:
+        return False  # 0 = no fence to relocate; >1 = ambiguous — refuse
+    del tail[fence_positions[0]]
+    new_text = "\n".join(head + ["---"] + tail)
+    m = _FRONTMATTER_RE.match(new_text)
+    if not m:
+        return False
+    try:
+        fm = yaml.safe_load(m.group(1))
+    except yaml.YAMLError:
+        return False
+    if not isinstance(fm, dict):
+        return False
+    path.write_text(new_text, encoding="utf-8")
+    return True
+
+
 def parse_file(path: Path) -> Principle:
     """Read markdown file, split frontmatter / body, validate schema.
 
@@ -829,7 +927,7 @@ def parse_file(path: Path) -> Principle:
     """
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise ParseError(f"{path}: cannot read file ({exc})") from exc
 
     m = _FRONTMATTER_RE.match(text)

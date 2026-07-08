@@ -57,7 +57,12 @@ echo "[sync] fetching $REMOTE/$BRANCH ..."
 git fetch "$REMOTE" "$BRANCH"
 
 # Read engine paths from manifest via python3 (yaml).
-mapfile -t ENGINE_PATHS < <(
+# Portable read loop (not `mapfile` — that is bash 4.0+, and macOS ships
+# bash 3.2, so a friend updating on system bash would fail here).
+ENGINE_PATHS=()
+while IFS= read -r _line; do
+  [ -n "$_line" ] && ENGINE_PATHS+=("$_line")
+done < <(
   python3 - "$MANIFEST" <<'PY'
 import sys, yaml
 with open(sys.argv[1]) as f:

@@ -198,6 +198,21 @@ Layers currently qualifying:
   `/ztn:save` Step 0.5 pre-pass; `/ztn:lint` A.10 is the backstop.
   Collisions are NOT covered by the exception — they surface as
   `portable-name-collision` CLARIFICATIONs.
+- **Frontmatter fence repair** — `frontmatter_closed_before_body` /
+  `repair_misplaced_fence` (single SoT: `_common.py`). Relocates a `## `
+  body heading (typically `## Evidence Trail`) that a producer captured
+  inside the YAML fence. Three-property check: (1) deterministic — pure
+  line-surgery, same output on re-run; (2) conservative-safe — on any
+  ambiguity (more than one candidate `---` in the displaced region) it
+  refuses and surfaces a `frontmatter-fence-misplaced` CLARIFICATION,
+  never guessing; (3) low-per-decision-value — for an unambiguous
+  misplacement the relocation is the only correct action, so surfacing it
+  would give the owner nothing to decide. Rarity does not disqualify: the
+  property is "surfacing yields no actionable choice," which holds. Applied
+  at write time by `/ztn:process` Steps 3.6/4.5 and `/ztn:agent-lens`
+  Stage 3 validator; `/ztn:lint` A.2 is the backstop. This is the first
+  qualifying layer that repairs structural note anatomy rather than
+  normalising a metadata field — hence the explicit property write-up.
 
 Any new layer added to the engine MUST be tested against the three
 properties before claiming the exception. If even one property fails,
@@ -460,26 +475,57 @@ change to integrate. The contract is engine-level, not skill-level.
 > design, see `strategy/ARCHITECTURE.md` §5+ in the minder-project
 > repo; the manifest contract itself is consumer-agnostic.
 
+### 3.9 Cross-platform — Windows + macOS + Linux (HARD RULE)
+
+**Every engine artifact MUST work identically on all three platforms friends
+run.** Migrations, scripts, commands, hooks, paths, symlinks, doc instructions —
+anything shipped. Friends run this engine on Windows (Git Bash + `python3`),
+macOS (system **bash 3.2** — the old default — + `python3`), and Linux. An
+artifact that only works on the maintainer's machine is a silent breakage that
+surfaces as a friend's "it doesn't work for me," long after the change.
+
+- **Shell = bash-3.2-safe AND Git-Bash-safe.** No `mapfile`/`readarray`, no
+  `declare -A`, no `${var^^}`/`${var,,}` (all bash 4+). Prefer `python3` for
+  non-trivial logic. Portable commands only — no `md5`(mac)/`md5sum`(gnu) split,
+  no `sed -i ''`(mac) vs `sed -i`(gnu) (use `sed -i.bak`), no `readlink -f` /
+  `stat -f|-c` / `grep -P`. Run scripts via `bash x` / `python3 x` — never via
+  the executable bit (Windows has none).
+- **Line endings = LF, enforced by `.gitattributes`** (shipped root-meta). A
+  CRLF `.sh`/`.py` from a Windows checkout breaks bash and python.
+- **Paths portable** — `pathlib`/`os.path`, resolved from repo root; never
+  hardcode `/` or `C:\` or an absolute path.
+- **Parity in lockstep** — a shell mechanism with a Windows equivalent is edited
+  in the same change, or its limitation is stated explicitly.
+- **Readiness gate** — «runs identically on a friend's Windows machine AND on
+  plain macOS bash 3.2?» "works on my Mac" is never the bar; verify
+  (`/bin/bash -n` for bash-3.2 syntax, grep for the banned commands, check CRLF).
+
+This applies to every skill, script, and migration the engine ships, forever.
+
 ---
 
 ## 4. Sacred state
 
 These files are the engine's load-bearing state. Every skill knows
-their schema and respects them. They are listed in `SYSTEM_CONFIG.md`
-with full schemas; here is the index.
+their schema and respects them. This index gives schema/purpose and a
+writer summary. **For any file it covers, the Skill Write Territory table
+in `SYSTEM_CONFIG.md` is authoritative on the writer — defer to it on any
+discrepancy;** files without a territory row (operational layers, append-only
+buffers) take the writer named here.
 
-| File | Owner / writer | Purpose |
+| File | Writer (summary — canonical in SYSTEM_CONFIG) | Purpose |
 |---|---|---|
 | `_system/SOUL.md` | owner (manual) + `/ztn:bootstrap` (draft) + `regen` (Values zone) | Identity, values, focus, working style |
-| `_system/TASKS.md`, `CALENDAR.md`, `POSTS.md` | owner | Operational layers |
+| `_system/TASKS.md`, `CALENDAR.md` | `/ztn:process` (derived aggregates; owner owns only the TASKS `## Stale` section) | Aggregated views over note `- [ ]` / `📅` items |
+| `_system/POSTS.md` | owner | Operational layer |
 | `_system/registries/{TAGS,SOURCES}.md` | `/ztn:maintain`, `/ztn:lint` | Tag and source whitelists |
-| `_system/state/OPEN_THREADS.md` | `/ztn:bootstrap`, `/ztn:maintain` | Strategic open threads |
+| `_system/state/OPEN_THREADS.md` | `/ztn:bootstrap`, `/ztn:maintain`, `/ztn:resolve-clarifications` | Strategic open threads (`## Active` opened by maintain / resolve; `/ztn:process` context-only) |
 | `_system/state/CLARIFICATIONS.md` | every skill | Owner-gated resolution queue |
-| `_system/state/principle-candidates.jsonl` | `/ztn:capture-candidate`, `/ztn:bootstrap` | Append-only principle buffer |
-| `_system/state/people-candidates.jsonl` | `/ztn:process`, `/ztn:bootstrap` | Append-only people buffer |
+| `_system/state/principle-candidates.jsonl` | `/ztn:capture-candidate`, `/ztn:bootstrap`, `/ztn:lint` (F.5 archive) | Append-only principle buffer |
+| `_system/state/people-candidates.jsonl` | `/ztn:process`, `/ztn:bootstrap`, `/ztn:lint` (dismiss/archive) | Append-only people buffer |
 | `_system/state/check-decision-runs.jsonl` | `/ztn:check-decision` | Append-only audit substrate (run + followup lines per invocation); consumed by `decision-review` lens + future cross-source autonomy analysis |
 | `_system/views/CURRENT_CONTEXT.md` | `/ztn:bootstrap`, `/ztn:maintain` | Auto-generated focus snapshot |
-| `_system/views/HUB_INDEX.md` | `/ztn:maintain` | Hub registry (auto-generated) |
+| `_system/views/HUB_INDEX.md` | `/ztn:maintain` (rebuild) + `/ztn:process` (additive on hub create) | Hub registry (auto-generated) |
 | `_system/views/INDEX.md` | `/ztn:maintain` (via `render_index.py`) | Surface-line catalog of knowledge + archive + constitution + hubs (auto-generated, faceted by PARA / domains / cross-domain). Records and posts intentionally out of scope — own pipelines |
 | `_system/views/constitution-core.md` | `/ztn:regen-constitution` | Harness-loaded core principles |
 | `3_resources/people/PEOPLE.md` | `/ztn:bootstrap`, `/ztn:process`, `/ztn:lint` | People registry with tiers |

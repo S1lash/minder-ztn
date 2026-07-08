@@ -158,14 +158,25 @@ appropriate».
 
 If `--no-migrations` — skip.
 
-Otherwise, run each pending migration in lexical order:
+Otherwise, run each pending migration in lexical order, **capturing its
+combined stdout+stderr**:
 ```
-bash scripts/migrations/<name>.sh    # or python3 for .py
+out="$(bash scripts/migrations/<name>.sh 2>&1)"; rc=$?   # or python3 for .py
 ```
 
-Append name to `.engine-migrations-applied` on success.
+Append name to `.engine-migrations-applied` on success (`rc == 0`).
 
-If a migration fails:
+**Detection-only migrations (soft-nag) — MUST be surfaced, never let scroll past.**
+A migration that exits 0 but prints recovery instructions (a `/ztn:...` command) is
+NOT a failure — it detected a pre-existing backlog it cannot fix itself because
+recovery needs the LLM pipeline (classification / repair), not a shell script.
+Collect its captured message verbatim into a **Post-update recovery** list for
+Step 8. `011`–`014` are exactly this kind: un-aggregated tasks (`011`) / events
+(`012`), hub-index drift (`013`), misplaced note fences (`014`). If these are not
+surfaced, the owner never runs the backfill and the recovered data stays hidden —
+so surfacing them is load-bearing, not optional.
+
+If a migration fails (`rc != 0`):
 - Stop the chain.
 - Print: «migration `<name>` failed. Engine files already overwritten;
   partial state. Inspect, fix, then re-run `/ztn:update --no-migrations`
@@ -208,6 +219,14 @@ Follow-ups:
   • run ./integrations/claude-code/install.sh
   • run /ztn:regen-constitution
   • run pytest zettelkasten/_system/scripts/tests/
+
+⚠ Post-update recovery — a migration detected a pre-existing backlog. Run these
+  once to recover it (each command re-verifies itself when it finishes; if you
+  defer, the nightly /ztn:lint keeps surfacing the same gap as a CLARIFICATION,
+  so nothing is lost):
+  • <verbatim recovery line captured from each soft-nag migration in Step 6, e.g.
+    "011: 39 un-aggregated tasks → run /ztn:process --reconcile-tasks">
+  (Omit this block entirely when no migration emitted a recovery nudge.)
 
 [y] commit now   [m] edit message   [s] stage only, I'll commit
 [n] unstage and abort

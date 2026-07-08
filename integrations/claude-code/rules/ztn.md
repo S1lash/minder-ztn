@@ -39,8 +39,8 @@ discussions without explicit recall signal.
 ## How to search
 
 1. **Resolve entities** when searching by person/project/concept:
-   - `_system/registries/PEOPLE.md` — name → ID
-   - `_system/registries/PROJECTS.md` — project → ID
+   - `3_resources/people/PEOPLE.md` — name → ID
+   - `1_projects/PROJECTS.md` — project → ID
    - `_system/registries/TAGS.md` — available tags (`tags:` axis)
    - `_system/registries/CONCEPT_NAMING.md` — concept-name format
      (`concepts:` axis: snake_case ASCII, English-only). Concepts are

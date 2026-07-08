@@ -983,5 +983,230 @@ class CognitiveFieldTests(unittest.TestCase):
         self.assertEqual(self._p({}).source_quote, "")
 
 
+# A well-formed knowledge note: fence closes before any body heading.
+_GOOD_NOTE = """\
+---
+id: insight-demo
+layer: knowledge
+type: insight
+---
+
+## Связи
+
+- [[record-demo]]
+
+## Evidence Trail
+
+- **2026-05-05** | [[record-demo]] — initial
+
+## Source
+
+- [[record-demo]]
+"""
+
+# The F8 corruption: `## Evidence Trail` + bullet land inside the fence,
+# so the intended closing `---` sits after `## Source`.
+_BROKEN_NOTE = """\
+---
+id: insight-demo
+layer: knowledge
+type: insight
+## Evidence Trail
+
+- **2026-05-05** | [[record-demo]] — initial
+
+## Source
+
+- [[record-demo]]
+---
+
+## Связи
+
+- [[record-demo]]
+"""
+
+
+class FrontmatterFenceTests(unittest.TestCase):
+    def _write(self, tmp: str, text: str) -> Path:
+        p = Path(tmp) / "note.md"
+        p.write_text(text, encoding="utf-8")
+        return p
+
+    def test_good_note_passes_guard_and_parses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._write(tmp, _GOOD_NOTE)
+            self.assertTrue(c.frontmatter_closed_before_body(p))
+            self.assertIsNotNone(c.read_frontmatter(p))
+
+    def test_broken_note_fails_guard_and_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._write(tmp, _BROKEN_NOTE)
+            # red: the corruption is detected structurally AND breaks the parser
+            self.assertFalse(c.frontmatter_closed_before_body(p))
+            self.assertIsNone(c.read_frontmatter(p))
+
+    def test_file_without_frontmatter_is_not_flagged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._write(tmp, "# Registry\n\n## Section\n\nbody\n")
+            self.assertTrue(c.frontmatter_closed_before_body(p))
+
+    def test_repair_fixes_broken_note_and_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._write(tmp, _BROKEN_NOTE)
+            self.assertTrue(c.repair_misplaced_fence(p))
+            # green: now guard passes, YAML parses, body sections preserved
+            self.assertTrue(c.frontmatter_closed_before_body(p))
+            fm_body = c.read_frontmatter(p)
+            self.assertIsNotNone(fm_body)
+            fm, body = fm_body
+            self.assertEqual(fm["id"], "insight-demo")
+            self.assertIn("## Evidence Trail", body)
+            self.assertIn("## Source", body)
+            self.assertIn("## Связи", body)
+            # idempotent: a second repair is a no-op that still returns True
+            before = p.read_text(encoding="utf-8")
+            self.assertTrue(c.repair_misplaced_fence(p))
+            self.assertEqual(before, p.read_text(encoding="utf-8"))
+
+    def test_repair_noop_on_good_note(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._write(tmp, _GOOD_NOTE)
+            before = p.read_text(encoding="utf-8")
+            self.assertTrue(c.repair_misplaced_fence(p))
+            self.assertEqual(before, p.read_text(encoding="utf-8"))
+
+    def test_indented_fence_in_value_does_not_mask_corruption(self):
+        # A frontmatter value containing '---' renders as an indented line;
+        # the guard must NOT treat it as the closing fence and miss the real
+        # '## Evidence Trail' corruption below it (column-0 fence only).
+        text = (
+            "---\n"
+            "id: insight-demo\n"
+            "desc: 'a\n\n  ---\n\n  b'\n"
+            "## Evidence Trail\n\n"
+            "- **2026-05-05** | [[r]] — x\n"
+            "---\n\nbody\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._write(tmp, text)
+            self.assertFalse(c.frontmatter_closed_before_body(p))
+            self.assertIsNone(c.read_frontmatter(p))
+
+    def test_repair_returns_false_on_clean_fence_but_broken_yaml(self):
+        # Guard is clean (fence closes before body) but YAML is broken for an
+        # unrelated reason — repair must not claim True (honest contract) and
+        # must write nothing.
+        text = "---\nid: x\nbad: [unclosed\n---\n\n## Body\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._write(tmp, text)
+            self.assertTrue(c.frontmatter_closed_before_body(p))
+            self.assertIsNone(c.read_frontmatter(p))
+            before = p.read_text(encoding="utf-8")
+            self.assertFalse(c.repair_misplaced_fence(p))
+            self.assertEqual(before, p.read_text(encoding="utf-8"))
+
+    def test_repair_refuses_ambiguous_multiple_fences(self):
+        # An owner horizontal rule inside the displaced block makes the
+        # intended fence indistinguishable — repair must refuse, not guess.
+        text = (
+            "---\n"
+            "id: insight-demo\n"
+            "type: insight\n"
+            "## Evidence Trail\n\n"
+            "- bullet\n\n"
+            "---\n\n"
+            "- more\n"
+            "## Source\n\n"
+            "- x\n"
+            "---\n\n"
+            "## Связи\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._write(tmp, text)
+            self.assertFalse(c.frontmatter_closed_before_body(p))
+            before = p.read_text(encoding="utf-8")
+            self.assertFalse(c.repair_misplaced_fence(p))
+            self.assertEqual(before, p.read_text(encoding="utf-8"))
+
+
+class FenceHelperRobustnessTests(unittest.TestCase):
+    """Regression tests for the fence helpers on hostile / non-ideal inputs."""
+
+    def _write_bytes(self, tmp: str, data: bytes) -> Path:
+        p = Path(tmp) / "note.md"
+        p.write_bytes(data)
+        return p
+
+    def test_non_utf8_file_never_raises(self):
+        # A non-UTF-8 file (Windows-1251 paste, stray binary) must not crash the
+        # helpers — they read utf-8. Regression for the UnicodeDecodeError that
+        # took down the whole reconciler scan.
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._write_bytes(tmp, b"\xff\xfe\x00---\nid: x\n---\n")
+            self.assertTrue(c.frontmatter_closed_before_body(p))  # graceful, no raise
+            self.assertIsNone(c.read_frontmatter(p))
+            self.assertFalse(c.repair_misplaced_fence(p))
+
+    def test_latin1_encoded_body_never_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._write_bytes(tmp, "---\nid: x\n---\n\n## Тело\n".encode("cp1251"))
+            # Must return a bool/None, never raise UnicodeDecodeError
+            self.assertIn(c.frontmatter_closed_before_body(p), (True, False))
+            self.assertIsNone(c.read_frontmatter(p))
+
+    def test_crlf_broken_note_repairs(self):
+        text = (
+            "---\r\nid: insight-demo\r\nlayer: knowledge\r\n"
+            "## Evidence Trail\r\n\r\n- **2026-05-05** | [[r]] — x\r\n"
+            "---\r\n\r\nbody\r\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "note.md"
+            p.write_text(text, encoding="utf-8", newline="")
+            self.assertFalse(c.frontmatter_closed_before_body(p))
+            self.assertTrue(c.repair_misplaced_fence(p))
+            self.assertTrue(c.frontmatter_closed_before_body(p))
+            self.assertIsNotNone(c.read_frontmatter(p))
+
+    def test_broken_note_without_trailing_newline_repairs(self):
+        text = ("---\nid: x\nlayer: knowledge\n## Evidence Trail\n\n"
+                "- **2026-05-05** | [[r]] — x\n---\n\nbody")  # no trailing \n
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "note.md"
+            p.write_text(text, encoding="utf-8")
+            self.assertFalse(c.frontmatter_closed_before_body(p))
+            self.assertTrue(c.repair_misplaced_fence(p))
+            fm_body = c.read_frontmatter(p)
+            self.assertIsNotNone(fm_body)
+            self.assertIn("## Evidence Trail", fm_body[1])
+
+    def test_wellformed_note_with_body_horizontal_rule_passes(self):
+        # A `---` horizontal rule in the BODY of a well-formed note must not be
+        # mistaken for the closing fence.
+        text = ("---\nid: x\nlayer: knowledge\n---\n\n"
+                "## A\n\ntext\n\n---\n\n## B\n\nmore\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "note.md"
+            p.write_text(text, encoding="utf-8")
+            self.assertTrue(c.frontmatter_closed_before_body(p))
+            self.assertIsNotNone(c.read_frontmatter(p))
+            before = p.read_text(encoding="utf-8")
+            self.assertTrue(c.repair_misplaced_fence(p))  # no-op
+            self.assertEqual(before, p.read_text(encoding="utf-8"))
+
+    def test_repair_preserves_cyrillic_body_verbatim(self):
+        text = ("---\nid: x\nlayer: knowledge\n## Evidence Trail\n\n"
+                "- **2026-05-05** | [[r]] — извлечено из встречи\n---\n\n"
+                "## Связи\n\n- [[запись]]\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "note.md"
+            p.write_text(text, encoding="utf-8")
+            self.assertTrue(c.repair_misplaced_fence(p))
+            body = c.read_frontmatter(p)[1]
+            self.assertIn("извлечено из встречи", body)
+            self.assertIn("## Связи", body)
+            self.assertIn("[[запись]]", body)
+
+
 if __name__ == "__main__":
     unittest.main()
