@@ -2,6 +2,28 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.43.0 — The cognitive-model hub works for everyone, by default
+
+Minder now learns how you think out of the box, and every new friend gets the
+cognitive-model hub instead of an empty page.
+
+- **The `cognitive-model` lens is on by default.** It used to ship disabled
+  (`status: draft`), so unless you knew to flip it on, your cognitive-model hub
+  stayed blank forever. Now it runs every other Monday out of the box: it reads
+  your own reflections and proposes "you seem to want X" to a review buffer you
+  control — it never changes your constitution on its own, which is why it is
+  safe to run by default. To see your hub fill now, run
+  `/ztn:agent-lens --lens cognitive-model`. To turn it off, set its row to
+  `draft` in `_system/registries/AGENT_LENSES.md` (see `docs/privacy.md` for
+  exactly what it reads and produces).
+- **Fresh installs get the cognitive-model hub.** The hub's seed template was
+  never shipped, so a brand-new base could never build the hub at all. It now
+  ships with every install; existing bases already received it via an earlier
+  migration.
+- **New lenses are active by default.** The platform posture is now "a lens is
+  on unless there is an explicit reason to gate it" — the only gated lenses are
+  the biometric ones, which need health-data you have to provision first.
+
 ## 0.42.0 — Aggregates never silently drop; broken notes self-repair
 
 Three integrity fixes so the pipeline can no longer quietly do less than it

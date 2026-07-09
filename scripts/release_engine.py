@@ -160,21 +160,26 @@ def _copy_deref_symlink(src: Path, dst: Path, dry_run: bool, label: Path) -> int
 
 
 # Lenses that ship `status: draft` to the skeleton even though the maintainer
-# runs them `active` locally — for one of two reasons:
-#   (1) prerequisite-gated: friends lack the source data (biometric records,
-#       custom sources) and would otherwise burn LLM budget on empty runs;
-#   (2) high-trust opt-in: a lens that proposes identity / values principles by
-#       mining the owner's private reflections (cognitive-model) must be a
-#       deliberate opt-in, not an auto-enrollment on first `/ztn:update`.
+# runs them `active` locally, because they are prerequisite-gated: friends lack
+# the source data (biometric records from a health-collector adapter) and an
+# active lens would otherwise burn LLM budget on empty runs. They flip to
+# `active` once the friend wires up the source and opts in.
 #
-# Add to this list when releasing a lens that is either source-gated OR
-# proposes constitution / identity-level candidates from private content.
+# Identity/values proposers are NOT gated here: `cognitive-model` mines private
+# reflections but only APPENDS to the high-recall `principle-candidates.jsonl`
+# review buffer (stamped `origin: agent-lens`, never auto-merged into
+# `0_constitution/` — the owner promotes via `/ztn:lint` F.5). Proposing is safe
+# to ship on by default; promotion stays owner-sovereign. So it ships `active`
+# platform-wide.
+#
+# Add to this list only when a lens is source-gated (needs data the friend must
+# provision first). Do NOT add a lens merely because it reads private content —
+# the buffer-append + owner-promotion gate already protects that surface.
 DEMOTE_LENSES_ON_RELEASE: tuple[str, ...] = (
     "biometric-anomaly-narrator",
     "biometric-cross-domain",
     "training-load-trend",
     "biometric-life-synthesis",
-    "cognitive-model",
 )
 
 

@@ -139,12 +139,14 @@ repo on disk.
 
 ## The cognitive-model lens — profiling from your reflections
 
-ZTN ships a `cognitive-model` lens that, *if you enable it*, reads your own
-reflections (solo voice-notes, journal-style observations) and proposes
-principles about how you think and want to be communicated with. Because it
-touches your most private content, it is **opt-in**: it ships `status: draft`
-and runs only after you deliberately set its row to `active` in
-`_system/registries/AGENT_LENSES.md`.
+ZTN ships a `cognitive-model` lens that is **on by default**. Every other Monday
+it reads your own reflections (solo voice-notes, journal-style observations) and
+proposes principles about how you think and want to be communicated with. It
+touches your most private content and writes inferences about you into your repo
+(see **Produces** below), so it is worth understanding — but it never changes
+your constitution on its own: it only *proposes* to a review buffer you control,
+and you promote nothing you do not approve. That gate is why it is safe to ship
+active platform-wide.
 
 - **Reads:** your `_records/observations/` (and meetings) — the same content
   every records-lens already sees. It does not reach outside your repo.
@@ -161,8 +163,11 @@ and runs only after you deliberately set its row to `active` in
   them. `is_sensitive` is advisory only (see above) — it does not redact. If a
   derived inference feels too personal to live in your git history, delete the
   lens output + candidate line and run `/ztn:save`.
-- **Turn it off:** set the lens row back to `status: draft`/`inactive`. It
-  stops immediately; existing outputs stay until you delete them.
+- **Turn it off:** set the lens row to `status: draft` in
+  `_system/registries/AGENT_LENSES.md`. It stops immediately; existing outputs
+  stay until you delete them. Note the opt-out is not durable across updates — a
+  later `/ztn:update` re-applies the platform default of `active`, so re-set it
+  after updating if you want it permanently off.
 
 The guard against this becoming a profiler that flatters you is the
 no-sycophancy rule (in `communication-baseline`, and in your own constitution

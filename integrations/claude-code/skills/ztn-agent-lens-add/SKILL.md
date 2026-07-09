@@ -259,8 +259,10 @@ language before user picks ACTIVATE/DRAFT.
   (more cost per cycle than simple lenses, but still owner-local).»
 - «First 2-3 cycles will need your attention to calibrate. After that
   it stabilizes.»
-- «Set as draft by default — let's see one or two outputs before
-  scheduling.»
+- «Default is active, like every lens. If you'd rather eyeball one or
+  two outputs before it joins the schedule, say so and I'll save it as
+  draft — otherwise it runs active and self-pauses if early outputs fail
+  validation.»
 
 **Sensitive psyche (additional):**
 - «Topic is sensitive. Outputs stay in your private repo. The lens
