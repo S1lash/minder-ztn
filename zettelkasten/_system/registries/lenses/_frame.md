@@ -629,7 +629,7 @@ about what is and isn't load-bearing in the cluster.
 
 **Lenses that emit Action Hints:** `cross-domain-bridge`,
 `knowledge-emergence`, `stalled-thread`, `decision-review`,
-`global-navigator`, `cognitive-model`. Each lens prompt carries its own
+`global-navigator`, `cognitive-model`, `opportunity`. Each lens prompt carries its own
 emission guidance (when to propose, what types to favour, how aggressive
 to be).
 
