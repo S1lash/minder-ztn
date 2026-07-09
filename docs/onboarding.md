@@ -219,11 +219,16 @@ pieces (reports, audiobooks, debriefs) in
 `zettelkasten/_system/long-form-playbook.md` (loaded on demand, only for an
 actual long-form piece). Both ship with filled examples.
 
-If you want the assistant to *learn* your style over time, enable the opt-in
-`cognitive-model` lens (set its row to `active` in
-`_system/registries/AGENT_LENSES.md`). It reads your own reflections and
-proposes "you seem to want X" for you to approve — never changing anything on
-its own. See `docs/privacy.md` for exactly what it reads and produces.
+The assistant also *learns* your style over time through the `cognitive-model`
+lens, which is **on by default**. Every other Monday it reads your own
+reflections and proposes "you seem to want X" for you to approve via `/ztn:lint`
+— it only appends to your review buffer and never changes your constitution on
+its own. It fills your cognitive-model hub
+(`5_meta/mocs/hub-cognitive-model.md`). To populate it now instead of waiting for
+the next cycle, run `/ztn:agent-lens --lens cognitive-model`. To turn it off, set
+its row to `draft` in `_system/registries/AGENT_LENSES.md` (note: a later
+`/ztn:update` re-applies the platform default of `active`). See `docs/privacy.md`
+for exactly what it reads and produces.
 
 ### Required GitHub repo setting — auto-delete head branches
 

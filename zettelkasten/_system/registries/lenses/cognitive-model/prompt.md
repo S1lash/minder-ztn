@@ -7,7 +7,7 @@ cadence: biweekly
 cadence_anchor: monday
 self_history: longitudinal
 output_schema: synthesis-custom
-status: draft
+status: active
 ---
 
 # Cognitive Model

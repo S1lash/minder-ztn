@@ -76,6 +76,7 @@ will be visible in `global-navigator` as gaps.
 | weekly-insights | Weekly Insights | meta | multi-source | weekly (mon) | longitudinal | active |
 | content-synthesis | Content Synthesis | meta | multi-source | weekly (mon) | longitudinal | active |
 | time-allocation | Time Allocation (computer-usage rhythm) | mechanical | records | weekly (mon) | longitudinal | active |
+| cognitive-model | Cognitive Model | psyche | records | biweekly (mon) | longitudinal | active |
 
 ## Draft Lenses
 
@@ -85,7 +86,6 @@ will be visible in `global-navigator` as gaps.
 | biometric-cross-domain | Biometric Cross-Domain | psyche | records | weekly (thu) | longitudinal | draft |
 | training-load-trend | Training Load Trend | mechanical | records | weekly (mon) | longitudinal | draft |
 | biometric-life-synthesis | Biometric × Life Synthesis | meta | multi-source | weekly (mon) | longitudinal | draft |
-| cognitive-model | Cognitive Model | psyche | records | biweekly (mon) | longitudinal | draft |
 
 ## Lens summaries
 
@@ -312,9 +312,19 @@ log entry, continue with remaining lenses.
 
 ## Lens lifecycle
 
-- **draft** — under development; runs only via `--include-draft` or
+**Default posture — a new lens ships `active`.** Every lens is on by default so
+its value reaches the owner without a manual flip. `draft` is reserved for a lens
+that is *explicitly gated*: prerequisite-gated (needs source data the base may not
+have — e.g. biometric records from a health-collector adapter), or an owner
+opt-out ("let me preview it first"). Absent an explicit reason, create the lens
+`active`. The runner's own safety net (validator rejection → auto-pause after 3
+consecutive strikes) protects an active lens whose prompt turns out weak, so
+active-by-default is not a quality risk.
+
+- **draft** — explicitly gated (prerequisite-gated or owner opt-out); NOT in
+  scheduled `--all-due` runs, reachable only via `--include-draft` or
   `--lens <id>` for manual dry-run
-- **active** — included in scheduled `--all-due` runs
+- **active** — included in scheduled `--all-due` runs (the default for a new lens)
 - **paused** — manually paused by owner, OR auto-paused by runner after
   3 consecutive validator rejections; not run until owner flips to
   `active`. Row MUST be moved to `## Paused/Archived Lenses` with
@@ -336,12 +346,16 @@ existing. See `integrations/claude-code/skills/ztn-agent-lens-add/SKILL.md`.
 **Manual (if you want to skip the wizard):**
 
 1. Create folder `_system/registries/lenses/{new-id}/`
-2. Add `prompt.md` with required frontmatter (see Schema above)
-3. Add row to `Draft Lenses` table in this file
-4. Dry-run via `/ztn:agent-lens --lens {new-id} --dry-run`
-5. Iterate prompt until output is good
-6. Move row to `Active Lenses`, change frontmatter `status: active`
-7. Add a 2-3 sentence summary block under `## Lens summaries` (purpose / value / output format) — required for every active lens
+2. Add `prompt.md` with required frontmatter (see Schema above), `status: active`
+   — the default posture (ship `draft` only if the lens is prerequisite-gated or
+   you deliberately want to preview it before it joins the schedule)
+3. Add the row to the `Active Lenses` table in this file (or `Draft Lenses` if you
+   deliberately gated it in step 2)
+4. Add a 2-3 sentence summary block under `## Lens summaries` (purpose / value / output format) — required for every active lens
+5. Recommended before the next scheduled run: dry-run via
+   `/ztn:agent-lens --lens {new-id} --dry-run` and iterate the prompt until the
+   output is good — an active lens that misfires self-pauses after 3 validator
+   rejections, but a dry-run catches it sooner
 
 No skill code changes required either way.
 

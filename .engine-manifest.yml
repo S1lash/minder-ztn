@@ -82,12 +82,13 @@ engine:
   # maintainer evolves spec and lens set via release_engine.
   # _frame.md is the two-stage thinker→structurer contract — pure engine,
   # never owner-edited.
-  # lenses/{id}/ folders are lens prompts. MOST general proposer-lenses ship
+  # lenses/{id}/ folders are lens prompts. General proposer-lenses ship
   # `status: active` (they read universal record types and no-op gracefully
-  # on empty data). Lenses in release_engine `DEMOTE_LENSES_ON_RELEASE` ship
-  # `status: draft` instead — either prerequisite-gated (biometric) or a
-  # high-trust opt-in (cognitive-model mines private reflections for
-  # identity/values candidates), so friends enable them deliberately.
+  # on empty data) — including `cognitive-model`, which mines private
+  # reflections but only appends to the review buffer (owner gates promotion,
+  # so proposing is safe by default). Lenses in release_engine
+  # `DEMOTE_LENSES_ON_RELEASE` ship `status: draft` instead — prerequisite-gated
+  # (biometric), enabled once the friend provisions the source data.
   - zettelkasten/_system/registries/AGENT_LENSES.md
   - zettelkasten/_system/registries/lenses/
 
