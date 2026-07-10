@@ -2,6 +2,18 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.45.2 — The published skeleton can't accumulate stray files (internal)
+
+Follow-on to 0.45.1, still maintainer-only — nothing changes for you. The seed-
+contract gate now also checks the *published skeleton* (not just a throwaway
+build): `check_seed_contract.py --skeleton PATH` diffs the skeleton against a
+clean release and fails if it carries any tracked file a fresh release does not
+produce. This closes the one hole 0.45.1 left — a release copied with `rsync`
+(no `--delete`) could leave behind cruft from an older release (e.g. a strip-
+seed's pre-strip `.template` twin), which a fresh clone would then ship to
+friends. One such leftover (`hub-cognitive-model.template.md`) is removed in this
+release.
+
 ## 0.45.1 — Seeded files can't silently drift (internal)
 
 Nothing changes in how your Minder behaves — this hardens the machinery that

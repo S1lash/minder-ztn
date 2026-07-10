@@ -115,5 +115,30 @@ class TestScanSkeleton(unittest.TestCase):
             self.assertTrue(any("tuning leak" in x for x in v), v)
 
 
+class TestFindStrays(unittest.TestCase):
+    """find_strays compares a git-tracked skeleton against a fresh release —
+    catches committed cruft a rsync-without-delete ship left behind."""
+
+    def test_tracked_stray_detected_untracked_ignored(self) -> None:
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            release = root / "release"
+            skel = root / "skeleton"
+            _write(release / "a.md")  # the clean release: one file
+            # skeleton: same file + a tracked stray + an untracked bytecode file
+            _write(skel / "a.md")
+            _write(skel / "stray.template.md")
+            _write(skel / "junk.pyc")
+            subprocess.run(["git", "-C", str(skel), "init", "-q"], check=True)
+            subprocess.run(["git", "-C", str(skel), "add", "a.md", "stray.template.md"], check=True)
+            # junk.pyc left UNtracked on purpose
+            strays = G.find_strays(skel, release)
+            self.assertTrue(any("stray.template.md" in s for s in strays), strays)
+            self.assertFalse(any("junk.pyc" in s for s in strays), strays)
+            self.assertFalse(any("a.md" in s for s in strays), strays)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -18,12 +18,17 @@ CI. A mis-declared or leaked seed fails hard here — the contract cannot silent
 rot.
 
 Usage:
-  scripts/check_seed_contract.py            # static checks + build a temp skeleton and scan it
+  scripts/check_seed_contract.py                  # static checks + build a temp skeleton and scan it
+  scripts/check_seed_contract.py --skeleton PATH  # ALSO diff an existing skeleton clone against a
+                                                  # fresh release — catches stray cruft that a
+                                                  # `rsync`-without-`--delete` release left behind
+                                                  # (run this post-rsync, pre-commit, on every ship)
   (imported)  scan_skeleton(target, manifest, repo_root) -> list[str]
 """
 
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 import tempfile
@@ -105,7 +110,41 @@ def scan_skeleton(skeleton: Path, manifest: dict, repo: Path) -> list[str]:
     return v
 
 
+def _build_release(repo: Path, target: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(repo / "scripts" / "release_engine.py"),
+         "--target", str(target), "--skip-lint"],
+        capture_output=True, text=True,
+    )
+
+
+def find_strays(skeleton: Path, release: Path) -> list[str]:
+    """Git-TRACKED files in an existing skeleton clone but NOT produced by a fresh
+    release. Only tracked files reach friends (they clone/pull), so untracked
+    bytecode / local cruft is intentionally ignored — a `.gitignore` already keeps
+    it out of the ship. What this catches is committed cruft a `rsync`-without-
+    `--delete` ship left behind — e.g. a strip-seed's pre-strip `.template` twin
+    from an older release. A fresh clone must contain exactly the release output;
+    anything extra tracked is a stray that reaches friends and must be `git rm`ed."""
+    tracked = subprocess.run(
+        ["git", "-C", str(skeleton), "ls-files"],
+        capture_output=True, text=True, check=True,
+    ).stdout.splitlines()
+
+    release_files = {
+        str(p.relative_to(release))
+        for p in release.rglob("*")
+        if p.is_file() and not p.is_symlink()
+    }
+    strays = [t for t in tracked if t and t not in release_files]
+    return sorted(f"stray in skeleton (not in a fresh release): {s}" for s in strays)
+
+
 def main() -> int:
+    ap = argparse.ArgumentParser(description="Seed-contract gate.")
+    ap.add_argument("--skeleton", help="also diff this existing skeleton clone against a fresh release")
+    args = ap.parse_args()
+
     repo = repo_root()
     manifest = load_manifest(repo)
 
@@ -113,19 +152,30 @@ def main() -> int:
     # ACTUAL release output, not a re-derivation of the naming logic.
     with tempfile.TemporaryDirectory(prefix="seed-contract-") as tmp:
         target = Path(tmp) / "skeleton"
-        rc = subprocess.run(
-            [sys.executable, str(repo / "scripts" / "release_engine.py"),
-             "--target", str(target), "--skip-lint"],
-            capture_output=True, text=True,
-        )
+        rc = _build_release(repo, target)
         # release_engine runs scan_skeleton internally and returns 2 on violation.
-        if rc.returncode == 0:
-            print("seed-contract gate: OK")
+        if rc.returncode != 0:
+            sys.stderr.write(rc.stdout)
+            sys.stderr.write(rc.stderr)
+            print("seed-contract gate: FAILED (release output malformed)", file=sys.stderr)
+            return 1
+
+        if args.skeleton:
+            skel = Path(args.skeleton).resolve()
+            problems = scan_skeleton(skel, manifest, repo) + find_strays(skel, target)
+            if problems:
+                print("seed-contract gate: FAILED — skeleton clone diverges from a clean release:",
+                      file=sys.stderr)
+                for p in problems:
+                    print(f"  ✗ {p}", file=sys.stderr)
+                print("remove the stray/leaking files from the skeleton (git rm), then re-run.",
+                      file=sys.stderr)
+                return 1
+            print(f"seed-contract gate: OK (skeleton {skel} matches a clean release)")
             return 0
-        sys.stderr.write(rc.stdout)
-        sys.stderr.write(rc.stderr)
-        print("seed-contract gate: FAILED", file=sys.stderr)
-        return 1
+
+    print("seed-contract gate: OK")
+    return 0
 
 
 if __name__ == "__main__":
