@@ -10,7 +10,10 @@ description: >
   applies migrations in order, and surfaces follow-ups (re-run
   install.sh, regen constitution view). Never touches `template:` or
   data paths. Default UX for non-technical owners; bash script remains
-  for CI / power users.
+  for CI / power users. Closes with a short, personalized benefit-first
+  digest — what the update actually delivers for THIS owner, aligned to
+  how they read, honest about marginal / technical changes, with detail
+  on request.
 disable-model-invocation: false
 ---
 
@@ -24,8 +27,9 @@ touched.
 `scripts/sync_engine.sh` does the same thing without prompts — use that
 in CI or when scripting. This skill is the interactive default.
 
-**Documentation convention:** при любых edits этого SKILL соблюдай
-`_system/docs/CONVENTIONS.md`.
+**Documentation convention:** on any edit to this SKILL, follow
+`_system/docs/CONVENTIONS.md` — the file describes current behaviour,
+no version / phase / rename-history narratives.
 
 ## Arguments
 
@@ -233,6 +237,107 @@ Follow-ups:
 ```
 
 After commit, suggest `/ztn:save` for push (skill itself never pushes).
+
+### Step 9 — What arrived for you (personalized benefit digest)
+
+The final, human step. Everything above is plumbing; here the owner
+should walk away knowing **what this update gives them** and wanting to
+try what is new — not reading a changelog. Minder is already adopted —
+this step does not sell the product, it sells the *value that just
+landed*.
+
+**When it runs:**
+- No-op (already current, nothing applied) → skip entirely.
+- `--dry-run` → render as a PREVIEW ("here is what you'd get if you
+  update"), present-tense-conditional instead of past-tense.
+- `--yes` / non-interactive → still print the digest; only the
+  interactive "ask more" prompt is skipped.
+
+**Source — what changed (in this order):**
+1. `git show <remote>/<branch>:docs/CHANGELOG.md` — the user-readable
+   release notes. Take every `## <version>` entry in the delta range
+   (local VERSION < version ≤ upstream VERSION). This is the primary,
+   already-benefit-oriented source. Read it from `<remote>/<branch>`,
+   not the working copy, so it is correct even if CHANGELOG was
+   kept-local at Step 4.
+2. Migration summaries from Step 3 + recovery nudges from Step 6 —
+   technical detail and one-time actions.
+3. Changed engine paths from Step 4 — fallback when a version has no
+   CHANGELOG entry (infer feature vs internal from the path).
+
+**Who reads it — align + personalize (reuses the lens reader-alignment
+contract).** Read whichever of these exist; a missing file is not an
+error, skip it silently:
+- `_system/docs/communication-baseline.md` — presentation floor
+  (conclusion first, plain language, short, no filler, no flattery).
+- `_system/SOUL.md` → "Working Style", "Context for Agents", and
+  "Active Goals" / "Current Focus" — how THIS owner reads AND what they
+  currently care about (for honest personalization).
+- `_system/views/constitution-core.md` — the owner's ai-interaction /
+  cognitive principles.
+
+This calibrates PRESENTATION only — it never changes which items you
+report or invents value that isn't in the changelog. If a file is
+absent or its profile doesn't fit, ignore it and use the floor.
+
+**Stance — sell the benefit, honestly:**
+- **New capability / owner-facing feature** → lead with the benefit,
+  not the mechanism: "what you can do now" and why it matters. Make it
+  vivid enough to want to try, and give the one action that starts it
+  (the enable / try command from the CHANGELOG entry). Personalize when
+  there is a REAL link to the owner's focus or goals ("you're deep in X
+  right now — this is exactly about that") — never force a link that
+  isn't there.
+- **Technical / internal** (fix, refactor, perf, schema, plumbing) → no
+  hype. One plain line on what it means for the owner *if* there is
+  owner-relevant meaning ("faster", "more reliable", "no longer loses
+  X"); if there is none, fold the rest into a single terse "under the
+  hood" line, or omit. Depends on the update.
+- **Recovery actions** (soft-nag migrations, Step 6) → frame as "do
+  this once to reclaim X" — benefit-first but honest that it's a
+  one-time chore.
+
+**Honesty guard — load-bearing (this is `principle-ai-interaction-012`,
+not marketing).** Sell REAL value vividly; never manufacture excitement
+for a marginal change, never oversell a benefit that isn't there. A
+minor update is stated as minor. Personalization is a true link to the
+owner's context, never flattery or an echo of what's pleasant to hear.
+Inspiration rides on truth — the moment it doesn't, it costs the
+owner's trust in every future digest, and the whole digest stops being
+read.
+
+**Shape — rails, not a template.** Short by default: a one-line
+headline of the release's essence, then a benefit blurb per feature
+(most-valuable first), then at most one "under the hood" line for the
+technical remainder. Write the digest in the owner's language — match
+how their notes and SOUL read; a friend's clone writes in theirs (the
+illustration below is in English as the engine-doc default). Plain
+language, no jargon — a non-technical friend must get it. End with an
+open door: the owner can ask "tell me more about X" and this step
+expands that one item (how it works / how to enable / a concrete
+example), pulling from the CHANGELOG entry, the relevant skill doc, and
+`docs/privacy.md` when the feature reads owner-data. Do not pre-dump the
+detail — default short, depth on request.
+
+The block below is an ILLUSTRATION of the stance, not a required
+layout — adapt freely per update:
+
+```
+Update 0.42.0 → 0.43.0 — Minder now learns how you think, out of the box.
+
+✨ New for you:
+  • The cognitive-model lens is on by default. Your "how I think" hub
+    used to stay blank until you switched it on yourself. Now it reads
+    your reflections every other week and proposes "you seem to want X"
+    — into a buffer you control (it never edits your constitution on
+    its own). Want to see it fill in now → `/ztn:agent-lens --lens
+    cognitive-model`.
+
+🔧 Under the hood: new lenses are active by default (except the
+   biometric ones — those need your health data first).
+
+Ask for more detail on any point?
+```
 
 ## What this skill does NOT do
 

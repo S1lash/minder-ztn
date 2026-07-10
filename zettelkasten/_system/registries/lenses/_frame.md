@@ -143,6 +143,27 @@ strong recommendations because the owner will read what you wrote):
 These are descriptions of useful output, not requirements. If you
 genuinely cannot point at specific paths because the pattern is
 diffuse, say so. Honesty over format compliance.
+
+Reader alignment — output only. A human, the owner, reads this. Do
+your thinking and reach your findings FIRST, on their own merits:
+what you look for, which patterns you surface, your conclusions and
+your confidence are decided WITHOUT any regard for how they will read.
+Only once the substance is settled, let the owner's profile shape the
+WORDING of the finished text — order, phrasing, density, plainness —
+so it lands for how they take in information:
+  - _system/docs/communication-baseline.md — universal presentation
+    floor (conclusion first, high signal, no filler, no flattery)
+  - _system/SOUL.md → "Context for Agents" / "Working Style", and the
+    owner's presentation-delta principles surfaced in
+    _system/views/constitution-core.md — how THIS owner reads (density,
+    what lands, what to avoid)
+Read whichever of these exist; a missing file is not an error, skip it
+silently. Hard boundary: this touches PRESENTATION only. It must never
+change what you analyse, which findings you surface, your verdict, or
+your honesty — never soften, reshape, or drop a finding to read
+smoother. And if aligning does not fit here — the honest shape of a
+finding resists it, or the profile is irrelevant to this output —
+ignore it. An honest read always outranks a pleasing one.
 ```
 
 ---
@@ -238,6 +259,21 @@ which has none):
              clarification quote
 
 You may write in free form. The structurer will reformat.
+
+Reader alignment — output only. The owner (a human) reads this digest.
+Decide the status you owe them FIRST — which items, counts, and states
+to surface — WITHOUT regard for how it reads. Only then let the
+universal presentation floor shape the WORDING:
+  - _system/docs/communication-baseline.md — conclusion first, high
+    signal, no filler, no flattery
+Use ONLY that engine-level floor here. Do NOT read SOUL or the
+constitution for style: this variant's input isolation deliberately
+excludes owner-data (see the hard constraint above), and that
+exclusion outranks style calibration. If the floor file is absent,
+skip silently — not an error. Hard boundary: this touches PRESENTATION
+only (ordering, density, wording) — it never changes which items you
+surface or softens a status you owe. If aligning does not fit here,
+ignore it.
 ```
 
 ---
@@ -318,6 +354,24 @@ and cited, write the section header and leave the body empty (or with
 a one-line `(no signal this week)` marker). Filling sections with
 generic-sounding content is the worst failure mode of a synthesis
 lens.
+
+Reader alignment — output only. The owner (a human) reads this output
+directly (no structurer pass). The analytical work comes FIRST and is
+untouched by this: which findings you surface, which section each
+belongs in, your confidence, and default-silence are all decided on
+the merits. Only then, WITHIN the schema and guards above, let the
+owner's profile shape the WORDING of each finding:
+  - _system/docs/communication-baseline.md — universal presentation
+    floor (conclusion first, high signal, no filler, no flattery)
+  - _system/SOUL.md → "Context for Agents" / "Working Style", and the
+    owner's presentation-delta principles surfaced in
+    _system/views/constitution-core.md — how THIS owner reads (density,
+    what lands, what to avoid)
+Read whichever of these exist; a missing file is not an error, skip it
+silently. Hard boundary: this touches PRESENTATION only — it never adds
+a new template, never softens or drops a finding, and never overrides
+default-silence to fill space. If aligning does not fit a section,
+ignore it.
 ```
 
 ---

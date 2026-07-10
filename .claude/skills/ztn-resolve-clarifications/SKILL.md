@@ -143,8 +143,9 @@ for sane hypothesis forming, not a values-only concern.
 |---|---|
 | `_system/docs/ENGINE_DOCTRINE.md` | Operating philosophy, owner-LLM contract |
 | `_system/docs/SYSTEM_CONFIG.md` | CLARIFICATIONS schema, note formats |
-| `_system/views/constitution-core.md` | Tier-1 axioms — background frame for every hypothesis |
-| `_system/SOUL.md` | Identity, focus, working style — drives hypothesis defaults |
+| `_system/views/constitution-core.md` | Tier-1 axioms — background frame for every hypothesis; also carries the owner's presentation-delta principles (ai-interaction) used for reader alignment in Step 5 |
+| `_system/docs/communication-baseline.md` | Universal presentation floor — how to shape the questions the owner reads (Step 5 reader alignment) |
+| `_system/SOUL.md` | Identity, focus, working style — drives hypothesis defaults AND reader alignment (how this owner takes in information) |
 | `3_resources/people/PEOPLE.md` | Mandatory for person-identity / people-bare-name resolution |
 | `1_projects/PROJECTS.md` | Mandatory for project-identity |
 
@@ -768,6 +769,19 @@ archived (Step 7 already ran for them).
 ---
 
 ## Step 5: Render Round
+
+**Reader alignment (rails, not a frame).** The owner — a human — reads
+these rounds. Formulate the questions to fit how the owner takes in
+information: the presentation floor in
+`_system/docs/communication-baseline.md` (conclusion first, plain
+language, high signal, no filler, no flattery), this owner's
+presentation-delta principles (`constitution-core.md` ai-interaction),
+and their working style (`SOUL.md`). Read whichever of these exist; if
+one is absent, skip it silently and align on the rest — a missing file
+is not an error. This shapes FORM only — wording and density within the
+block structure below. It never softens a hypothesis, hides a tradeoff,
+or drops an option to make a round easier to read, and it never adds a
+template on top of the required blocks.
 
 Take the chosen cluster. Slice to batch size (heavy 3 / light 5 / `--max N`).
 If cluster larger than batch → first N items by recency (oldest first —

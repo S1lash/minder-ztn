@@ -2,6 +2,28 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.45.0 — Minder now speaks the way you read
+
+Everything Minder writes for you to read — lens observations, the questions it
+asks you to resolve, and the update notes you are reading right now — is now
+shaped to how you personally take in information, not a one-size-fits-all voice.
+
+- **Lens observations read the way you do.** Every lens now aligns how it
+  presents what it found to your presentation profile (your SOUL working style +
+  your ai-interaction principles): conclusion first, your density, plain
+  language. It only touches wording — the analysis, the findings, and the
+  honesty never change, and it never softens a hard observation to read nicer.
+  If your profile does not fit a given finding, the lens ignores it rather than
+  forcing a smoother read.
+- **The clarifications review meets you halfway.** When Minder asks you to
+  resolve a batch of open questions, it now phrases them for how you read —
+  same rigour, less friction.
+- **Updates now tell you what you actually got.** `/ztn:update` closes with a
+  short, personal digest of what the update gives you — new features written to
+  make you want to try them, technical fixes kept plain, and you can ask for
+  more detail on any point. It sells the real value and never hypes a marginal
+  change.
+
 ## 0.43.0 — The cognitive-model hub works for everyone, by default
 
 Minder now learns how you think out of the box, and every new friend gets the
