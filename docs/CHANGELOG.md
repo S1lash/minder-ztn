@@ -24,6 +24,23 @@ shaped to how you personally take in information, not a one-size-fits-all voice.
   more detail on any point. It sells the real value and never hypes a marginal
   change.
 
+## 0.44.0 — A weekly read on the opportunities you're not seeing
+
+Minder gains a new lens that, once a week, shows you where your actual week
+opened a door toward what you say you want — the leads, lucky connections, and
+forks that are easy to miss while you are heads-down.
+
+- **The `opportunity` lens runs every Friday.** It lines up what actually
+  happened this week against your far-goals (your SOUL goals + constitution) and
+  surfaces four things: new opportunities worth a look — each with a cheap
+  one-week test, so "new" never means "new rabbit hole"; a weak-tie connection
+  that just entered your orbit; what changed in the doors already open (advanced,
+  decayed, or closed — a short delta, not a wall of notes); and the occasional
+  fork worth choosing deliberately. It is informational — it surfaces, you
+  decide. Every item reads cold, in plain language, so you do not need to
+  remember the backstory. See this week's read now →
+  `/ztn:agent-lens --lens opportunity`.
+
 ## 0.43.0 — The cognitive-model hub works for everyone, by default
 
 Minder now learns how you think out of the box, and every new friend gets the
