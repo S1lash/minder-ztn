@@ -142,6 +142,27 @@ engine:
   - docs/privacy.md
   - docs/CHANGELOG.md
 
+# --- Seed contract (three conventions, made explicit so nothing drifts) ---
+# Every seed file is EXACTLY one of three kinds. The kind is DECLARED, never
+# guessed from the file extension:
+#
+#   1. strip-seed  — listed in `template:` and NOT in `seed_skill:`. release_engine
+#                    renames `X.template.<ext>` → `X.<ext>` (any extension) at
+#                    release; the stripped file MUST exist in a fresh clone because
+#                    the system reads it directly. Most seeds are this (the *.md).
+#   2. skill-seed  — listed in BOTH `template:` and `seed_skill:`. Ships verbatim
+#                    (`.template` suffix KEPT); the named owning skill copies it to
+#                    its live name on first run when the live file is missing.
+#   3. layered     — NOT in `template:`. A `*.template.yaml` under the engine
+#                    `_system/scripts/` dir, read directly by the runtime loader as
+#                    a baseline; owner overrides live in `*.local.yaml` (never
+#                    shipped). See the metric-day note below.
+#
+# `sync_engine.sh` never touches `template:` paths (owner data after seeding);
+# only engine paths sync. The `check_seed_contract.py` gate enforces every
+# invariant of this contract at release AND in CI — a mis-declared seed fails
+# the release, so this contract cannot silently rot.
+
 template:
   # System layer
   - zettelkasten/_system/SOUL.template.md
@@ -185,14 +206,16 @@ template:
   # empty; /ztn:content --maintain populates `drafts` on first run.
   - zettelkasten/_system/state/content-pipeline-state.template.json
 
-  # Metric-day pipeline live YAMLs — one-time seed at install; thereafter
-  # owner can layer overrides via `*.local.yaml` (never shipped). The
-  # paired `*.template.yaml` files sync via engine: (always upstream-
-  # to-downstream), carrying spec updates. Live files start byte-
-  # identical to their template siblings; divergence is owner's choice.
-  - zettelkasten/_system/scripts/biometric_thresholds.yaml
-  - zettelkasten/_system/scripts/activity_thresholds.yaml
-  - zettelkasten/_system/scripts/affect_lexicon.yaml
+  # NOTE: the metric-day threshold/lexicon YAMLs are NOT seeded here.
+  # They are `layered` seeds (see the `seed_skill` / seed-contract note
+  # above): the runtime loader reads `{base}.template.yaml` directly as
+  # the engine baseline (ships + syncs via the engine `_system/scripts/`
+  # dir), and owner overrides live ONLY in `{base}.local.yaml` (never
+  # shipped; the seed-contract gate fails the release if one is about to
+  # leak). The plain `{base}.yaml` is an engine-managed baseline mirror,
+  # gate-enforced byte-identical to its `.template.yaml` sibling — never a
+  # template seed, so it is not listed here (avoids the template↔engine
+  # double-listing that would let /ztn:update silently overwrite it).
 
   # Views (auto-generated, but file must exist for skills to write)
   - zettelkasten/_system/views/CURRENT_CONTEXT.template.md
@@ -210,6 +233,17 @@ template:
   # Spec portion (managed-zone structure) stays in sync with the renderer
   # via tests/test_render_cognitive_model_hub.py::test_template_matches_blank_render.
   - zettelkasten/5_meta/mocs/hub-cognitive-model.template.md
+
+
+# Skill-seeded templates (kind 2 of the seed contract). MUST be a subset of
+# `template:`. release_engine ships these VERBATIM — the `.template` suffix is
+# kept, NOT stripped — because the owning skill materialises the live file on
+# first run when it is missing. Format: `<template-path>  # skill: <skill>`.
+seed_skill:
+  # ztn-resolve-clarifications copies → insights-config.yaml on first resolve run
+  - zettelkasten/_system/state/insights-config.yaml.template
+  # ztn-content copies → content-pipeline-state.json on first --maintain run
+  - zettelkasten/_system/state/content-pipeline-state.template.json
 
 
 exclude:

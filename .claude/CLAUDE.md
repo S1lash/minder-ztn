@@ -73,7 +73,7 @@ These are quoted from `_system/docs/CONVENTIONS.md` because they get violated ot
 3. **No rename or migration history.** Don't write «previously this was called X», «moved from Y to Z», «renamed in vN». The file IS the contract; git log carries narrative.
 4. **No personal names in engine code.** Engine prompts, system docs, SKILL examples use placeholders (`john-doe`, `ivan-petrov`, `<owner>`) or read from `zettelkasten/_system/SOUL.md → ## Identity → Name:` at runtime. The personal-data linter (`scripts/check-no-personal-data.sh`) enforces this in CI; PRs that fail it are blocked.
 5. **Describe current behaviour.** Default mental check before committing any doc edit: *would this sentence still make sense after the v4.6→v4.7 narrative is forgotten?* If no, rephrase.
-6. **Template-spec sync — both files or neither.** Several engine-spec docs ship as `*.template.md` (see `.engine-manifest.yml → template:`). `release_engine.py` strips the `.template` suffix when copying to the skeleton, and `sync_engine.sh` skips template paths so friend's owner-Extensions survive `/ztn:update`. Consequence: any **spec-portion edit** to a live file with a `.template.md` sibling MUST be backported to the template in the same change, otherwise friends never receive the spec update. Owner-mutable sections (Extensions tables, populated rows, owner data) naturally diverge — that is by design — but canonical sets, format rules, autofix tables, heuristic descriptions, and example values are spec and must stay byte-identical between live and template. Verify with `diff <live>.md <live>.template.md` before commit. The high-risk files today: `AUDIENCES.md` ↔ `AUDIENCES.template.md`, `DOMAINS.md` ↔ `DOMAINS.template.md`, `INDEX.md` ↔ `INDEX.template.md`, `TAGS.md` ↔ `TAGS.template.md`. CI does not enforce this; the discipline is on the editor.
+6. **Template-spec sync — both files or neither.** Several engine-spec docs ship as `*.template.md` (see `.engine-manifest.yml → template:`). These are **strip-seed** entries: `release_engine.py` renames `X.template.<ext>` → `X.<ext>` when copying to the skeleton (for the full seed-contract — strip-seed vs skill-seed vs layered — read the header comment above `template:` in `.engine-manifest.yml`; the `check_seed_contract.py` gate enforces it at release + CI). `sync_engine.sh` skips template paths so friend's owner-Extensions survive `/ztn:update`. Consequence: any **spec-portion edit** to a live file with a `.template.md` sibling MUST be backported to the template in the same change, otherwise friends never receive the spec update. Owner-mutable sections (Extensions tables, populated rows, owner data) naturally diverge — that is by design — but canonical sets, format rules, autofix tables, heuristic descriptions, and example values are spec and must stay byte-identical between live and template. Verify with `diff <live>.md <live>.template.md` before commit. The high-risk files today: `AUDIENCES.md` ↔ `AUDIENCES.template.md`, `DOMAINS.md` ↔ `DOMAINS.template.md`, `INDEX.md` ↔ `INDEX.template.md`, `TAGS.md` ↔ `TAGS.template.md`. CI does not enforce this; the discipline is on the editor.
 
 These rules are aggressive on purpose. Engine docs are read cold by friends with no shared session history; drift here is the largest entropy risk in the system.
 
@@ -140,7 +140,8 @@ When engine behaviour changes, these are the docs that must move with it. Drift 
 | `zettelkasten/_system/registries/AUDIENCES.md` | `audience_tags` privacy whitelist (canonical five + owner extensions + spec) |
 | `zettelkasten/_system/registries/AGENT_LENSES.md` | Agent-lens registry + frame contract |
 | `zettelkasten/5_skills/CLAUDE_ZETTELKASTEN.md`, `zettelkasten/5_skills/ztn-*.md` | Engine quick-reference cards |
-| `.engine-manifest.yml` | Engine boundary; what ships to skeleton |
+| `.engine-manifest.yml` | Engine boundary; what ships to skeleton. Header comment above `template:` is the **SoT for the seed contract** (strip-seed / skill-seed / layered) |
+| `scripts/check_seed_contract.py` | Seed-contract gate — enforces the contract at release + CI; add a new seed's invariant here if you introduce a new seeding kind |
 | `CONTRIBUTING.md` | Contribution rules |
 | `docs/onboarding.md`, `docs/upstream-sync.md`, `docs/scheduling.md` | Friend-facing docs |
 
@@ -159,6 +160,12 @@ pytest zettelkasten/_system/scripts/tests/
 # Release dry-run — confirms the manifest is consistent and all engine
 # paths exist. Run after touching `.engine-manifest.yml` or moving files.
 python3 scripts/release_engine.py --target /tmp/skeleton-check --dry-run
+
+# Seed-contract gate — assembles a throwaway skeleton and verifies the seed
+# contract (no template leaks, no owner-override/tuning leaks, no double-ship).
+# Run after touching `.engine-manifest.yml → template:/seed_skill` or the
+# threshold/config seed files. CI runs it too.
+python3 scripts/check_seed_contract.py
 ```
 
 If the change touches a SKILL contract, also bump `integrations/VERSION` (semver). For breaking changes add a migration under `scripts/migrations/NNN-short-slug.sh` (see `scripts/migrations/README.md`).

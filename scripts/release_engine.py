@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -47,10 +48,19 @@ def load_manifest(root: Path) -> dict:
         return yaml.safe_load(f)
 
 
+_TEMPLATE_SUFFIX_RE = re.compile(r"^(.*)\.template(\.[^.]+)$")
+
+
 def strip_template_suffix(name: str) -> str:
-    """`SOUL.template.md` → `SOUL.md`."""
-    if name.endswith(".template.md"):
-        return name[: -len(".template.md")] + ".md"
+    """`SOUL.template.md` → `SOUL.md`; `content-pipeline-state.template.json` →
+    `content-pipeline-state.json`. Strips a `.template` segment before the final
+    extension, for ANY extension — the strip decision is intent-explicit (see
+    `seed_skill` in the manifest), never keyed on `.md`, so a future non-markdown
+    strip-seed cannot silently ship un-renamed. Applied ONLY to strip-seed
+    entries; skill-seed entries (in `seed_skill:`) are shipped verbatim."""
+    m = _TEMPLATE_SUFFIX_RE.match(name)
+    if m:
+        return m.group(1) + m.group(2)
     return name
 
 
@@ -363,9 +373,18 @@ def main() -> int:
     for entry in manifest.get("engine", []):
         total += copy_path(root, target, entry, strip_template=False, dry_run=args.dry_run)
 
-    print(f"\ntemplate paths → {target} (with .template suffix stripped)")
+    # Seed contract: strip-seed entries get `.template` stripped; skill-seed
+    # entries (declared in `seed_skill:`) ship verbatim so the owning skill can
+    # materialise the live file on first run. Intent is declared, never inferred.
+    seed_skill = {p.rstrip("/") for p in manifest.get("seed_skill", [])}
+    unknown_skill = seed_skill - {p.rstrip("/") for p in manifest.get("template", [])}
+    if unknown_skill:
+        print(f"error: seed_skill entries not in template: {sorted(unknown_skill)}", file=sys.stderr)
+        return 2
+    print(f"\ntemplate paths → {target} (strip-seed renamed; skill-seed verbatim)")
     for entry in manifest.get("template", []):
-        total += copy_path(root, target, entry, strip_template=True, dry_run=args.dry_run)
+        strip = entry.rstrip("/") not in seed_skill
+        total += copy_path(root, target, entry, strip_template=strip, dry_run=args.dry_run)
 
     print(f"\n{'would copy' if args.dry_run else 'copied'} {total} files")
 
@@ -419,6 +438,21 @@ def main() -> int:
         # for the maintainer's own data; this hook only touches the
         # extracted skeleton tree.
         _demote_lens_status(target, lens_ids=DEMOTE_LENSES_ON_RELEASE)
+
+        # Seed-contract gate — verify the assembled skeleton against the seed
+        # contract (no un-materialised template leaks, no owner override / tuning
+        # leaks, no double-listing). A violation means the release is malformed;
+        # fail hard before the operator publishes it.
+        from check_seed_contract import scan_skeleton  # noqa: E402 (co-located gate)
+
+        violations = scan_skeleton(target, manifest, root)
+        if violations:
+            print("\nerror: seed-contract gate FAILED — skeleton is malformed:", file=sys.stderr)
+            for v in violations:
+                print(f"  ✗ {v}", file=sys.stderr)
+            print("release aborted; fix the manifest / source and re-run.", file=sys.stderr)
+            return 2
+        print("seed-contract gate: OK")
 
         print(f"\nlayout ready at {target}")
         print("\nnext steps (operator):")

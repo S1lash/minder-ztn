@@ -2,6 +2,21 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.45.1 — Seeded files can't silently drift (internal)
+
+Nothing changes in how your Minder behaves — this hardens the machinery that
+builds and ships releases, so a whole class of "your fresh clone was seeded
+wrong" bugs is now impossible by construction rather than by luck.
+
+- The three ways the engine seeds a starter file — rename-on-release, copy-on-
+  first-run by a skill, and read-the-template-directly — used to be told apart by
+  a filename coincidence (`.md` vs not). They are now **declared explicitly** and
+  a release gate (`check_seed_contract.py`, run at release and in CI) refuses any
+  release where a template would leak un-materialised, an owner's private tuning
+  or `.local.yaml` override would leak upstream, or a file would be shipped twice
+  and clobbered on update. If a future seed is mis-declared, the release fails
+  loudly instead of shipping a broken skeleton.
+
 ## 0.45.0 — Minder now speaks the way you read
 
 Everything Minder writes for you to read — lens observations, the questions it
