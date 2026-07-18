@@ -435,9 +435,9 @@ Specific rules:
     no extension, no path) so Obsidian indexes a graph edge and
     Front Matter Title can substitute the human-readable title.
     Constitution items by canonical id (`[[axiom-ethics-001]]`),
-    records by dated basename (`[[20260313-meeting-andrey-...]]`),
-    people by slug (`[[andrey-kuznetsov]]`), hubs by filename
-    (`[[hub-career-promotion]]`).
+    records by dated basename (`[[20260313-meeting-ivan-...]]`),
+    people by slug (`[[ivan-petrov]]`), hubs by filename
+    (`[[hub-learning-goal]]`).
   - If the thinker offered a counter-reading or alternative
     interpretation, that goes in `**Alternative reading:**`. If not,
     write `unspecified`.

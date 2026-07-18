@@ -40,7 +40,7 @@ publishes manually (Telegram / LinkedIn — a separate vector, out of scope).
 `CONTENT_MAP.md` while `/ztn:maintain` Step 7.8 may be rewriting it. So at the
 start of a writing run, read the pipeline locks under `_sources/`
 (`.processing.lock`, `.maintain.lock`, `.lint.lock`, `.agent-lens.lock`,
-`.resolve.lock`) — abort if any is recent (<2h) — then acquire `.content.lock`
+`.resolve.lock`, `.roles.lock`) — abort if any is recent (<2h) — then acquire `.content.lock`
 (touch it), and remove it when done. The default **status** mode is read-only and
 takes no lock. (Scheduler ticks run `lock-check.sh` before invoking the skill;
 this guard also covers interactive runs.)
@@ -305,14 +305,14 @@ Per draft, in `_system/state/content-pipeline-state.json` `drafts[]`:
 
 ```json
 {
-  "draft_id": "agentic-commerce-x-team-management",
-  "theme_ids": ["hub-agentic-commerce", "hub-leadership-management"],
+  "draft_id": "project-alpha-x-team-management",
+  "theme_ids": ["hub-project-alpha", "hub-team-communication"],
   "last_surfaced": "2026-06-15",
   "last_surfaced_ripeness": {
-    "hub-agentic-commerce": { "note_count": 14, "score": 99.0 },
-    "hub-leadership-management": { "note_count": 34, "score": 605.0 }
+    "hub-project-alpha": { "note_count": 14, "score": 99.0 },
+    "hub-team-communication": { "note_count": 34, "score": 605.0 }
   },
-  "draft_path": "6_posts/drafts/20260615-draft-agentic-commerce-x-team-management.md",
+  "draft_path": "6_posts/drafts/20260615-draft-project-alpha-x-team-management.md",
   "draft_status": "auto | owner-editing | archived-published | stale",
   "owner_touched": false,
   "new_insight_available": false,
@@ -341,6 +341,6 @@ historical entries beyond their own state transitions; the ledger is incremental
 
 ```bash
 /ztn:content                       # status: themes by ripeness, what changed, drafts shelf
-/ztn:content --draft "agentic commerce"   # generate one draft on demand
+/ztn:content --draft "remote work"   # generate one draft on demand
 /ztn:content --maintain            # scheduled draft-maintainer (run after the lens tick)
 ```

@@ -103,10 +103,10 @@ Cross-domain lenses bridge biometric records with journal records
 
 ### Bilingual quoting
 
-When citing journal text, **preserve original language**. The owner
-writes in mixed RU+EN. Do NOT translate Russian to English (or vice
-versa) in cited evidence. Lens output may mix languages if the
-source material does.
+When citing journal text, **preserve original language**. Do NOT
+translate the source language to another (or vice versa) in cited
+evidence. If the owner writes bilingually, lens output may mix
+languages accordingly, matching the source material.
 
 ---
 

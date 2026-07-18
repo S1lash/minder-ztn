@@ -215,7 +215,7 @@
 > A principle that genuinely spans both work and personal is usually
 > an axiom in `identity` or `ethics`.
 
-- {axiom | identity: Quality is respect — a worse-than-possible result wastes someone's life downstream}
+- {axiom | identity: Measure twice, cut once — rework costs more than care}
 - {principle | ethics: Surface trade-offs before deciding — silent compromise = future debt}
 - {rule | work: Don't ship without a rollback plan if 1+ user is affected}
 - {principle | ai-interaction: Lead with the conclusion, not the recap — I read for meaning, not the play-by-play}

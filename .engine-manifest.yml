@@ -92,6 +92,16 @@ engine:
   - zettelkasten/_system/registries/AGENT_LENSES.md
   - zettelkasten/_system/registries/lenses/
 
+  # Roles — the shared three-stage thinker→structurer→writer frame (stage 3 =
+  # the deterministic roles_persist.py writer, not the body).
+  # Pure engine, never owner-edited — the archetype-agnostic prompt every role
+  # tick runs through. `_system/roles/` is NOT an engine PREFIX (role instance
+  # dirs under it are owner data, excluded below), so this frame MUST be listed
+  # as an explicit FILE entry or it never ships. The tick + concierge skills and
+  # the scheduler prompt ship via the `skills/` and `scheduler-prompts/` globs
+  # above; the Python helpers ship via the `_system/scripts/` glob below.
+  - zettelkasten/_system/roles/_frame.md
+
   # Engine philosophy + processing principles + note templates
   - zettelkasten/5_meta/CONCEPT.md
   - zettelkasten/5_meta/PROCESSING_PRINCIPLES.md
@@ -118,6 +128,11 @@ engine:
   - .engine-manifest.yml
   - LICENSE
   - integrations/VERSION
+
+  # Personal-data-linter template — ships the format + fake examples so
+  # friends know how to populate their own `personal-data-blacklist.txt`
+  # (owner-data; see `exclude:` — that file is never shipped).
+  - personal-data-blacklist.example.txt
 
   # Project-local Claude Code config (engine-development guide for
   # contributors). The local override `.claude/CLAUDE.local.md` and
@@ -267,6 +282,18 @@ exclude:
   - zettelkasten/5_meta/mocs/
   - zettelkasten/6_posts/
 
+  # Roles — per-instance role state is owner data (config, hooks, ledger,
+  # decisions, rendered state). The `*/` matches instance subdirs ONLY and
+  # MUST NOT swallow the engine `_system/roles/_frame.md` file listed above.
+  # The rendered registry projection + run index + human log carry no template
+  # (regenerated from the role dirs) — already covered by the wholesale
+  # `_system/views/` and `_system/state/` excludes below, listed here for
+  # human readability of the roles boundary.
+  - zettelkasten/_system/roles/*/
+  - zettelkasten/_system/views/ROLES.md
+  - zettelkasten/_system/state/roles-runs.jsonl
+  - zettelkasten/_system/state/log_roles.md
+
   # Live system files (templates ship instead)
   - zettelkasten/_system/SOUL.md
   - zettelkasten/_system/long-form-playbook.md
@@ -314,7 +341,27 @@ exclude:
   # friends. Both serve owner's quality assurance, not friend's runtime.
   - .github/workflows/
 
+  # This instance's real personal-data-linter patterns (owner name, employer,
+  # coworkers, internal project terms). Git-tracked here so CI on THIS repo
+  # has them, but deliberately absent from `engine:`/`template:` above — a
+  # root-level file only ships if individually listed, and this one isn't.
+  # Listed here explicitly (belt-and-suspenders) so the exclusion is never
+  # accidentally reversed by a future glob. See
+  # `scripts/check_no_personal_data.py::load_owner_blacklist`.
+  - personal-data-blacklist.txt
+
   # Note: `scripts/check_no_personal_data.{sh,py}` still ships to skeleton
-  # (lives under engine `scripts/` glob). Harmless for friends — runs
-  # clean against their non-personal data; provided as a convenience for
-  # contributors who fork to send engine PRs upstream.
+  # (lives under engine `scripts/` glob) — by design. It ships with an EMPTY
+  # `DEFAULT_BLACKLIST` and reads owner-specific patterns from
+  # `personal-data-blacklist.txt` at runtime, which is excluded above. On top
+  # of that hand-curated file, `build_dynamic_blacklist()` DERIVES patterns at
+  # scan time from the running clone's own data registries — PEOPLE.md,
+  # PROJECTS.md, SOUL.md's Identity section, and every 0_constitution/
+  # axiom/principle/rule's title + statement — so every real person/project/
+  # identity value is auto-covered without a hand-maintained blacklist line
+  # per entry. A friend's clone therefore gets a linter that already covers
+  # their own real data as soon as PEOPLE.md/PROJECTS.md/SOUL.md fill in,
+  # even before they touch `personal-data-blacklist.txt` (still worth
+  # populating from `personal-data-blacklist.example.txt`, shipped, for
+  # anything the dynamic layer can't structurally derive — e.g. a coworker's
+  # name mentioned only in prose, never in a PEOPLE.md row).

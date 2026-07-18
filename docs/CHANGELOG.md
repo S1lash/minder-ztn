@@ -2,6 +2,103 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.49.0 — Roles that track a number, keep a verdict, or push back on you
+
+The reference library is complete: a role can now steward the shapes a plain catalog
+can't compute. Describe almost any role in plain words — the concierge builds it, you
+never pick a "type".
+
+- **Track a number toward a target.** «Track my number toward a goal» → a role that
+  reads your latest reading from a source you already feed it, and tells you where you
+  are, the gap to your target, and which way it's trending. It never invents the number
+  — it reports only what your data says, and honestly says «no data yet» when there's
+  none.
+- **Keep an on/off-track read on each thing.** «Give each of these a verdict —
+  on-track / at-risk / off» → a role that assigns each thing a verdict from a scale you
+  name, grounded in your notes, and keeps the trail whenever a verdict changes.
+- **A role that pushes back when you drift.** «Hold a position and push me on it when I
+  drift» → a role that argues a position and raises it when you're slipping from it —
+  by default from your OWN notes (what you decided and wrote down), or from your
+  life-principles when you'd rather it argue from those. It's advisory: it only ever
+  raises a dismissable nudge you can read, act on, or ignore — it never acts on its own,
+  and it eases off once you've pushed back on a point twice.
+
+Everything a role records stays grounded and safe by construction: the thinking half
+only proposes, a deterministic writer checks the grounding before anything is written,
+and a role never asserts a fact — or forges a principle — it can't back up. The next
+step is roles that reach out to other systems.
+
+## 0.48.0 — A role can steward almost anything you describe
+
+Roles are no longer limited to work-items and meaning. Describe what you want kept
+in plain words and the concierge builds the shape for you — you never pick a
+"type". New under the hood is a universal keeper:
+
+- **A catalog of your things.** «Keep a list of things and where each one is» →
+  a role that holds each entry with its own attributes (a location, a count, a
+  category) and answers «where's X?». Update it as things change; it never loses
+  the history.
+- **A log you keep adding to.** «Keep a running log I only add to» → a role that
+  appends each new entry and never rewrites the past.
+- **It never makes facts up.** When a role wants to record something about your
+  world that it has no note to back up, it doesn't just write it — it proposes it
+  and you confirm. A role never asserts a fact on your behalf.
+- **Still composable.** One role can pair a running log with a living read of what
+  that log adds up to; a keeper can sit beside a narrative of how a collection evolved.
+
+This universal keeper is the foundation for the compute-shaped roles that follow in
+0.49.0 (a number toward a target, a keyed verdict, an argued push-back).
+
+## 0.47.0 — Roles grow up: real stewards, not just task lists
+
+A role is no longer a single ledger — it is a **composition of parts**, so it can
+be the kind of steward you actually want. A project PM now holds BOTH the
+**workstreams** (a keyed status board — with owner, priority, due date, and
+dependencies) AND the project's **meaning**: a living, grounded read of what the
+work is *for* and whether it still serves that. Most real roles want both, and the
+concierge composes them for you — you never think about "part kinds".
+
+- **Ask a role anything, in your own words.** «Спроси у Руди про X», «ask my PM role
+  what's blocking the launch» — the new `/ztn:role:ask` answers read-only in the
+  role's voice, from a quick status glance up to a full grounded investigation of
+  its zone (notes, meetings, calls, the link-graph), and it finds the role even from
+  a garbled voice reference.
+- **Improve a role you already have.** `/ztn:role:edit` reads how a role has actually
+  run and proposes grounded improvements («ran eight weeks, never flagged a stale
+  item — add that?»), retunes its voice or zone, and pauses / resumes / retires it —
+  always validating before it writes, never stranding what it tracked.
+- **See your roles at a glance** with `/ztn:role:list`.
+- **A role can speak up.** When something genuinely warrants your attention now — a
+  blocker holding three other things, work drifting from the idea — a role surfaces
+  a short, grounded nudge for you (never a silent change, always your call, and it
+  won't nag or pile up).
+- **An expert concierge that fights for your best role.** `/ztn:role:add` proposes
+  power-uses grounded in your real notes, offers a meeting-aware zone, and honestly
+  routes a wish that's really a lens or a metric source elsewhere — rather than
+  cramming it into a role.
+
+## 0.46.0 — Roles: a standing agent that keeps a living ledger for you
+
+Minder can now run **roles** — a standing agent you give a remit (a scope of your
+base) and a persona, which wakes on its own cadence, reads what's new in its zone,
+and maintains a keyed, append-only ledger of the things it tracks (workstreams,
+decisions, open items). Unlike a lens, which only observes, a role **keeps state**:
+it advances, merges, splits, and renames items across ticks, anchoring them to real
+Minder ids where they exist.
+
+- **Safe by construction.** The thinking half only ever *proposes* a change; a
+  deterministic writer runs a validator first (grounding, append-not-replace,
+  churn-guard) and is the only thing that ever writes the ledger. An ungrounded or
+  runaway proposal is rejected, not written — three rejects in a row auto-pause the
+  role for you to look at.
+- **You stay sovereign.** The role never edits its own identity (persona / remit) —
+  it can only suggest, and you approve. A brand-new role's first draft is held
+  frozen until you say yes.
+- **Create one in plain language** with the `/ztn:role:add` concierge — describe
+  what you want watched and it builds the role for you.
+- **Setup step:** a new daily tick (`ztn-roles`, 06:30) joins the scheduler — see
+  `docs/scheduling.md`. Existing installs pick it up on the next scheduler refresh.
+
 ## 0.45.2 — The published skeleton can't accumulate stray files (internal)
 
 Follow-on to 0.45.1, still maintainer-only — nothing changes for you. The seed-

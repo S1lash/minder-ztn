@@ -73,7 +73,7 @@ class ConceptAutofixTests(unittest.TestCase):
             _write_audiences(root)
             f = _write_md(
                 root / "1_projects" / "n.md",
-                'layer: knowledge\nconcepts:\n  - Team-Restructuring\n'
+                'layer: knowledge\nconcepts:\n  - Office-Move\n'
                 'origin: personal\naudience_tags: []\nis_sensitive: false\n',
             )
             events = _run(root, mode="fix")
@@ -81,8 +81,8 @@ class ConceptAutofixTests(unittest.TestCase):
             self.assertIn("concept-format-autofix", ids)
             # File rewritten
             text = f.read_text(encoding="utf-8")
-            self.assertIn("team_restructuring", text)
-            self.assertNotIn("Team-Restructuring", text)
+            self.assertIn("office_move", text)
+            self.assertNotIn("Office-Move", text)
         clear_ztn_env()
 
     def test_non_ascii_dropped(self):
@@ -323,7 +323,7 @@ class IdempotenceTests(unittest.TestCase):
             _write_audiences(root)
             _write_md(
                 root / "1_projects" / "n.md",
-                'layer: knowledge\nconcepts:\n  - team_restructuring\n'
+                'layer: knowledge\nconcepts:\n  - office_move\n'
                 'origin: personal\naudience_tags: []\nis_sensitive: false\n',
             )
             self.assertEqual(_run(root, mode="scan"), [])
@@ -337,7 +337,7 @@ class IdempotenceTests(unittest.TestCase):
             _write_audiences(root)
             _write_md(
                 root / "1_projects" / "n.md",
-                'layer: knowledge\nconcepts:\n  - Team-Restructuring\n'
+                'layer: knowledge\nconcepts:\n  - Office-Move\n'
                 'origin: personal\naudience_tags:\n  - Family\n'
                 'is_sensitive: "true"\n',
             )
@@ -356,7 +356,7 @@ class ScanModeNoWriteTests(unittest.TestCase):
             _write_audiences(root)
             f = _write_md(
                 root / "1_projects" / "n.md",
-                'layer: knowledge\nconcepts:\n  - Team-Restructuring\n'
+                'layer: knowledge\nconcepts:\n  - Office-Move\n'
                 'origin: personal\naudience_tags: []\nis_sensitive: false\n',
             )
             original = f.read_text(encoding="utf-8")

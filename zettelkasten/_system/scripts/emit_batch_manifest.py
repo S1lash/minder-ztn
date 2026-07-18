@@ -1241,7 +1241,7 @@ def _coerce_upserts_array(
     items: list, events: list[dict], path_prefix: str, stats: dict,
 ) -> dict:
     """Wrap a non-empty people/projects array into `{upserts: [...]}`.
-    Bare-string items (`"maxim-goncharov"`) are wrapped as
+    Bare-string items (`"maxim-rybakov"`) are wrapped as
     `{"id": <string>}` before being pushed into upserts. Dict items
     pass through. Anything else is logged as a coercion warning and
     dropped.

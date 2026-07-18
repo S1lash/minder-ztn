@@ -174,6 +174,23 @@ no-sycophancy rule (in `communication-baseline`, and in your own constitution
 where you keep one): the lens is instructed to model how you think, never to
 mine for what comforts you.
 
+## The personal-data linter — what stops your data from shipping publicly
+
+If you ever contribute an engine change upstream (or just run the release
+tooling locally), `scripts/check_no_personal_data.py` scans everything
+that would ship to the public skeleton for your own identifying data. It
+does not rely on a hand-maintained list you'd have to remember to update:
+it derives its patterns at scan time from your own `PEOPLE.md`,
+`PROJECTS.md`, `SOUL.md` Identity section, and every constitution
+axiom/principle/rule's title and statement — so a coworker added to
+`PEOPLE.md` last week, or a new project in `PROJECTS.md`, is automatically
+covered the next time the linter runs. Known-public terms (the engine's
+own placeholder examples, product names like `Minder`/`ZTN`) are excluded
+so the linter never flags its own depersonalized documentation. This
+derivation is local-only — it reads your registries to build regex
+patterns and never sends that data anywhere; the scan itself only runs
+against files bound for the public skeleton, never your private notes.
+
 ## Engine boundaries — what the engine is not allowed to do
 
 Codified in `zettelkasten/_system/docs/ENGINE_DOCTRINE.md` (auto-loaded

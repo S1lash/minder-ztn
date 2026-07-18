@@ -179,7 +179,7 @@ path:"_records" ["created:>=2026-04-08"]
 ```
 
 Replace `<person-id>` with the canonical ID from `PEOPLE.md`
-(e.g. `andrey-kuznetsov`).
+(e.g. `ivan-petrov`).
 
 ### Notes in a specific project
 

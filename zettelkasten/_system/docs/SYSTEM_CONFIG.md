@@ -89,6 +89,17 @@ migrating existing open items.
 | `task-aggregation-orphans` | `/ztn:lint` A.6.1 | `reconcile_tasks.py` finds open `- [ ]` task-ids in notes absent from every active/Stale section of TASKS.md | Surface count; owner runs `/ztn:process --reconcile-tasks` to classify + file them (read-only detection, no auto-write) |
 | `hub-index-incomplete` | `/ztn:lint` A.6.2 | An on-disk `5_meta/mocs/hub-*.md` file is absent from HUB_INDEX.md | Surface missing ids; owner regenerates the index via `/ztn:maintain` |
 | `calendar-aggregation-orphans` | `/ztn:lint` A.6.3 | `reconcile_calendar.py` finds a note with a future `📅` event whose link is absent from every forward-facing CALENDAR section | Surface count; owner runs `/ztn:process --reconcile-calendar` (read-only detection, no auto-write) |
+| `role-cold-start` | `/ztn:roles` | First tick over an empty PART of a role (no prior content) — the body drafts that part's initial draft (aggregated per role across every pending part) | Hold each part's frozen draft in its `staging`; adopt into live state only on owner approval (never re-cluster; re-surfaced verbatim until resolved) |
+| `role-new-key` | `/ztn:roles` | Unanchored new item in a tick (a ledger `add` with `anchor: null`) — minting a stable key is an LLM judgment, not deterministic. Only anchoring part-kinds raise it | Per `identity_strictness`: attach to nearest existing key; `strict` (cold-start / early ticks) → hold, do not mint |
+| `role-churn-guard` | `/ztn:roles` | One tick's deltas to a PART would rewrite it wholesale (a ledger: touch/retire all its live keys, or exceed `churn_threshold` mutations; a narrative: exceed `churn_threshold` statements; a registry: exceed `churn_threshold` catalog mutations/retires, or sweep all its live entries — log appends are exempt) | Hold; do not persist that part's deltas; ask the owner (that part's run is held, siblings unaffected) |
+| `role-identity-suggest` | `/ztn:roles` | The role proposes an edit to its own identity (persona / stance / remit) — owner-sovereign, the role never self-edits | Hold for owner; identity change applied only on approval |
+| `role-auto-paused` | `/ztn:roles` | 3 consecutive validator rejects for a PART — the whole role auto-pauses with an Archive-Contract reason | Informational; role `status: paused`, needs owner to review the rejects and re-activate |
+| `role-schema-version` | `/ztn:roles` | A role PART's `parts/{id}.json` schema version does not match the engine's current archetype version — newer (this engine is too old to read it) or older with no migration path | Newer → refuse the tick untouched (update the engine); older with no migration → proceed in degraded mode. Owner reviews the version gap |
+| `role-unroutable` | `/ztn:roles` | One or more deltas in a tick addressed a `part` the role does not have (a stale / renamed part id in the body) — the work would otherwise vanish silently | Drop the unroutable deltas; if the tick had NO other work, degrade its run to `rejected` (retries, not a clean empty); surface the offending refs + the role's real part ids |
+| `role-remit-changed` | `/ztn:role:edit` | The owner edited a role's remit (the zone it watches) — the tracked state was built against the OLD zone, so keys may now reference out-of-zone work or miss newly-in-zone work | Re-baseline: surface the shift, stage a re-validation of the tracked state against the new remit; never silently churn-tick a reshaped remit (that would orphan keys or trip the churn-guard) |
+| `role-nudge` | `/ztn:roles` | A tick's PROACTIVE VOICE — the role surfaces a bounded, grounded concern the owner should act on now (a push, a cross-cutting blocker, «что горит», drift from the idea). origin `role:{id}` = non-personal, ALWAYS HITL, never auto-applied | Surface as an owner-facing item; write NOTHING canonical. Grounded (cites a real in-remit record) or dropped; cumulative anti-salami budget (`ROLE_NUDGE_OPEN_BUDGET` open per role) defers the rest; same nudge dedups across ticks. `/ztn:resolve-clarifications` triages it like any owner item |
+| `role-orphaned-part` | `/ztn:roles` | A tick found part state on disk (`parts/{id}.json` + a `state.md` sub-zone) that the role's `config.yml` `parts:` no longer declares — a parts-shape change that slipped past `/ztn:role:edit` (which refuses one) or a hand-edited config. The tick processes only declared parts, so the orphan silently drifts stale | Surface the mismatch; DELETE NOTHING (surface, don't decide). Owner reconciles via `/ztn:role:edit` — restore the part to `parts:` to resume it, or retire + re-create the new shape via `/ztn:role:add`. Deduped: surfaced once while open |
+| `role-owner-confirm` | `/ztn:roles` | An `owner-confirm` registry part proposed recording owner-fact(s) it has NO in-zone note to cite — the role wants to assert a fact about the owner's world (say an entry's location it was told but has no note for) it cannot ground in a record. A role NEVER asserts a fact on the owner's behalf | Surface the proposal; write NOTHING (the owner is the engine-authored anchor). Owner ratifies the true ones via `/ztn:role:edit`, or lets them become notes so the next tick cites them. A record-cited registry op writes normally; only the uncited proposal waits |
 
 Per-skill SKILL.md may add narrower types for skill-internal flows;
 this table covers the cross-skill canonical set referenced in
@@ -234,6 +245,9 @@ restating it.
 | Write `_system/state/activity/<source>/{weekly-{week}.json, last_weekly_run.txt}` + `_system/views/activity/<source>/weekly-{week}.md` | `/ztn:maintain` only (activity weekly worker, Step 6.8 — symmetric to biometric, after-batch with weekly idempotency gate) | Derived state — recomputable from `_records/activity/<source>/`. Activity has no σ-correlations/calibration layer (the heavy aggregation is upstream in the collector); the worker produces a weekly Focus-Engineering rollup (median scores, category/rhythm/switching trend, top death loops). Weekly-gated per source by `<source>/last_weekly_run.txt`. |
 | Write `## Health Snapshot` block in CURRENT_CONTEXT.md | `/ztn:maintain` only (via `render_health_snapshot.py`, integrated into CURRENT_CONTEXT regen chain) | Extension of existing CURRENT_CONTEXT regen — derived view, not new content. ≤15 lines, life-connection focused. |
 | Write AUTO-GENERATED zone of `5_meta/mocs/hub-cognitive-model.md` | `/ztn:maintain` only (via `render_cognitive_model_hub.py`, Step 7.9 — post-loop, after Step 7.8) | Pure projection of constitution `cognitive_axes` fields + candidate buffer; only the zone between the `<!-- AUTO-GENERATED: cognitive-model-hub -->` markers, never the owner's «portrait» above them. |
+| Write `_system/roles/{id}/{config.yml, hooks/{tick,ask}.md, brief.md?}` (role identity + hook bodies + optional owner brief) | `/ztn:role:add` (create) + `/ztn:role:edit` (change / lifecycle) — validate-before-write; owner-sovereign thereafter. NEITHER seeds part state | Role identity (persona / stance / remit / parts) is owner-sovereign — the tick NEVER self-edits it. A role's suggested identity change surfaces `role-identity-suggest`, applied only by the owner. `brief.md` is owner-written; the engine reads it as STEER, never writes it. |
+| Write `_system/roles/{id}/{parts/*.json, state.md AUTO sub-zones, decisions.jsonl}` + `_system/state/{roles-runs.jsonl, log_roles.md}` | `/ztn:roles` via `roles_persist.py` (sole deterministic writer) | The tick body only proposes a part-addressed JSON delta; `roles_persist.py` runs each part's validator FIRST, then persists — the safety-by-construction control boundary. `state.md` writes touch only each part's AUTO sub-zone between its markers; the owner «portrait» above them is never touched. A tick's proactive `role-nudge` writes only to the owner-facing `CLARIFICATIONS.md`, never a canonical note. |
+| Regenerate `_system/views/ROLES.md` | `/ztn:maintain` only (via `render_roles_registry.py`, Step 7.10 — post-loop) | Read-only projection over the role instance dirs — derived view, recomputable, holds no state of its own. |
 
 **Supporting invariants:**
 1. `/ztn:maintain` NEVER creates knowledge content — no records, notes, or hub
@@ -299,9 +313,9 @@ Owner-facing review path: `/ztn:resolve-clarifications` — interactive walker t
 
 ### Cross-skill exclusion
 
-All five pipeline skills (`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`, `/ztn:content`) mutually exclusive. Each reads all six `.{skill}.lock` files в `_sources/` (the five pipelines + `.resolve.lock`) on start. Any other skill's lock exists → abort. `/ztn:content` acquires `.content.lock` when it writes (`--maintain` / `--draft`); its read-only status mode needs no lock. `.content.lock` matters because the maintainer reads `CONTENT_MAP.md` while `/ztn:maintain` Step 7.8 rewrites it.
+All six pipeline skills (`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`, `/ztn:content`, `/ztn:roles`) mutually exclusive. Each reads all seven `.{skill}.lock` files в `_sources/` (the six pipelines + `.resolve.lock`) on start. Any other skill's lock exists → abort. `/ztn:content` acquires `.content.lock` when it writes (`--maintain` / `--draft`); its read-only status mode needs no lock. `.content.lock` matters because the maintainer reads `CONTENT_MAP.md` while `/ztn:maintain` Step 7.8 rewrites it. `/ztn:roles` acquires `.roles.lock` for a tick (`--all-due` / `--role` / `--approve-coldstart`, which write role state via `roles_persist.py`). The role-management family relates to that same `.roles.lock` in three tiers. `/ztn:role:edit` **acquires** it before writing a role's config / hooks / lifecycle — it mutates existing role state, so it must hold the lock for the write. `/ztn:role:add` **checks** it but never holds it: it aborts if a tick is mid-write (`.roles.lock` present and < 2h old → "roles system busy, try again"), then writes only a fresh role dir — no existing state to corrupt — so it needs the competitor-guard, not the lock itself. The read-only members — `/ztn:role:ask` (the 3-tier question ladder, extracted from the runner) and `/ztn:role:list` — take no lock and skip the check.
 
-`/ztn:resolve-clarifications` acquires `.resolve.lock` for both interactive and `--auto-mode` runs. Interactive mode reads the four pipeline locks (process / maintain / lint / agent-lens) and aborts on any. **`--auto-mode` exception for `.lint.lock`:** auto-mode is dispatched by `/ztn:lint` Step 7.5 (lint holds its own lock during dispatch); treating that lock as competitor would deadlock the nightly chain. Auto-mode therefore proceeds when `.lint.lock` exists (it is the dispatcher's signature), aborts silently on any other pipeline lock (those should have cleared at lint's own Step 0.1; presence here means something genuinely went wrong — let the next nightly tick retry).
+`/ztn:resolve-clarifications` acquires `.resolve.lock` for both interactive and `--auto-mode` runs. Interactive mode reads the six pipeline locks (process / maintain / lint / agent-lens / content / roles) and aborts on any. **`--auto-mode` exception for `.lint.lock`:** auto-mode is dispatched by `/ztn:lint` Step 7.5 (lint holds its own lock during dispatch); treating that lock as competitor would deadlock the nightly chain. Auto-mode therefore proceeds when `.lint.lock` exists (it is the dispatcher's signature), aborts silently on any other pipeline lock (those should have cleared at lint's own Step 0.1; presence here means something genuinely went wrong — let the next nightly tick retry).
 
 **Nightly cadence:** two scheduler ticks. Agent-lens at 03:00 (lens production isolated), lint at 05:00 (invariant scans → Step 7.5 dispatches resolve --auto-mode inline → consumes fresh lens hints + new clarifications). The two-hour gap separates lens emission from resolve consumption at the scheduler-agent-context level — the agent that judges proposals in Step A.2/A.3 has not just produced lens body output, which prevents confirmation bias on its own emissions. Lint and resolve in one tick is acceptable because their reasoning shapes are ortogonal (invariant pattern-match vs experienced-owner judgement) — minor contextual bleed in exchange for operational simplicity (one tick consumes the CLARIFICATIONS lint just emitted).
 
@@ -453,7 +467,7 @@ category/specific-tag
 
 **Примеры:**
 - `type/meeting`
-- `project/career-promotion`
+- `project/learning-goal`
 - `person/ivan-petrov`
 
 ### Folders
@@ -464,7 +478,7 @@ category/specific-tag
 ### Entity IDs (people, projects)
 - Lowercase
 - Короткое имя
-- `ivan-petrov`, `john-doe`, `acme-payments`, `agentic-commerce`
+- `ivan-petrov`, `john-doe`, `acme-payments`, `project-alpha`
 
 ---
 
@@ -790,7 +804,7 @@ Full-text search по raw content: `grep -r "keyword" zettelkasten/_sources/`
 
 | Domain | Description |
 |--------|-------------|
-| work | Работа (RBS, PSP, проекты) |
+| work | Работа (проекты, команда, планирование) |
 | career | Карьера (повышение, развитие) |
 | personal | Личное (рефлексия, здоровье) |
 
@@ -874,6 +888,7 @@ For archival driven by a CLARIFICATIONS resolution or by a candidate-buffer dism
 | `_system/state/CLARIFICATIONS.md` Resolved Items | `**Rationale:**` | every action whose effect is archival: `dismiss`, `dismiss-duplicate`, `archive-hub`, `close-thread`, `demote-tier`, `merge-notes` (the merged-away side), `pursue-or-close` with `choice: close` |
 | `_system/state/people-candidates.jsonl` weekly-dismissed archive | `dismissal_reason` | every line written to `lint-context/weekly/{YYYY-WW}-people-candidates-dismissed.jsonl` |
 | `_system/state/OPEN_THREADS.md` Resolved section | `resolution_text` (already required by `close-thread` action) | every entry under `## Resolved` |
+| `_system/roles/{id}/parts/{part_id}.json` | `paused_reason` | a role part's auto-pause (`status: paused`) — `roles_persist.py` writes the reason (3 consecutive rejects) into this structured field; the `config.yml` `status: paused` inline comment is a redundant human-visible mirror, and the `role-auto-paused` CLARIFICATION surfaces it. The `paused_reason` field IS the contract-required reason |
 
 Skill enforcement: any resolution that triggers archival without populating the required field surfaces as `archive-reason-missing` CLARIFICATION.
 
@@ -1014,7 +1029,7 @@ rows surface as CLARIFICATIONs). See `/ztn:lint` SKILL Scan A.11 for the method.
    - personal → 2_areas/personal/
 
 4. **По контенту:**
-   - RBS, PSP, команда → 2_areas/work/
+   - проекты, команда, планирование → 2_areas/work/
    - AI, LLM, архитектура → 3_resources/tech/
    - Бизнес-идеи → 3_resources/ideas/business/
    - Продуктовые идеи → 3_resources/ideas/products/
@@ -1070,7 +1085,7 @@ Pipeline обработки определён в SKILL.md (`/ztn:process`).
 ### Name normalization:
 - "Иван Петров" → "ivan-petrov"
 - "Acme Payments" → "acme-payments"
-- "Career Promotion" → "career-promotion"
+- "Learning Goal" → "learning-goal"
 - "AI Agents" → "ai-agents"
 
 ---

@@ -61,7 +61,7 @@ def _full_agg() -> dict:
         "first_active": "2026-06-23T06:00:00+00:00",
         "last_active": "2026-06-23T22:00:00+00:00",
         "active_seconds_by_app": {"Slack": 8000.0, "PyCharm": 5400.0},
-        "web_seconds_by_domain": {"jira.theteamsoft.com": 2000.0},
+        "web_seconds_by_domain": {"jira.example.com": 2000.0},
         "top_titles": [["PR #1168", 1200.0]],
         "seconds_by_project_raw": {"paymentgate": 360.0},
         "event_counts": {"currentwindow": 3000},
@@ -81,7 +81,7 @@ def _full_agg() -> dict:
         "input": {"presses": 0, "clicks": 0},
         # --- v3 ---
         "seconds_by_category": {"deep_work": 9000.0, "communication_work": 8000.0,
-                                "work_bpc": 4000.0, "uncategorized": 5400.0},
+                                "work_acme": 4000.0, "uncategorized": 5400.0},
         "productivity_score": 72.0,
         "focus_score": 65.0,
         "combined_score": 69.0,

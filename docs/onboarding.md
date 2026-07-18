@@ -183,8 +183,9 @@ divergence, and runs migrations in order. Your data is never touched.
 
 ## 9. (Optional) Schedule autonomous processing
 
-Three ready-made scheduler prompts ship in
-`integrations/claude-code/scheduler-prompts/`:
+Five ready-made scheduler prompts ship in
+`integrations/claude-code/scheduler-prompts/` (canonical cadence table +
+exact cron in `docs/scheduling.md`):
 
 - `process-scheduled.md` — pre-sync → `/ztn:process` →
   `finalize-tick.sh scheduler/process`.
@@ -197,11 +198,18 @@ Three ready-made scheduler prompts ship in
   `/ztn:resolve-clarifications --auto-mode` inline via Step 7.5)
   → `finalize-tick.sh scheduler/lint`. Recommended cadence: ~2 h after
   agent-lens (e.g. cron `0 5 * * *`).
+- `roles-nightly.md` — pre-sync → `/ztn:roles --all-due` →
+  `finalize-tick.sh scheduler/roles`. Recommended cadence: daily, after
+  lint (e.g. cron `30 6 * * *`). The skill filters roles by per-role
+  cadence — daily tick ≠ daily role runs.
+- `content-tick.md` — pre-sync → `/ztn:content --maintain` →
+  finalize. Recommended cadence: weekly (e.g. cron `0 6 * * 2`, Tuesday).
 
-Two nightly ticks (lens production isolated from lint+resolve
-consumption — prevents the agent that produced lens bodies from
-voting on its own proposals). To create new lenses, use the
-wizard: `/ztn:agent-lens-add` (owner-driven, not scheduled).
+The daily ticks are offset from each other (lens production isolated from
+lint+resolve consumption, roles reasoning over a quiesced base) — see
+`docs/scheduling.md` for the offset rationale. To create new lenses use
+`/ztn:agent-lens-add`, new roles `/ztn:role:add` (both owner-driven, not
+scheduled).
 
 Paste each body into your scheduler of choice (Claude Code `/schedule`,
 GitHub Actions cron, host crontab calling `claude` headless — any
@@ -271,6 +279,31 @@ once in the scheduler environment and confirm:
    tick — proves the auto-delete setting is on and working.
 
 Full design — `docs/scheduling.md`.
+
+## 11. (Optional) Stand up a role
+
+A **role** is a standing steward of one zone of your life — a project
+manager for something you're shipping, a keeper of your open
+workstreams, a coach for a habit you're building. Describe it in plain
+language and the skill builds it for you:
+
+```
+/ztn:role:add
+```
+
+From then on the role ticks on its own cadence (nightly by default),
+reads the slice of your base it owns, and keeps a live status ledger —
+what moved, what's stuck, what needs a decision from you. Ask it
+anything, anytime:
+
+```
+/ztn:role:ask <role> "what should I focus on this week?"
+```
+
+`/ztn:roles` on its own lists your roles and their latest status.
+Create a role only when a zone is busy enough to deserve a standing
+steward — you don't need any to start. To run the role tick on a
+schedule, see `docs/scheduling.md`.
 
 ---
 

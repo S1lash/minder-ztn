@@ -122,6 +122,11 @@ modified: '2026-04-26'
 | `/ztn:recap` | Session recap → `_sources/inbox/claude-sessions/`; адаптивно сохраняет verbatim-артефакты (тост/письмо/пост) в `_sources/inbox/crafted/` (`--crafted` / `--crafted-only`), двусторонняя связь |
 | `/ztn:search` | Поиск по базе |
 | `/ztn:content` | Status из CONTENT_MAP · `--draft <topic>` · `--maintain` (draft-maintainer: живые черновики в 6_posts/drafts/) |
+| `/ztn:roles` | Tick runner для Roles — standing agents, каждый ведёт свою зону (remit) как композицию частей (например, `ledger`, `narrative`, `registry`, `metrics`, `assessment`, `stance`). Body предлагает part-addressed delta, `roles_persist.py` — единственный writer (control boundary); может surfacing проактивный `role-nudge`. Cold-start замораживает первый draft каждой части до approval |
+| `/ztn:role:add` | Экспертный концьерж создания роли — plain-language wish → валидный role (config + hooks). Композирует части из желания, бьётся за самую leverage-роль (power-uses, meeting-aware remit, growth-персона), cross-route на lens/metric. Пишет только config+hooks (state сеет writer) |
+| `/ztn:role:edit` | Правка/ретюн роли + lifecycle (pause/resume/retire) над ролью с историей. remit-change → `role-remit-changed` re-baseline; смена формы частей → новая роль. Validate-before-write, берёт `.roles.lock` |
+| `/ztn:role:ask` | Вопрос к роли — read-only, lock-free, 3-tier ladder (state.md → index → полное расследование зоны). Резолвит имя роли даже из STT (confirm-on-fuzzy, never-guess) |
+| `/ztn:role:list` | Показать роли — read-only, plain-language (что смотрит, что ведёт, активна/на паузе, когда запускалась) |
 | `/ztn:resolve-clarifications` | Interactive разбор очереди CLARIFICATIONS — кластеризация по темам, numbered questions, hypothesis pre-forming против constitution-core, archive resolved |
 | `/ztn:save` | Категоризованный commit + push в `origin`. Owner-friendly обёртка над git, без auto-chain из других скиллов |
 | `/ztn:sync-data` | Pull данных из `origin` с rebase (мульти-девайс). Refuses auto-merge на конфликтах прозы — escalates owner |

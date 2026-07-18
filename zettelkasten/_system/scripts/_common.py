@@ -1050,6 +1050,42 @@ def _check_unique_ids(principles: list[Principle]) -> None:
         seen[p.id] = p.path
 
 
+def constitution_principle_ids(base: Path | None = None) -> set[str]:
+    """The set of every principle-id that resolves to a real file under
+    `0_constitution/` — the deterministic existence check for a cited principle-id.
+
+    Tolerant sibling of `iter_principles`: where that raises `SchemaError` /
+    `ParseError` on a malformed or duplicate-id file (it is the schema-strict loader),
+    this NEVER raises. It walks the same `{axiom,principle,rule}/**` tree, skips symlinks
+    (never followed — they could point outside the repo), reads each file's frontmatter
+    tolerantly (`read_frontmatter` returns None on any parse failure), and collects the
+    `id:` field. A file that cannot be parsed contributes no id — so a caller checking
+    membership fails CLOSED on it (an id pointing at a broken file is treated as
+    non-existent), never crashing the caller.
+
+    The existence half of the values-grounding oracle: `roles_persist` existence-filters
+    a stance part's injected oracle against this set, so a fabricated principle-id can
+    never survive to ground a position — deterministic at the writer, independent of the
+    prompt stage that authored the oracle. Pure filesystem: no LLM, no check-decision.
+    """
+    root = constitution_root(base)
+    ids: set[str] = set()
+    for type_name in ALLOWED_TYPES:
+        type_dir = root / type_name
+        if not type_dir.is_dir():
+            continue
+        for md_file in type_dir.rglob("*.md"):
+            if md_file.is_symlink():
+                continue
+            parsed = read_frontmatter(md_file)
+            if parsed is None:
+                continue
+            pid = parsed[0].get("id")
+            if isinstance(pid, str) and pid.strip():
+                ids.add(pid.strip())
+    return ids
+
+
 # -----------------------------------------------------------------------------
 # Filters
 # -----------------------------------------------------------------------------

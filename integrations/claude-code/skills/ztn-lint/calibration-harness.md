@@ -97,7 +97,7 @@ Detect drift в LLM verdict prompt calibration. Each case has known-correct tier
 
 **Candidate:** Frontmatter `people: [sasha]`. PEOPLE.md has 7 `sasha-*` ids. File context = team meeting about salary (mentions role «dev»).
 
-**Context:** Multiple candidates, context partially informative (narrows к sasha-mikhailichenko likely, but sasha-krasnov (DBA) could also be «dev»-classified).
+**Context:** Multiple candidates, context partially informative (narrows к sasha-morozov likely, but sasha-panin (DBA) could also be «dev»-classified).
 
 **Expected rule-floor:** weak (multiple candidates)
 **Expected LLM verdict:** probable (leans but uncertain)

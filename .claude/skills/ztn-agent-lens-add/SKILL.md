@@ -98,6 +98,40 @@ This mirrors `/ztn:process` and `/ztn:agent-lens` conventions. All ZTN
 skills follow the same shape: user-facing content in user's language,
 machine-readable state in English.
 
+**Reader alignment (load-bearing):**
+
+The owner — a human — reads every turn of this conversation. Word the
+questions, previews, explanations, disclosures, and the finished-lens
+summary to fit how THIS owner takes in information — the presentation
+floor in `_system/docs/communication-baseline.md` (conclusion first,
+plain language, high signal, no filler, no flattery), this owner's
+presentation-delta principles surfaced in
+`_system/views/constitution-core.md` (ai-interaction — density, what
+lands, what to avoid), and their working style + answer preferences in
+`_system/SOUL.md` (`## Context for Agents`, `## Working Style`). Read
+whichever of these exist; a missing file is not an error — skip it
+silently and fall back to the communication-baseline floor, then plain
+generic UX. This is a distinct, orthogonal read from the
+goal-alignment-themed `SOUL.md` use at Step 6 — that one shapes a lens's
+CONTENT, this one shapes how the CONVERSATION reads.
+
+**HARD BOUNDARY: this shapes FORM only** — the wording, density, and
+ordering WITHIN the fixed conversation structure below (the steps, the
+one-question-per-turn discipline, the disclosures, the push-back gates).
+Decide the substance on the merits FIRST — which complexity tier the
+wish is, whether the data is sparse or empty, whether the anti-examples
+are sufficient, whether the hit criteria are concrete, whether the id
+collides, what must be disclosed — and only then let the owner's profile
+shape how it reads. It NEVER softens the prompt-quality gate (Step 6),
+NEVER drops or waters down any Step-8 disclosure (echo-loop, sensitivity,
+cost included), NEVER weakens push-back on missing anti-examples (Step
+7.3), forcing draft on sparse / empty data (Step 4 / 7.6), or the
+schema-extension block (Step 7.5), and NEVER fabricates a lens that would
+produce noise to please the user. Per `principle-ai-interaction-012`,
+adaptation to how the owner thinks must not become an echo of what is
+pleasant to hear: stay critical, keep the honesty gates intact, and align
+presentation on top of an already-decided substance.
+
 **Documentation convention:** при любых edits этого SKILL соблюдай
 `_system/docs/CONVENTIONS.md`.
 
@@ -213,9 +247,14 @@ These rules are non-negotiable. Skill MUST follow.
    answer, skill responds with one short acknowledgement before next
    question. «Понял, ты хочешь...» / «Got it — you want...».
 5. **No system-mechanics jargon unprompted.** If user does not use
-   technical terms, skill does not introduce them. If user asks
+   technical terms, skill does not introduce them. If user asks a
    technical question, skill answers plainly without leveraging the
-   answer to ask more technical questions.
+   answer to ask more technical questions. The baseline plainness and
+   the density of each turn are calibrated per «Reader alignment» — the
+   communication-baseline floor plus this owner's presentation deltas
+   (`SOUL.md`, `constitution-core.md`), not a fixed generic register.
+   The floor holds regardless: even a technical owner gets no internal
+   mechanics unasked.
 6. **No bait-and-switch.** Don't show preview as «final», then
    suddenly demand 4 more questions. If push-back is needed (e.g.
    anti-examples missing), say so when showing preview, frame as
@@ -287,14 +326,23 @@ User-invisible. Skill internal:
    prompt.md` — needed for duplicate-intent detection at Step 7.
 3. Read `_system/registries/lenses/_frame.md` — skill must internalize
    the contract its output will run inside.
-4. Detect technical depth signal from `$ARGUMENTS` and any prior
+4. Load the reader-alignment set (see «Reader alignment»):
+   `_system/docs/communication-baseline.md`, `_system/SOUL.md`
+   (`## Context for Agents` + `## Working Style`),
+   `_system/views/constitution-core.md` (the ai-interaction presentation
+   deltas). Read whichever exist; a missing file is skipped silently →
+   fall back to the communication-baseline floor, then plain generic UX.
+   This calibrates the wording of every turn; it never changes what the
+   skill decides on the merits. Orthogonal to the Step-6 goal-alignment
+   `SOUL.md` read (that shapes lens content, not the conversation).
+5. Detect technical depth signal from `$ARGUMENTS` and any prior
    conversation in this session.
-5. Concurrency: if `_sources/.agent-lens.lock` exists and is <2h old,
+6. Concurrency: if `_sources/.agent-lens.lock` exists and is <2h old,
    tell user «one moment, the system is processing — try again in a
    few minutes» and exit.
-6. Empty-system check: count records in `_records/`. If 0, flag
+7. Empty-system check: count records in `_records/`. If 0, flag
    internally — Step 4 data probe will not be useful.
-7. Capture pre-flight registry snapshot (hash of AGENT_LENSES.md and
+8. Capture pre-flight registry snapshot (hash of AGENT_LENSES.md and
    list of lens ids). At Step 10 atomic write, verify nothing changed
    between Step 0 and Step 10 (concurrent edit detection).
 
@@ -392,6 +440,12 @@ Tier-adapted preview depth:
 - **Standard**: 1-2 observations, ~5-8 lines each
 - **Complex**: 3 observations spanning multiple dimensions, ~5-10 lines
   each, demonstrating breadth
+
+Word the preview to the owner's density + conclusion-first delta (per
+«Reader alignment») — lead with what the lens does for them, then the
+sample; match the sample count and prose density to how this owner reads,
+not a fixed template. The sample stays truthful to what the records would
+actually surface — presentation never inflates what the lens would find.
 
 Frame:
 > «Каждый {weekday at time} ты бы получал что-то такое:
@@ -685,6 +739,12 @@ Combined turn (user-facing, longer than usual — preview turn class).
 
 ### 8.1 Plain-language summary
 
+Word this to the owner's density + conclusion-first delta (per «Reader
+alignment») — the ordering and length below adapt to how this owner
+reads; the conclusion (what the lens is + when it first runs) leads. The
+disclosures at 8.3 are content, not form — they are shown in full
+regardless of how tersely the owner likes to read.
+
 > «Вот что я собрала:
 >
 > **{Human Name}** — смотрит на твои записи каждые {when, plain
@@ -886,7 +946,14 @@ use intermediate values.
 - `_system/registries/lenses/{*}/prompt.md`
 - `_system/registries/lenses/_frame.md`
 - `_records/**` (Step 4 probe, scoped to window flag)
-- `_system/SOUL.md` (if lens is goal-alignment-themed)
+- `_system/SOUL.md` — three orthogonal reads: reader alignment
+  (`## Context for Agents`, `## Working Style` — how the conversation
+  reads), language-fallback detection (body text), and, if the lens is
+  goal-alignment-themed, the goal / values content that shapes the lens
+  itself (Step 6)
+- `_system/docs/communication-baseline.md` (reader alignment — presentation floor)
+- `_system/views/constitution-core.md` (reader alignment — ai-interaction
+  presentation deltas)
 
 ## Coordination with other skills
 

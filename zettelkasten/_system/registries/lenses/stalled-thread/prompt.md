@@ -97,7 +97,7 @@ The most common false positive is treating co-occurrence (person X / project Y a
 
 > **The substitution test** — if you remove the candidate thread's framing and rewrite the record around the rest of its content, does the mention disappear? If YES, the mention is *about the thread*. If NO (the mention would survive in any record on the topic), it is ambient context.
 
-Example: «Vasily молча реагировал на Agentic Commerce» — substitution removes Vasily, the record about Agentic Commerce stands. Vasily here is ambient. «У меня вот эти 4 года ни зарплаты, ни премии не растёт» — substitution removes the brood, the record loses its core. The brood is the thread.
+Example: «Oleg молча реагировал на Project Alpha» — substitution removes Oleg, the record about Project Alpha stands. Oleg here is ambient. «У меня вот эти 4 года ни зарплаты, ни премии не растёт» — substitution removes the brood, the record loses its core. The brood is the thread.
 
 If you cannot decide — the candidate is weak. Surface as low-confidence «watching, ambient probability ≥ thread probability» rather than as a hit.
 

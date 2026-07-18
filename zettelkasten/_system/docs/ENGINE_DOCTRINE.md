@@ -246,8 +246,9 @@ re-open or re-mutate.
 
 ### 3.4 Locks and exclusivity
 
-`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`, and
-`/ztn:content` (when writing — `--maintain` / `--draft`) are mutually
+`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`,
+`/ztn:content` (when writing — `--maintain` / `--draft`), and
+`/ztn:roles` (when ticking — `--all-due`) are mutually
 exclusive (cross-skill lock matrix in their SKILL.md); `/ztn:content` matters
 because its maintainer reads `CONTENT_MAP.md` while `/ztn:maintain` rewrites it.
 `/ztn:bootstrap` is not in the matrix — owner ensures system idle before
@@ -260,7 +261,8 @@ parallel owner-driven invocations of itself.
 interactive and `--auto-mode` dispatched by `/ztn:lint` Step 7.5
 inline (the lint nightly tick at 05:00 is the timer; resolve is the
 engine). Both modes take `.resolve.lock`. Interactive mode reads all
-four pipeline locks (process / maintain / lint / agent-lens) at start
+six pipeline locks (process / maintain / lint / agent-lens / content /
+roles) at start
 and pre-syncs via `/ztn:sync-data` (Step 0) so multi-device queues
 stay current. **`--auto-mode` exception for `.lint.lock`:** lint holds
 its own lock during dispatch; treating that as competitor would
@@ -276,7 +278,12 @@ not inside the lint tick — agent-lens production and resolve
 consumption stay in different scheduler-agent contexts on purpose,
 so the agent judging proposals in Step A.2/A.3 has not just produced
 lens body output (would be confirmation bias on its own emissions).
-All four pipeline skills read `.resolve.lock` at start and abort on
+**`/ztn:roles` runs as its own nightly scheduler tick at 06:30**,
+after process / maintain / agent-lens / lint have settled — so each
+role reasons over a quiesced base rather than mid-pipeline state. The
+06:30 slot is offset from content's Tuesday 06:00 window so the weekly
+content tick never loses a lock race to the daily roles tick.
+All six pipeline skills read `.resolve.lock` at start and abort on
 it. `/ztn:sync-data` and `/ztn:save` read `.resolve.lock` and refuse
 while a resolve session is in progress; the resolve skill's Step 9.1
 releases the lock before reminding the owner to run save. Stale locks
@@ -290,9 +297,11 @@ releases the lock before reminding the owner to run save. Stale locks
 | `_system/state/log_maintenance.md` | `/ztn:maintain`, `/ztn:bootstrap` | yes |
 | `_system/state/log_lint.md` | `/ztn:lint` | yes |
 | `_system/state/log_agent_lens.md` | `/ztn:agent-lens` | yes |
+| `_system/state/log_roles.md` | `/ztn:roles` | yes |
 | `_system/state/BATCH_LOG.md` | `/ztn:process` | yes |
 | `_system/state/PROCESSED.md` | `/ztn:process` | yes |
 | `_system/state/agent-lens-runs.jsonl` | `/ztn:agent-lens` | yes |
+| `_system/state/roles-runs.jsonl` | `/ztn:roles` | yes |
 | `_system/state/check-decision-runs.jsonl` | `/ztn:check-decision` (run + optional followup lines per invocation) | yes |
 | Knowledge note `## Evidence Trail` | every skill that touches the note | yes |
 
@@ -448,9 +457,15 @@ change to integrate. The contract is engine-level, not skill-level.
 - Working memory (`OPEN_THREADS.md` — until focus engine arrives)
 - HITL queues (`CLARIFICATIONS.md`)
 - Audit trails (`log_*.md`, `agent-lens-runs.jsonl`,
-  `check-decision-runs.jsonl`) — owner-internal feedback substrate;
-  consumed by lenses + future cross-source analysis, not by Minder
-  backend
+  `check-decision-runs.jsonl`, `roles-runs.jsonl`) — owner-internal
+  feedback substrate; consumed by lenses + future cross-source
+  analysis, not by Minder backend
+- Role instance state (`_system/roles/{id}/` —
+  `parts/*.json` / `state.md` / `decisions.jsonl` / `config.yml`) —
+  owner-internal working memory of a running role, same posture as the
+  content ledger and `OPEN_THREADS.md`. `/ztn:roles` produces no batch
+  manifest; the rendered projection `_system/views/ROLES.md` is a
+  derived view, not an emitter
 - Derived/regenerable views (`CURRENT_CONTEXT.md`,
   `lint-context/{daily,monthly}/*`)
 - The cognitive-model hub (`5_meta/mocs/hub-cognitive-model.md`). It is a
@@ -524,10 +539,12 @@ buffers) take the writer named here.
 | `_system/state/principle-candidates.jsonl` | `/ztn:capture-candidate`, `/ztn:bootstrap`, `/ztn:lint` (F.5 archive) | Append-only principle buffer |
 | `_system/state/people-candidates.jsonl` | `/ztn:process`, `/ztn:bootstrap`, `/ztn:lint` (dismiss/archive) | Append-only people buffer |
 | `_system/state/check-decision-runs.jsonl` | `/ztn:check-decision` | Append-only audit substrate (run + followup lines per invocation); consumed by `decision-review` lens + future cross-source autonomy analysis |
+| `_system/roles/{id}/` (`parts/*.json` / `state.md` / `decisions.jsonl` / `config.yml` / `hooks/` / `brief.md?`) | `roles_persist.py` sole writer of part state (invoked by `/ztn:roles`); `config.yml` + hooks owner-sovereign via `/ztn:role:add` (create) + `/ztn:role:edit` (change); `brief.md` owner-written | Per-role instance state — a role is a composition of parts (each part a built archetype — see `_frame.md`), with the working memory + decision log of a running role |
 | `_system/views/CURRENT_CONTEXT.md` | `/ztn:bootstrap`, `/ztn:maintain` | Auto-generated focus snapshot |
 | `_system/views/HUB_INDEX.md` | `/ztn:maintain` (rebuild) + `/ztn:process` (additive on hub create) | Hub registry (auto-generated) |
 | `_system/views/INDEX.md` | `/ztn:maintain` (via `render_index.py`) | Surface-line catalog of knowledge + archive + constitution + hubs (auto-generated, faceted by PARA / domains / cross-domain). Records and posts intentionally out of scope — own pipelines |
 | `_system/views/constitution-core.md` | `/ztn:regen-constitution` | Harness-loaded core principles |
+| `_system/views/ROLES.md` | `/ztn:maintain` | Rendered projection of role instance state (auto-generated) |
 | `3_resources/people/PEOPLE.md` | `/ztn:bootstrap`, `/ztn:process`, `/ztn:lint` | People registry with tiers |
 | `1_projects/PROJECTS.md` | owner + `/ztn:bootstrap` (candidates) | Project registry |
 

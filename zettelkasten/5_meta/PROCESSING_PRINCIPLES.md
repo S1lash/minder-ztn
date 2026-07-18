@@ -172,8 +172,8 @@ project would make the record lose its core meaning. The test:
 
 - **Strict default:** exactly 1 element.
 - **Boundary exception:** 2 elements ONLY when the record is a genuine
-  cross-project decision/meeting (e.g., joint PSP↔Agentic Commerce
-  roadmap review). Must be annotated in body with explicit
+  cross-project decision/meeting (e.g., a joint roadmap review spanning
+  project A and project B). Must be annotated in body with explicit
   «boundary case» language.
 - **Never:** 3+ elements. The frontmatter `projects:` array is NEVER
   used as an «umbrella tag cloud».

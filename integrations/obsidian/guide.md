@@ -243,8 +243,8 @@ Install via Settings → Community plugins → Browse:
 - **Tasks** by Clare Macrae — global task view across the vault.
 - **Front Matter Title** by snezhig (S. Mokienko) — shows
   `title:` from frontmatter instead of the file ID. Critical for
-  ZTN where IDs are snake_case (`andrey-kuznetsov.md`) but titles are
-  human (`Андрей Кузнецов`).
+  ZTN where IDs are snake_case (`ivan-petrov.md`) but titles are
+  human (`Иван Петров`).
 
 Once installed, the plugin auto-loads — `community-plugins.json` lists
 its ID. **One extra step required:** Front Matter Title ships with all

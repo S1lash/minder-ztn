@@ -21,10 +21,10 @@ hubs fragment, and the graph silently splits one entity into many
 ghosts.
 
 The whole purpose of canonical naming is **deduplication of identity
-across re-spelling**. "Team Restructuring", "team-restructuring", and
-"the team restructuring effort" are not three concepts — they are
+across re-spelling**. "Office Move", "office-move", and
+"the office move logistics" are not three concepts — they are
 one concept written three ways. Normalisation collapses them to one
-identifier (`team_restructuring`) so every mention lands on the same
+identifier (`office_move`) so every mention lands on the same
 node.
 
 This file is about the **format** of that identifier. Whether a
@@ -87,14 +87,14 @@ error — translation didn't happen, fix the upstream extraction.
 
 | # | Rule | ✓ | ✗ |
 |---|---|---|---|
-| 1 | ASCII `[a-z0-9_]` only | `team_restructuring` | `тема`, `naïve_bayes` |
+| 1 | ASCII `[a-z0-9_]` only | `office_move` | `тема`, `naïve_bayes` |
 | 2 | Lowercase | `oauth` | `OAuth` |
 | 3 | Underscore separator (no hyphens, spaces, camelCase) | `delivery_lead_role` | `delivery-lead-role` |
-| 4 | No leading, trailing, or consecutive `_` | `team_restructuring` | `_team_`, `team__x` |
+| 4 | No leading, trailing, or consecutive `_` | `office_move` | `_office_`, `office__x` |
 | 5 | No type prefix — type lives in a separate field | `queue_prioritization` | `theme_queue_prioritization` |
 | 6 | No role suffix on people — role lives in their profile | `anna_smith` | `anna_smith_cto` |
 | 7 | Length 1–64 after normalisation | `api_v2` | empty, 70-char string |
-| 8 | Concrete enough — broad categories belong in `domains:` | `team_restructuring` | `work`, `team`, `general` |
+| 8 | Concrete enough — broad categories belong in `domains:` | `office_move` | `work`, `team`, `general` |
 | 9 | Stable — renames cost; chain via `previous_slugs[]` when unavoidable | — | — |
 
 The ✗ column is **authoring guidance** — what not to coin — not a list of
@@ -193,7 +193,7 @@ A concept's value comes from selectivity. `work` matches half the
 knowledge base; treating it as a concept means every "work" note
 becomes "related" to every other "work" note, which is no
 information at all. Broad classifiers belong in `domains:` (which is
-designed to be set-membership, not connection). `team_restructuring`
+designed to be set-membership, not connection). `office_move`
 is selective enough that a link between two notes carrying it
 actually means something.
 
@@ -268,7 +268,7 @@ back to these.
   proceed. If the name reads as a sentence-fragment that can only
   describe one specific moment (`q3_2026_team_offsite_notes`),
   it's a note title, not a concept — extract the load-bearing noun
-  (`team_restructuring`) and use that. The opposite failure: a
+  (`office_move`) and use that. The opposite failure: a
   name that would match half the corpus (`work`, `general`,
   `meetings`) — that's a domain or a tag, not a concept.
 
@@ -322,11 +322,11 @@ back to these.
 
 | Input | Normalised | Engine action |
 |---|---|---|
-| `team_restructuring` | `team_restructuring` | pass-through |
-| `Team Restructuring` | `team_restructuring` | autofix (`concept-format-autofix`) |
-| `team-restructuring` | `team_restructuring` | autofix |
+| `office_move` | `office_move` | pass-through |
+| `Office Move` | `office_move` | autofix (`concept-format-autofix`) |
+| `office-move` | `office_move` | autofix |
 | `Node.js (v18)` | `node_js_v18` | autofix |
-| `team — restructuring` (em dash) | `team_restructuring` | autofix |
+| `office — move` (em dash) | `office_move` | autofix |
 | `decision_making` | `decision_making` | pass-through — type prefixes are never stripped |
 | `skill_based_tournament_calibration` | `skill_based_tournament_calibration` | pass-through — compound, kept verbatim |
 | `theme` (bare type word) | — | drop (rule 8 — broad classifier) |

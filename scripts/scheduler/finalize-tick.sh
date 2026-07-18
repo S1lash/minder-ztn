@@ -116,6 +116,7 @@ categorize() {
     zettelkasten/5_meta/mocs/*) echo hubs ;;
     zettelkasten/_system/state/*) echo state ;;
     zettelkasten/_system/views/*) echo views ;;
+    zettelkasten/_system/roles/*) echo roles ;;
     zettelkasten/_system/SOUL.md|zettelkasten/_system/TASKS.md|zettelkasten/_system/CALENDAR.md|zettelkasten/_system/POSTS.md) echo system-data ;;
     zettelkasten/_system/registries/*) echo system-data ;;
     *) echo other ;;
@@ -149,6 +150,7 @@ heuristic_message() {
       hubs) echo "hubs: $n updated" ;;
       state) echo "state: routine update ($n file(s))" ;;
       views) echo "views: regenerated ($n file(s))" ;;
+      roles) echo "roles: $n file(s) updated" ;;
       system-data) echo "system: registries / SOUL updated ($n file(s))" ;;
       other) echo "$n file(s) updated" ;;
     esac

@@ -89,7 +89,7 @@ Then exit `partial` immediately.
    stranded scheduler work from prior ticks via PR-merge sweep.
 
 2. `bash scripts/scheduler/lock-check.sh` — abort if any pipeline lock
-   (process / maintain / lint / agent-lens / resolve) is recent (<2h).
+   (process / maintain / lint / agent-lens / content / resolve / roles) is recent (<2h).
    Stale locks (>2h) are removed automatically.
 
 3. `/ztn:sync-data` — safe `git pull --rebase` with conflict-refuse

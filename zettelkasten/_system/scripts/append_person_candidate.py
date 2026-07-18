@@ -14,27 +14,27 @@ Schema of each JSONL line:
       "candidate_id": "cand-YYYYMMDD-{slug}-{seq}",
       "date": "YYYY-MM-DD",               # transcript date (record.created)
       "captured_at": "YYYY-MM-DDThh:mm:ssZ",
-      "name_as_transcribed": "Антон",
+      "name_as_transcribed": "Петя",
       "source": "plaud/2026-04-21T13:31:11Z",
       "note_id": "20260421-meeting-...",  # record produced by /ztn:process
       "quote": "...",                     # verbatim transcript fragment (≥1 sentence)
       "role_hint": "dev (review likes)" | null,
-      "related_people": ["andrey-kuznetsov"] | [],
-      "suggested_id": null | "anton-vinogradov",
+      "related_people": ["ivan-petrov"] | [],
+      "suggested_id": null | "petya-ivanov",
       "high_importance_hint": false,      # if true, lint will auto-promote regardless of count
       "captured_by": "ztn:process"
     }
 
 Usage:
     python3 append_person_candidate.py \\
-        --name "Антон" \\
+        --name "Петя" \\
         --date 2026-04-21 \\
         --source "plaud/2026-04-21T13:31:11Z" \\
         --note-id 20260421-meeting-team-weekly \\
-        --quote "У Антона требуйте лайков на ревью" \\
+        --quote "У Пети требуйте лайков на ревью" \\
         [--role-hint "dev"] \\
-        [--related-people andrey-kuznetsov,maxim-goncharov] \\
-        [--suggested-id anton-vinogradov] \\
+        [--related-people ivan-petrov,anna-smirnova] \\
+        [--suggested-id petya-ivanov] \\
         [--high-importance] \\
         [--dry-run]
 """

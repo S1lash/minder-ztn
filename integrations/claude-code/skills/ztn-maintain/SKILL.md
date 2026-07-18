@@ -90,14 +90,16 @@ fi
 
 **FIRST action — before lock, before context loading.**
 
-**0. Cross-skill lock check.** Read all five lock files:
+**0. Cross-skill lock check.** Read all seven lock files:
 - `_sources/.processing.lock` — exists → abort «`/ztn:process` running, try again later»
 - `_sources/.lint.lock` — exists → abort «`/ztn:lint` running, try again later»
 - `_sources/.agent-lens.lock` — exists → abort «`/ztn:agent-lens` running, try again later»
+- `_sources/.content.lock` — exists → abort «`/ztn:content` running, try again later»
 - `_sources/.resolve.lock` — exists → abort «`/ztn:resolve-clarifications` running, try again later»
+- `_sources/.roles.lock` — exists → abort «`/ztn:roles` running, try again later»
 - `_sources/.maintain.lock` — exists → abort «another `/ztn:maintain` run in progress»
 
-All five skills mutually exclusive. Stale lock (>2 hours) → warn, offer manual removal, do NOT auto-delete.
+All seven skills mutually exclusive. Stale lock (>2 hours) → warn, offer manual removal, do NOT auto-delete.
 
 1. Read `_system/state/BATCH_LOG.md` — all rows.
 2. Read `_system/state/log_maintenance.md` — grep for entries matching
@@ -1329,6 +1331,32 @@ script prints `{"ok": false, "changed": false, "reason": ...}` and exits 0
 (best-effort, like Step 7.7/7.8). Surface `cognitive-model-hub-render-skipped` to
 log_maintenance.md with the reason and continue; the hub stays in its last good
 state.
+
+---
+
+## Step 7.10: Roles Registry Render
+
+Regenerate `_system/views/ROLES.md` — the read-only projection over every role
+instance under `_system/roles/{id}/`. A **pure projection** over each role's
+`config.yml` + per-part state (`parts/{part_id}.json`) + latest
+`roles-runs.jsonl` entry; it carries no truth of its own and holds no state. Runs after Step 7.9 to keep the
+post-loop renderers together; it has no ordering dependency on the other renders
+(it reads the role dirs directly).
+
+**Invocation.**
+
+```bash
+python3 _system/scripts/render_roles_registry.py --root . --apply
+```
+
+Deterministic, idempotent, pure — no LLM. Best-effort never-raise. Atomic write via
+`.tmp` + rename. Re-running on unchanged source yields a byte-identical body (modulo
+the `generated:` timestamp). Skips silently when no role instances exist yet (the
+common case before the owner creates a role via `/ztn:role:add`).
+
+**Failure mode.** Surface `roles-registry-render-failed` to log_maintenance.md with
+stderr captured; continue the rest of the pipeline. The view remains in its last
+good state (best-effort, like Step 7.7/7.8/7.9).
 
 ---
 

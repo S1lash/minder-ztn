@@ -33,7 +33,7 @@ Scope разделён на **evidence-scope** (откуда берутся verb
 
 **Context-scope — automatic read для baseline и uniqueness-guard (НЕ evidence для hits):**
 - `_system/SOUL.md` → Working Style → «Заряжает / Истощает / Выводит из себя» — explicit declared baseline.
-- `5_meta/mocs/` — все hub'ы. Особенно: `hub-career-promotion`, `hub-leadership-management`, `hub-team-restructuring`, `hub-ai-team-adoption` (типичные work-affect темы). На каждом run сканируй hub'ы по affect-релевантным заголовкам / chronological-map / known-pattern секциям — чтобы поймать «уже ли категория отрефлексирована» (uniqueness guard #2).
+- `5_meta/mocs/` — все hub'ы. Особенно: `hub-learning-goal`, `hub-team-communication`, `hub-office-move`, `hub-tooling-rollout` (типичные work-affect темы). На каждом run сканируй hub'ы по affect-релевантным заголовкам / chronological-map / known-pattern секциям — чтобы поймать «уже ли категория отрефлексирована» (uniqueness guard #2).
 - `2_areas/` PARA notes, если категория hit'а пересекается с известной life-area (опционально — thinker decides).
 
 Hub-просмотр работает **автоматически на каждом run** без отдельного триггера: если категория-кандидат на hit совпадает с темой существующего hub'а, surface это явно («recurring known pattern, see [[hub-X]] dated YYYY-MM-DD»).
@@ -74,7 +74,7 @@ Per biometric-lens-protocol §n=1 caveats — phrase as «Garmin reports
 X while owner journaled Y» / «Oura reports X while owner journaled Y»,
 never «X is true while Y was lied about».
 - **ActivityWatch behavioral data** (app time, context switches) — живёт в отдельной линзе `time-allocation` (читает `_records/activity/`); сюда не тянуть.
-- **Affect about other people** (третьи лица) — «Vasily looked stressed» вне scope.
+- **Affect about other people** (третьи лица) — «Oleg looked stressed» вне scope.
 - **Inferred affect без verbatim source** — гадание, reject.
 
 **Scope-граница**: эта линза НЕ расширяется под Garmin/ActivityWatch. Behavioural-ритм живёт в `time-allocation`; deep somatic-pattern (Garmin) — отдельная будущая линза. Meta-correlation между modalities — задача `biometric-life-synthesis` или owner'а на review.

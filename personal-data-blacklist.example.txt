@@ -1,0 +1,21 @@
+# Personal-data blacklist for YOUR ZTN instance.
+#
+# Copy this file to `personal-data-blacklist.txt` (same directory) and
+# replace the examples below with your own identifiers — name, handles,
+# employer, coworkers, internal project codenames, city, etc.
+#
+# The linter (`scripts/check_no_personal_data.py`) reads
+# `personal-data-blacklist.txt` if it exists. That file is git-tracked
+# LOCALLY in your own clone but is never shipped upstream — this
+# `.example.txt` ships so you know the format.
+#
+# Format: one regex per line. Blank lines and lines starting with `#` are
+# skipped. Everything else is compiled as a Python regex and checked against
+# every line of every manifested engine/template file.
+
+\bYourFirstName\b
+\bYourLastName\b
+\byour-github-handle\b
+\bYourEmployer\b
+your\.email@example\.com
+\byour-city\b

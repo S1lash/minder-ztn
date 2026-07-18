@@ -108,7 +108,7 @@ zettelkasten/
 │
 ├── 1_projects/                   # Активные проекты с дедлайнами
 │   ├── PROJECTS.md               # реестр проектов (co-located since 4.75)
-│   ├── career-promotion/
+│   ├── learning-goal/
 │   └── acme-payments/
 │
 ├── 2_areas/                      # Области ответственности
@@ -129,7 +129,7 @@ zettelkasten/
 │   ├── tech/
 │   │   ├── ai-agents/            # AI, LLM, агенты
 │   │   ├── architecture/         # Архитектура систем
-│   │   ├── fintech/              # Финтех, PSP
+│   │   ├── fintech/              # Финтех, платежи
 │   │   └── payments/             # Платежные системы
 │   ├── ideas/
 │   │   ├── business/             # Бизнес-идеи
@@ -186,7 +186,7 @@ zettelkasten/
 
 | Keywords | Folder |
 |----------|--------|
-| RBS, PSP, команда, проект, релиз | 2_areas/work/ |
+| проекты, команда, релиз | 2_areas/work/ |
 | повышение, зарплата, должность | 2_areas/career/ |
 | AI, LLM, агенты, модели | 3_resources/tech/ai-agents/ |
 | архитектура, система, дизайн | 3_resources/tech/architecture/ |

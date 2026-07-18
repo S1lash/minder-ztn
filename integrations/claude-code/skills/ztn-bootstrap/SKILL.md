@@ -639,7 +639,7 @@ For every person already in `PEOPLE.md`:
 
 **CLARIFICATIONS triggers (all modes):**
 
-- Same-name collision: bare first name matches multiple registered (`Даша` → `dasha-kuznetsova` vs `dasha-zaytseva`) → CLARIFICATION per occurrence
+- Same-name collision: bare first name matches multiple registered (`Даша` → `daria-kudryavtseva` vs `daria-panfilova`) → CLARIFICATION per occurrence
 - Person with 0 mentions but has profile (stale?) → CLARIFICATION: "Still relevant? Archive?"
 - Person with 8+ mentions but NO profile → CLARIFICATION: "Generate profile?" (actual creation is `/ztn:lint`)
 - Raw scan finds name not resolved to any registered ID → CLARIFICATION (see above)
@@ -996,37 +996,37 @@ Write to `_system/state/CLARIFICATIONS.md` under `## bootstrap YYYY-MM-DD` heade
 **Confidence tier:** surfaced
 **Suggested action:** review-soul
 
-**Context:** Current Focus split across 4 streams с density: Restructuring (8 records), Agentic Commerce (6), AI Tools (5), DB Reliability (4). Bootstrap применил conservative default (Primary = Restructuring, Secondary = Agentic Commerce, Tertiary = AI Tools). Corresponds к recent carrier pivot signals. DB Reliability — operational, возможно не Focus-level.
+**Context:** Current Focus split across 4 streams с density: Project Alpha (8 records), Project Beta (6), Tooling (5), Reliability (4). Bootstrap применил conservative default (Primary = Project Alpha, Secondary = Project Beta, Tertiary = Tooling). Corresponds к a recent focus shift. Reliability — operational, возможно не Focus-level.
 
-**To resolve:** Подтверди или edit SOUL.md Focus section. Если Tertiary должен быть DB Reliability вместо AI Tools — манual edit.
+**To resolve:** Подтверди или edit SOUL.md Focus section. Если Tertiary должен быть Reliability вместо Tooling — манual edit.
 
 ---
 
-### 2026-04-17 — people-bare-name: Дима в record 20260403
+### 2026-04-17 — people-bare-name: Alex в record 20260403
 
 **Type:** people-bare-name
-**Subject:** bare-name «Дима»
+**Subject:** bare-name «Alex»
 **Source:** _sources/processed/plaud/2026-04-03T.../transcript.md
 **Confidence tier:** surfaced
 **Suggested action:** resolve-bare-name
 
-**Quote:** > «Дима сказал, что по его части Kafka migration уложится в Q2, но нужно определиться с SXP форматом.»
+**Quote:** > «Alex said he'd sort out the weekend hiking route, just needs to confirm the trailhead.»
 
-**Context:** Bare «Дима» в record `20260403-meeting-*` без people: entry в frontmatter. В PEOPLE.md registry 4 кандидата: dima-stasenko, dima-anosov, dima-belikov, dima-ladonkin. По контексту (Kafka migration, SXP) — leanс dima-stasenko (Head of International, technical depth), но требуется подтверждение.
+**Context:** Bare «Alex» в record `20260403-meeting-*` без people: entry в frontmatter. В PEOPLE.md registry 3 кандидата: alex-doe, alex-smith, alex-jones. По контексту (hiking route, trailhead) — leans alex-doe (regular hiking partner), но требуется подтверждение.
 
 **To resolve:** Подтверди person-id или edit frontmatter `people:` list в source record.
 
 ---
 
-### 2026-04-17 — tier-demote-candidate: leha-pugin
+### 2026-04-17 — tier-demote-candidate: oleg-volkov
 
 **Type:** tier-demote-candidate
-**Subject:** leha-pugin
+**Subject:** oleg-volkov
 **Source:** bootstrap-2026-04-17
 **Confidence tier:** surfaced
 **Suggested action:** pursue-or-close
 
-**Context:** Person `leha-pugin` — last mention 2025-11, 0 recent activity в records с Dec 2025. Либо архивировать (status: archived), либо реально остаётся активной связью (offline cadence). HARD RULE: bootstrap никогда не downgrade'ит tier автоматически.
+**Context:** Person `oleg-volkov` — last mention 2025-11, 0 recent activity в records с Dec 2025. Либо архивировать (status: archived), либо реально остаётся активной связью (offline cadence). HARD RULE: bootstrap никогда не downgrade'ит tier автоматически.
 
 **To resolve:** Либо dismiss (keep active), либо `fix-process` manual edit PEOPLE.md status.
 ```

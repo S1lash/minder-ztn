@@ -15,6 +15,7 @@ For full design rationale, cadence, and plug-in instructions see
 | `agent-lens-nightly.md` | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `finalize-tick.sh scheduler/agent-lens` | 1× nightly, e.g. cron `0 3 * * *` |
 | `lint-nightly.md` | `/ztn:sync-data` → `/ztn:lint` (Step 7.5 dispatches `/ztn:resolve-clarifications --auto-mode` inline) → `finalize-tick.sh scheduler/lint` | 1× nightly, e.g. cron `0 5 * * *` |
 | `content-tick.md` | `/ztn:sync-data` → `/ztn:content --maintain` (draft-maintainer) → `finalize-tick.sh scheduler/content` | 1× weekly Tuesday, e.g. cron `0 6 * * 2` |
+| `roles-nightly.md` | `/ztn:sync-data` → `/ztn:roles --all-due` → `finalize-tick.sh scheduler/roles` | 1× daily, e.g. cron `30 6 * * *` |
 
 The `content-synthesis` lens (the content pipeline's classifier) is NOT a
 separate tick — it is a registered agent-lens (`weekly (mon)`), so the existing
@@ -174,6 +175,13 @@ The path of least friction. Routines:
   name: ztn-content
   cron: 0 6 * * 2
   prompt: <paste body of content-tick.md>
+```
+
+```
+/schedule
+  name: ztn-roles
+  cron: 30 6 * * *
+  prompt: <paste body of roles-nightly.md>
 ```
 
 Each routine runs in a fresh agent — the prompt body is fully

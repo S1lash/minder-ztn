@@ -208,14 +208,16 @@ since most lenses have weekly+ cadence).
 
 ### 0.2 Cross-skill lock check (HARD contract — symmetric mutual exclusion)
 
-Read all five lock files in order:
+Read all seven lock files in order:
 1. `_sources/.processing.lock` — exists → abort с `"/ztn:process running, try again later"`
 2. `_sources/.maintain.lock` — exists → abort с `"/ztn:maintain running, try again later"`
 3. `_sources/.lint.lock` — exists → abort с `"/ztn:lint running, try again later"`
-4. `_sources/.resolve.lock` — exists → abort с `"/ztn:resolve-clarifications running, try again later"`
-5. `_sources/.agent-lens.lock` — exists → abort с `"another /ztn:agent-lens run in progress"`
+4. `_sources/.content.lock` — exists → abort с `"/ztn:content running, try again later"`
+5. `_sources/.resolve.lock` — exists → abort с `"/ztn:resolve-clarifications running, try again later"`
+6. `_sources/.roles.lock` — exists → abort с `"/ztn:roles running, try again later"`
+7. `_sources/.agent-lens.lock` — exists → abort с `"another /ztn:agent-lens run in progress"`
 
-All five skills mutually exclusive (matches doctrine §3.4).
+All seven skills mutually exclusive (matches doctrine §3.4).
 
 Stale lock (>2h old, parse ISO timestamp from file content) → warn,
 report PID if present, **offer manual removal, do NOT auto-delete.**

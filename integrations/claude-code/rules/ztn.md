@@ -91,3 +91,23 @@ inline reasoning over the loaded axioms.
 **Do NOT** suggest for: generic pros/cons, architecture choices without
 values content, task routing. Inline reasoning over the loaded axioms covers
 those without skill overhead.
+
+## Roles — the owner's standing ZTN stewards
+
+The owner may keep **roles**: standing agents (a project PM, a diet coach, an
+observer) that watch one zone of the ZTN and track what's happening there — each
+with its own name (which may be non-ASCII, e.g. «Руди»). You don't hold a list of
+them; the engine resolves references at call time.
+
+Route role-talk to the right skill — don't answer for a role from memory:
+
+- **"спроси у Руди про…", "узнай у роли…", "ask my PM role about…", "что роль
+  знает про X"** → `/ztn:role:ask` (read-only, resolves the name/id even from
+  garbled STT, answers from the role's own remit). A generic "узнай у роли" with no
+  name → the skill enumerates the owner's roles and asks which.
+- **"давай улучшим Руди", "переучи роль", "поставь на паузу"** → `/ztn:role:edit`.
+- **"заведи роль, которая…", "мне нужна роль-PM"** → `/ztn:role:add`.
+- **"покажи мои роли", "какие у меня роли"** → `/ztn:role:list`.
+
+This is a pointer, not a role registry — the skills read the live roles under the
+ZTN base. Do not invent a role or its answer; if unsure a role exists, `/ztn:role:list`.

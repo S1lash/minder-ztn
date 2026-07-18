@@ -205,20 +205,20 @@ class NormalizeConceptNameTests(unittest.TestCase):
     """CONCEPT_NAMING.md autonomous heuristic — happy + edge cases."""
 
     def test_passthrough_canonical(self):
-        self.assertEqual(c.normalize_concept_name("team_restructuring"),
-                         "team_restructuring")
+        self.assertEqual(c.normalize_concept_name("office_move"),
+                         "office_move")
 
     def test_kebab_to_snake(self):
-        self.assertEqual(c.normalize_concept_name("team-restructuring"),
-                         "team_restructuring")
+        self.assertEqual(c.normalize_concept_name("office-move"),
+                         "office_move")
 
     def test_uppercase_to_lower(self):
-        self.assertEqual(c.normalize_concept_name("Team-Restructuring"),
-                         "team_restructuring")
+        self.assertEqual(c.normalize_concept_name("Office-Move"),
+                         "office_move")
 
     def test_em_dash_separator(self):
-        self.assertEqual(c.normalize_concept_name("team — restructuring"),
-                         "team_restructuring")
+        self.assertEqual(c.normalize_concept_name("office — move"),
+                         "office_move")
 
     def test_diacritic_fold(self):
         self.assertEqual(c.normalize_concept_name("naïve_bayes"),
@@ -271,8 +271,8 @@ class NormalizeConceptNameTests(unittest.TestCase):
         self.assertIsNone(c.normalize_concept_name("___"))
 
     def test_collapses_runs_of_underscores(self):
-        self.assertEqual(c.normalize_concept_name("team___restructuring"),
-                         "team_restructuring")
+        self.assertEqual(c.normalize_concept_name("office___move"),
+                         "office_move")
 
     def test_truncates_overlength(self):
         long_name = "a_" * 40 + "tail"
@@ -313,9 +313,9 @@ class NormalizeConceptNameTests(unittest.TestCase):
 class NormalizeConceptListTests(unittest.TestCase):
     def test_dedupes_after_normalisation(self):
         result = c.normalize_concept_list([
-            "Team-Restructuring", "team_restructuring", "TEAM-restructuring"
+            "Office-Move", "office_move", "OFFICE-move"
         ])
-        self.assertEqual(result, ["team_restructuring"])
+        self.assertEqual(result, ["office_move"])
 
     def test_preserves_first_seen_order(self):
         result = c.normalize_concept_list(["alpha", "beta", "gamma"])

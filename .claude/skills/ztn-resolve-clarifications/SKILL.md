@@ -102,24 +102,28 @@ This skill writes to CLARIFICATIONS.md and may edit profiles / records.
 Producer skills (`/ztn:process`, `/ztn:lint`, `/ztn:maintain`) write to
 the same files. Mutual exclusion required.
 
-Read all four before starting:
+Read all six before starting:
 - `_sources/.processing.lock` — abort «`/ztn:process` running»
 - `_sources/.maintain.lock` — abort «`/ztn:maintain` running»
 - `_sources/.lint.lock` — abort «`/ztn:lint` running» (see auto-mode
   exception below)
 - `_sources/.agent-lens.lock` — abort «`/ztn:agent-lens` running»
+- `_sources/.content.lock` — abort «`/ztn:content` running»
+- `_sources/.roles.lock` — abort «`/ztn:roles` running» (a role tick
+  writes `role-*` clarifications into the same queue)
 
 **`--auto-mode` exception for `.lint.lock`.** Auto-mode is dispatched
 by `/ztn:lint` Step 7.5; lint holds `.lint.lock` for the duration of
 the dispatch. Treating that lock as «competitor» would deadlock the
 nightly chain. Under `--auto-mode` only, presence of `.lint.lock` is
 proof the dispatcher is alive — proceed with resolve work, do not
-abort. The other three locks (`.processing.lock`, `.maintain.lock`,
-`.agent-lens.lock`) stay competitive (lint already cleared those at
-its own Step 0.1; if any appears here, something has gone genuinely
-wrong — abort silently and let the next nightly tick retry).
+abort. The other five locks (`.processing.lock`, `.maintain.lock`,
+`.agent-lens.lock`, `.content.lock`, `.roles.lock`) stay competitive
+(lint already cleared those at its own Step 0.1; if any appears here,
+something has gone genuinely wrong — abort silently and let the next
+nightly tick retry).
 
-Interactive mode keeps the original four-lock check; the owner-driven
+Interactive mode keeps the full six-lock check; the owner-driven
 session has no dispatcher above it.
 
 1. Create `_sources/.resolve.lock` with `{ISO timestamp} — {session info}`

@@ -116,7 +116,7 @@ class HappyPathTests(unittest.TestCase):
             data = _minimal_manifest()
             data["records"]["created"].append({
                 "path": "_records/meetings/foo.md",
-                "concept_hints": ["team_restructuring", "queue_prioritization"],
+                "concept_hints": ["office_move", "queue_prioritization"],
                 "origin": "work",
                 "audience_tags": ["work"],
                 "is_sensitive": False,
@@ -127,7 +127,7 @@ class HappyPathTests(unittest.TestCase):
             written = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(
                 written["records"]["created"][0]["concept_hints"],
-                ["team_restructuring", "queue_prioritization"],
+                ["office_move", "queue_prioritization"],
             )
             # No fix events expected on clean input
             self.assertEqual(err.strip(), "")
@@ -142,7 +142,7 @@ class ConceptNormalisationTests(unittest.TestCase):
             data = _minimal_manifest()
             data["records"]["created"].append({
                 "path": "_records/meetings/foo.md",
-                "concept_hints": ["Team-Restructuring", "тема", "queue_prioritization"],
+                "concept_hints": ["Office-Move", "тема", "queue_prioritization"],
                 "origin": "work",
                 "audience_tags": [],
                 "is_sensitive": False,
@@ -153,7 +153,7 @@ class ConceptNormalisationTests(unittest.TestCase):
             # Cyrillic dropped, kebab-snake normalised
             self.assertEqual(
                 written["records"]["created"][0]["concept_hints"],
-                ["team_restructuring", "queue_prioritization"],
+                ["office_move", "queue_prioritization"],
             )
             # Events on stderr
             self.assertIn("concept-format-autofix", err)
@@ -168,13 +168,13 @@ class ConceptNormalisationTests(unittest.TestCase):
                 {"name": "valid_concept", "type": "theme",
                  "related_concepts": []},
                 {"name": "тема", "type": "theme"},
-                {"name": "Team-Restructuring", "type": "theme"},
+                {"name": "Office-Move", "type": "theme"},
             ]
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
             written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             names = [u["name"] for u in written["concepts"]["upserts"]]
-            self.assertEqual(names, ["valid_concept", "team_restructuring"])
+            self.assertEqual(names, ["valid_concept", "office_move"])
             self.assertIn("concept-drop-autofix", err)
             self.assertIn("concept-format-autofix", err)
         clear_ztn_env()
@@ -454,7 +454,7 @@ class IdempotenceTests(unittest.TestCase):
             data = _minimal_manifest()
             data["records"]["created"].append({
                 "path": "_records/meetings/foo.md",
-                "concept_hints": ["team_restructuring"],
+                "concept_hints": ["office_move"],
                 "origin": "work",
                 "audience_tags": ["work"],
                 "is_sensitive": False,
@@ -1419,7 +1419,7 @@ class Phase4LowFindingsTests(unittest.TestCase):
                 },
                 "concepts": {
                     "upserts": [
-                        {"name": "team_restructuring",
+                        {"name": "office_move",
                          "type": "pattern"},
                     ],
                 },
@@ -1655,13 +1655,13 @@ class LegacyShapeCoercionTests(unittest.TestCase):
 
     def test_hub_id_field_renamed_and_path_derived(self):
         node = {"hubs": {"updated": [
-            {"hub_id": "hub-ai-team-adoption",
+            {"hub_id": "hub-tooling-rollout",
              "origin": "work", "audience_tags": [], "is_sensitive": False},
         ]}}
         _NormaliserHelper.walk(node)
         entry = node["hubs"]["updated"][0]
-        self.assertEqual(entry["id"], "hub-ai-team-adoption")
-        self.assertEqual(entry["path"], "5_meta/mocs/hub-ai-team-adoption.md")
+        self.assertEqual(entry["id"], "hub-tooling-rollout")
+        self.assertEqual(entry["path"], "5_meta/mocs/hub-tooling-rollout.md")
 
     def test_bare_string_record_entry_wrapped(self):
         node = {"records": {"created": ["20260519-meeting-x"]}}

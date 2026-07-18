@@ -198,7 +198,7 @@ sloppy synthesis and project-id false positives.
    tier (high → medium, medium → low). The relational shape may be
    project-specific in disguise, not a generalisable theme. State the
    downgrade explicitly: «high signals on the surface, downgraded to
-   medium because 4/6 notes carry `projects: [radar-pilot]` —
+   medium because 4/6 notes carry `projects: [acme-payments]` —
    the catalyst may be project-bound rather than the schema being
    generalisable». Anti-pattern #1 still REJECTS outright when ALL
    notes share one project; this rule catches the borderline case.

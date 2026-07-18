@@ -6,13 +6,14 @@ scheduling setup, the assumptions baked into it, and how to plug it in.
 
 ## The canonical loop
 
-Four scheduled jobs.
+Five scheduled jobs.
 
 | Job | Cadence | Skill chain | Prompt source |
 |---|---|---|---|
 | `ztn-process` | ≥ 3× per day | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `finalize-tick.sh scheduler/process` | `integrations/claude-code/scheduler-prompts/process-scheduled.md` |
 | `ztn-agent-lens` | 1× nightly (03:00) | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `finalize-tick.sh scheduler/agent-lens` | `integrations/claude-code/scheduler-prompts/agent-lens-nightly.md` |
 | `ztn-lint` | 1× nightly (05:00) | `/ztn:sync-data` → `/ztn:lint` (Step 7.5 dispatches `/ztn:resolve-clarifications --auto-mode` inline) → `finalize-tick.sh scheduler/lint` | `integrations/claude-code/scheduler-prompts/lint-nightly.md` |
+| `ztn-roles` | 1× daily (06:30) | `/ztn:sync-data` → `/ztn:roles --all-due` → `finalize-tick.sh scheduler/roles` | `integrations/claude-code/scheduler-prompts/roles-nightly.md` |
 | `ztn-content` | 1× weekly (Tue 06:00) | `/ztn:sync-data` → `/ztn:content --maintain` → `finalize-tick.sh scheduler/content` | `integrations/claude-code/scheduler-prompts/content-tick.md` |
 
 The content pipeline runs across two ticks a day apart: the `content-synthesis`
@@ -22,7 +23,7 @@ Tuesdays. Producer (lens) and consumer (maintainer) stay in separate scheduler
 contexts on purpose — the maintainer must not be the same context that just
 produced the lens verdict.
 
-Two nightly ticks. Agent-lens runs first (03:00) in its own scheduler-
+The two deep-night ticks. Agent-lens runs first (03:00) in its own scheduler-
 agent context — lens production isolated from resolve consumption,
 prevents the agent that produces lens bodies from also voting on its
 own proposals (confirmation bias). Lint runs later (05:00), invokes
@@ -30,6 +31,17 @@ its invariant scans, then Step 7.5 dispatches resolve --auto-mode
 inline so the same tick consumes fresh lens hints + CLARIFICATIONS
 that lint just emitted. The agent-lens skill filters lenses by per-
 lens cadence — nightly fire ≠ nightly lens runs.
+
+Roles run after the nightly work, at 06:30 (after process / maintain /
+agent-lens / lint have settled the day's state). The `ztn-roles` tick
+fires daily but the skill filters roles by per-role cadence — daily fire
+≠ every role runs (a `weekly` role only ticks on its cadence anchor).
+Only `--all-due` (tick) acquires `.roles.lock`; the read-only role
+skills (`/ztn:role:ask`, `/ztn:role:list`) take none. The 06:30 slot is
+deliberately OFFSET from content's Tuesday 06:00 window: content is
+weekly, so losing a lock race would cost it a whole week — the offset
+removes the contention entirely rather than relying on a race the
+less-frequent tick could lose.
 
 There is no `ztn-maintain` schedule — maintain runs inline as the tail
 of `/ztn:process`. There is no `ztn-resolve-clarifications` schedule —
@@ -215,7 +227,7 @@ bodies stay thin and identical across the three ticks.
 
 ## Plug-in — Claude Code `/schedule`
 
-The recommended path. Three routines:
+The recommended path. Five routines — one per row of the canonical table above:
 
 ```
 /schedule
@@ -236,6 +248,20 @@ The recommended path. Three routines:
   name: ztn-lint
   cron: 0 5 * * *
   prompt: <paste body of integrations/claude-code/scheduler-prompts/lint-nightly.md>
+```
+
+```
+/schedule
+  name: ztn-roles
+  cron: 30 6 * * *
+  prompt: <paste body of integrations/claude-code/scheduler-prompts/roles-nightly.md>
+```
+
+```
+/schedule
+  name: ztn-content
+  cron: 0 6 * * 2
+  prompt: <paste body of integrations/claude-code/scheduler-prompts/content-tick.md>
 ```
 
 Each routine runs in a fresh agent — the prompt body is fully
@@ -283,11 +309,12 @@ judgement + resolution.
   dropped at 10am don't surface until 03:00 the next day. ZTN is a
   thinking aid; latency >12h kills the feedback loop.
 - **Per-skill schedules (process, maintain, lint, resolve, agent-lens,
-  agent-lens-add).** Tried mentally: maintain has no independent
-  cadence (it tails process); resolve and agent-lens-add must not be
-  autonomous (owner judgement / wizard interview); process / lint /
-  agent-lens cover the autonomous surface area entirely. Three jobs
-  is the right minimum.
+  agent-lens-add, roles, content).** Tried mentally: maintain has no
+  independent cadence (it tails process); resolve and agent-lens-add
+  must not be autonomous (owner judgement / wizard interview). The five
+  scheduled jobs (process / agent-lens / lint / roles / content) cover
+  the autonomous surface area; every other skill is either owner-gated
+  or tails another tick, so it earns no standalone schedule.
 - **Process every hour.** Wasteful for typical input rates and burns
   Claude Code budget; revisit only if you start dropping transcripts
   faster than the recommended 3× cadence drains them.

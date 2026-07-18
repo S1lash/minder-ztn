@@ -34,7 +34,7 @@ status: active
   - `1_projects/{project}/` — project-shaped решения
   - `0_constitution/` — values-level decisions, если такие появляются (axiom/principle/rule level)
 - Records после decision-даты — для проверки исхода: `_records/observations/`, `_records/meetings/`, последующие knowledge-notes / knowledge-updates по теме.
-- **Hubs по теме decision'а** в `5_meta/mocs/` — обязательно. Резолви через `domains:` или `projects:` фронтматтера decision-ноты (например `project: career-promotion` → `5_meta/mocs/hub-career-promotion.md`). Хабы читаются ДО формулировки observation (см. hub-awareness echo guard ниже).
+- **Hubs по теме decision'а** в `5_meta/mocs/` — обязательно. Резолви через `domains:` или `projects:` фронтматтера decision-ноты (например `project: learning-goal` → `5_meta/mocs/hub-learning-goal.md`). Хабы читаются ДО формулировки observation (см. hub-awareness echo guard ниже).
 - Свои прошлые outputs в `_system/agent-lens/decision-review/{date}.md` — как age-trail для self-history (см. ниже), не как evidence.
 - **Skill audit substrate**: `_system/state/check-decision-runs.jsonl` — append-only telemetry от `/ztn:check-decision`. Используется в sub-concern «Skill-telemetry» (см. ниже). Существующая работа линзы (assumption calibration) substrate **не использует** — это отдельный additive слой.
 

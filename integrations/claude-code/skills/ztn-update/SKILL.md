@@ -53,7 +53,7 @@ no version / phase / rename-history narratives.
    interactively:
    ```
    No `upstream` remote. Add it now? Default URL:
-     https://github.com/S1lash/minder-ztn.git
+     https://github.com/<your-org>/minder-ztn.git
    [y] add this URL   [u] enter custom URL   [n] abort
    ```
 
@@ -196,7 +196,8 @@ Inspect what changed:
 | `integrations/claude-code/{rules,commands,skills}/**` changed | «Re-run `./integrations/claude-code/install.sh` to refresh `~/.claude/` symlinks.» |
 | Any file under `0_constitution/` engine paths or constitution tooling changed | «Run `/ztn:regen-constitution` to refresh views.» |
 | `_system/scripts/**` changed | «Run tests: `pytest zettelkasten/_system/scripts/tests/`.» |
-| `integrations/claude-code/scheduler-prompts/**` changed | «Re-paste updated prompt body into `/schedule` routine — Claude Code holds the prompt verbatim, so engine update does not propagate to running schedules automatically.» |
+| A NEW file added under `integrations/claude-code/scheduler-prompts/**` (git status `A`) | «A new scheduled job shipped — set up a new `/schedule` routine for it (see `docs/scheduling.md` for the cron slot + prompt body). Nothing to re-paste; you don't have this routine yet.» |
+| An EXISTING file under `integrations/claude-code/scheduler-prompts/**` changed (git status `M`) | «Re-paste the updated prompt body into the matching `/schedule` routine — Claude Code holds the prompt verbatim, so engine update does not propagate to running schedules automatically.» |
 
 ### Step 8 — Stage + propose commit
 

@@ -209,14 +209,16 @@ This saves ~10 file reads and all pre-scan work on empty runs.
 
 Runs only when Early Exit Check found files to process.
 
-**Cross-skill lock check — read all five lock files first:**
+**Cross-skill lock check — read all seven lock files first:**
 - `_sources/.maintain.lock` — exists → abort «`/ztn:maintain` running, try again later»
 - `_sources/.lint.lock` — exists → abort «`/ztn:lint` running, try again later»
 - `_sources/.agent-lens.lock` — exists → abort «`/ztn:agent-lens` running, try again later»
+- `_sources/.content.lock` — exists → abort «`/ztn:content` running, try again later»
 - `_sources/.resolve.lock` — exists → abort «`/ztn:resolve-clarifications` running, try again later»
+- `_sources/.roles.lock` — exists → abort «`/ztn:roles` running, try again later»
 - `_sources/.processing.lock` — exists → abort «another `/ztn:process` run in progress»
 
-All five skills mutually exclusive.
+All seven skills mutually exclusive.
 
 1. After cross-skill checks pass, create `_sources/.processing.lock` with content: `{ISO timestamp} — {session info}`
 2. On completion (success or failure): **DELETE** `_sources/.processing.lock`
@@ -310,20 +312,20 @@ Three tiers:
 | AMBIGUOUS | Could match multiple people, or unclear identity | Note the ambiguity. Defer to full-context resolution in Step 3.3. Recommendation only |
 
 Fuzzy matching rules:
-- Russian diminutives: Серёга→sergey-matveev, Ром/Рома→roman-raspadnyuk, Женя→zhenya-tochilkin, etc.
+- Russian diminutives: Серёга→sergey-kozlov, Ром/Рома→roman-belov, Женя→evgeny-frolov, etc.
   Always resolve to the FULL ID (firstname-lastname), never to a bare first name.
 - Check `aliases` field in PEOPLE.md
 - **Check CLARIFICATIONS.md Resolved Archive** for known transcription artifacts
-  (e.g., «Нуара»→lara-neprokina, «Трафт»→vanya-kravets, «Сотки»→maxim-andreev).
+  (e.g., «Нуара»→lara-gromova, «Трафт»→ivan-petrov, «Сотки»→maxim-barinov).
   These are RESOLVED tier — use the mapped ID directly.
 - First-name-only: if only one person with that name exists → RESOLVED;
   if multiple → AMBIGUOUS
 
 **ID format (MANDATORY):** `firstname-lastname` in transliterated lowercase.
-Use the name the author uses in conversation (Дима, not Дмитрий; Леха, not Алексей).
-NEVER create IDs without a last name (e.g., `vasily`, `dima`, `misha`).
+Use the name the author uses in conversation (Костя, not Константин; Леха, not Алексей).
+NEVER create IDs without a last name (e.g., `ivan`, `petya`, `oleg`).
 If the last name is unknown from the transcript — mark as AMBIGUOUS and log to CLARIFICATIONS.md.
-Exception: people known only by one name (e.g., psychologist "Татьяна") — must be explicitly justified.
+Exception: people known only by one name (e.g., a therapist referred to only as "Мария") — must be explicitly justified.
 
 The People Resolution Map is LIVE and MUTABLE. New people discovered during
 processing (e.g., surfaced by §3.7 self-review or in subagent's classification
@@ -360,7 +362,7 @@ Read these system files (in parallel where possible):
 14. `zettelkasten/_system/state/PROCESSED.md` — already processed files
 15. `zettelkasten/_system/state/CLARIFICATIONS.md` — pending clarifications.
     Also scan **Resolved Archive** table: previously resolved name variants (e.g.,
-    «Нуара» = Лара Непрокина, «Трафт» = Кравец). Use these to auto-resolve
+    «Нуара» = Лара Громова, «Трафт» = Петров). Use these to auto-resolve
     transcription artifacts in new transcripts without re-creating ambiguities.
 
 **CLARIFICATIONS HARD RULE.** При `confidence < threshold` — не принимать решение
@@ -875,8 +877,8 @@ Before classification, load relevant context for THIS specific transcript:
 
    **Hub kinds — what is NOT a project:**
 
-   `hub_kind: trajectory` (e.g., `career-promotion`, `learning-ai-pm`) and
-   `hub_kind: domain` (e.g., `db-reliability`, `leadership-management`)
+   `hub_kind: trajectory` (e.g., `learning-goal`, `learning-ai-pm`) and
+   `hub_kind: domain` (e.g., `system-uptime`, `team-communication`)
    are NOT eligible for `projects:` membership. Records use
    `tags: [trajectory/{slug}]` or `domains: [...]` for these. Only
    `hub_kind: project` IDs (the actual deliverable-bearing projects in
@@ -1094,7 +1096,7 @@ Be specific and cite evidence from the transcript.
     only** per `_system/registries/CONCEPT_NAMING.md`. When the source
     uses a non-English term, **translate semantically at extraction**:
 
-    - «реструктуризация команды» → `team_restructuring` ✓
+    - «переезд офиса» → `office_move` ✓
     - «приоритизация очереди» → `queue_prioritization` ✓
     - «ежедневник» → `daily_planner` ✓
     - «делегирование как контроль» → `delegation_control_pattern` ✓
@@ -1143,7 +1145,7 @@ Be specific and cite evidence from the transcript.
     would match half the corpus (`work`, `general`, `meetings`), it's
     a domain or tag, not a concept. Reject sentence-fragments that
     only describe one specific moment (`q3_2026_team_offsite_notes`)
-    — extract the load-bearing noun (`team_restructuring`) instead.
+    — extract the load-bearing noun (`office_move`) instead.
     The selectivity test: would this name plausibly recur across
     multiple future notes that the owner would want to link?
 
@@ -1519,7 +1521,7 @@ frontmatter from Q15 / Q16 outputs:
 Record contains:
 - Summary (2-3 sentences)
 - Ключевые пункты (bullets — ALL significant points, not just "important" ones.
-  Principle 1: Capture First. Even a one-line mention of Georgian clients goes in.)
+  Principle 1: Capture First. Even a one-line mention of a client goes in.)
 - Решения (with rationale — from Q4 enhanced format)
 - Action Items (with `- [ ]`, person link `[[person-id]]`, `^task-{slug}`)
 - Упоминания людей (with context: role in this meeting, participant vs mentioned)

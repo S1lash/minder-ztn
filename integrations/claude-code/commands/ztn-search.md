@@ -70,7 +70,7 @@ If the user asked a question (not just "find X"), also provide a **synthesis** â
 
 ```
 /ztn:search meetings with my team about strategy
-/ztn:search career promotion decisions
+/ztn:search learning goal decisions
 /ztn:search what did I think about AI agents in January
 /ztn:search tasks related to acme-payments
 /ztn:search ideas about content publishing
