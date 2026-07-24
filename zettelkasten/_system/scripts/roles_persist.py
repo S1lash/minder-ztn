@@ -72,13 +72,20 @@ import copy
 import dataclasses
 import hashlib
 import json
+import os
 import sys
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 import minder_query
 import role_state_hash
+import roles_act
+import roles_budget
+import roles_inbox
+import roles_mandate
+import roles_triggers
 from _common import constitution_principle_ids, now_iso_utc, state_dir, today_iso
 from roles_common import (
     ROLE_NUDGE_OPEN_BUDGET,
@@ -89,6 +96,7 @@ from roles_common import (
     RoleConfig,
     RoleConfigError,
     RoleError,
+    ROLES_SUCCESS_STATUSES,
     RunRecord,
     append_roles_log,
     append_run,
@@ -99,6 +107,7 @@ from roles_common import (
     emit_clarification_signal,
     format_run_log_section,
     import_archetype,
+    is_role_authored_source,
     is_valid_iso_date,
     load_role_config,
     make_run_counts,
@@ -365,6 +374,17 @@ def _advance_watermark(prior_wm: Any, stems: list[str]) -> Any:
 # read_records injection (ENGINE-INJECTED — the runner is the grounding oracle)
 # -----------------------------------------------------------------------------
 
+def _is_self_authored_record(unit: dict, role_id: str) -> bool:
+    """True when an in-remit unit is a record THIS role emitted. Excluded from the
+    role's own grounding corpus (INV-27 no-self-feed). Matches BOTH the raw emission
+    (`source: role:{id}`) AND the `/ztn:process`-derived record (whose `source:` is
+    the processed path `…/roles/{id}--…`) via the shared `is_role_authored_source`
+    matcher — so the emit→process→re-read loop is broken deterministically."""
+    fm = unit.get("frontmatter_subset") if isinstance(unit, dict) else None
+    src = fm.get("source") if isinstance(fm, dict) else None
+    return is_role_authored_source(src, role_id)
+
+
 def _inject_read_records(cfg: RoleConfig, payload: dict, base: Path | None) -> dict:
     """Overwrite `payload["read_records"]` with the deterministic `minder_query
     --list` stems of the role's remit (BUILD-CONTRACT §4 / §7).
@@ -372,13 +392,16 @@ def _inject_read_records(cfg: RoleConfig, payload: dict, base: Path | None) -> d
     The engine — not the body — owns the grounding corpus: the body may cite only
     records the runner reports as in-remit. Returns a shallow copy with
     `read_records` replaced by the sorted bare-basename stems of every in-remit
-    unit; a body-supplied `read_records` is ignored.
+    unit; a body-supplied `read_records` is ignored. A record THIS role emitted
+    (`source: role:{id}`) is EXCLUDED (INV-27) — the load-bearing guard on the
+    inbox door: a role can never ground a new fact on its own emission.
     """
     index = minder_query.list_index(cfg.remit, base=base)
     stems = sorted({
         normalize_record_ref(Path(unit["path"]).name)
         for unit in index.get("units", [])
         if isinstance(unit, dict) and isinstance(unit.get("path"), str)
+        and not _is_self_authored_record(unit, cfg.id)
     })
     out = dict(payload)
     out["read_records"] = stems
@@ -1657,6 +1680,261 @@ def _process_nudges(
     return emitted, deferred
 
 
+def _inbox_subject(role_id: str, clean: str) -> str:
+    """A dedup subject for a firewall-gated emission (mirrors `_proactive_subject`)."""
+    digest = hashlib.sha1(clean.encode("utf-8")).hexdigest()[:8]
+    return f"{role_id} inbox · {clean[:60].strip() or 'note'} [{digest}]"
+
+
+def _cage_verified() -> bool:
+    """True only when the owner has confirmed the no-FS body cage out of band
+    (`ZTN_ROLES_CAGE_VERIFIED=1`) — the gate to relaxing the emission owner-confirm to
+    firewall-only (INV-15). Env-based so no body / payload can forge it. Unset in PLAN 1
+    → every emission stays owner-confirmed."""
+    return os.environ.get("ZTN_ROLES_CAGE_VERIFIED") == "1"
+
+
+def _autonomous_ack() -> bool:
+    """True when the owner has explicitly accepted autonomous acting in the un-caged
+    harness (`ZTN_ROLES_AUTONOMOUS_ACK=1`). This is the HONEST launch marker — distinct
+    from `_cage_verified()`: it asserts owner CONSENT to autonomy (risk knowingly taken),
+    not a verified sandbox. It unlocks in-tick execution (no per-act/emission confirm)
+    for a role the owner DIALED `autonomy: autonomous`; an `advisory` role still stages
+    regardless. Env-based so no body / payload can forge it. Unset → every act/emission
+    stays owner-confirmed (the safe default)."""
+    return os.environ.get("ZTN_ROLES_AUTONOMOUS_ACK") == "1"
+
+
+def _load_tool_ctx(tool_ctx: Path | None) -> dict:
+    """Read the per-tick TOOL STAGE ctx (or `{}`). Tolerant — an unreadable/corrupt
+    ctx never crashes the writer (the tick still finalizes)."""
+    if tool_ctx is None:
+        return {}
+    try:
+        data = json.loads(Path(tool_ctx).read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _tool_activity_lines(ctx_data: dict) -> list[str]:
+    """Log lines making a tool-using tick's activity + failures + external ingestion
+    VISIBLE in its own `log_roles.md` block (§3.5 — «every decision recoverable»). A
+    silent honest-degrade otherwise looks like a healthy tick, so the owner can't tell a
+    tool broke. Empty when no tool ran."""
+    counts = ctx_data.get("call_counts") or {}
+    total = sum(v for v in counts.values() if isinstance(v, int))
+    failures = [f for f in (ctx_data.get("failures") or []) if isinstance(f, dict)]
+    lines: list[str] = []
+    if total:
+        msg = f"tools: {total} call(s)"
+        if failures:
+            msg += f", {len(failures)} degraded"
+        lines.append(msg)
+    for f in failures:
+        lines.append(
+            f"  tool {f.get('tool_id')}: {f.get('status')} — {f.get('reason')}")
+    if ctx_data.get("ingested_external"):
+        lines.append(
+            "ingested external tool content — injection firewall active this tick")
+    return lines
+
+
+def _reauth_tool_ids(ctx_data: dict) -> list[str]:
+    """Unique tool ids whose failure needs a human re-auth decision (INV-29) — the
+    self-heal is exhausted, so a `role-tool-reauth` CLARIFICATION is surfaced."""
+    seen: list[str] = []
+    for f in (ctx_data.get("failures") or []):
+        if isinstance(f, dict) and f.get("reauth") and f.get("tool_id") not in seen:
+            seen.append(str(f.get("tool_id")))
+    return seen
+
+
+def _reauth_signal(role_id: str, tool_id: str, ctx_data: dict) -> ClarificationSignal:
+    """Build the `role-tool-reauth` CLARIFICATION for a tool whose bounded self-heal
+    could not recover (INV-29) — a HUMAN decision (re-auth / changed scope) is needed."""
+    reason = ""
+    for f in (ctx_data.get("failures") or []):
+        if isinstance(f, dict) and f.get("tool_id") == tool_id and f.get("reauth"):
+            reason = str(f.get("reason") or "")
+            break
+    return ClarificationSignal(
+        ctype="role-tool-reauth",
+        subject=f"{role_id} · tool {tool_id} needs re-auth",
+        context=(
+            f"Role {role_id}'s tool {tool_id} failed and the bounded self-heal (retry / "
+            f"re-resolve secret / honest-degrade) could not recover: {reason}. A human "
+            "decision is needed — re-auth the credential (re-run the concierge secret "
+            "step) or adjust the tool's scope. The tick honest-degraded (skipped the "
+            "tool, noted it) — it never fabricated a result."
+        ),
+        source=f"roles tick for {role_id} (tool self-heal exhausted)",
+        suggested_action="Re-auth the credential or adjust scope, then the tool resumes.",
+        action_taken="Skipped the tool this tick (honest-degrade); surfaced for re-auth.",
+    )
+
+
+def _resolve_firewall_flag(
+    cfg: RoleConfig, payload: dict, tool_ctx: Path | None,
+) -> bool:
+    """Resolve the injection-firewall flag (INV-17) — ENGINE-authored, never the body.
+    UNAMBIGUOUS: the ONLY trusted source is the engine-owned TOOL STAGE ctx; there is no
+    payload-flag fallback (a body / SKILL heredoc could set it, so trusting it would be a
+    forge vector). Two outcomes:
+
+      1. **The tool ctx (the real belt).** The runner ALWAYS passes `--tool-ctx` (the
+         per-tick TOOL STAGE ctx it owns); read `ingested_external` from IT — the body
+         cannot forge it, exactly as `read_records` is re-authored from `--list`.
+      2. **Fail-closed on any absence / corruption.** No ctx (or an unreadable one) → a
+         TOOL-BEARING role is treated as INGESTING (HITL-gated — the safe direction); a
+         tool-less role cannot ingest, so False. The payload's `ingested_external_tool`
+         is IGNORED — the ctx is the sole authority, so `--tool-ctx` is mandatory on any
+         tool/act tick to relax the firewall.
+    """
+    if tool_ctx is not None:
+        try:
+            ctx = json.loads(Path(tool_ctx).read_text(encoding="utf-8"))
+            return bool(ctx.get("ingested_external", False))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            pass  # unreadable ctx → fail-closed below (never trust a payload flag)
+    return any(p.tools for p in cfg.parts)  # fail-closed for a tool-bearing role
+
+
+def _process_inbox_emissions(
+    role_id: str, cfg: RoleConfig, payload: dict, read_records: list[str],
+    base: Path | None, tool_ctx: Path | None = None,
+) -> tuple[int, int, int]:
+    """Emit a tick's inbox-door notes (CONTRACT §4.2, INV-4/6/11/17/20/27).
+
+    The body proposes them in an optional `payload["inbox_emissions"]` list of
+    `{text, evidence[], is_sensitive?}` — the same judgment as a nudge, but the
+    addressee is the BASE, not the owner. Each becomes a human-phrased file under
+    `_sources/inbox/roles/{id}--{date}-{hash}.md` (flat `flat-md`) that `/ztn:process`
+    folds in like any source
+    (propose/dispose — INV-6/11). Rails, in order:
+
+      - OPT-IN (INV-4): a role emits only when `cfg.emit_inbox` is set.
+      - GROUNDED: an emission whose evidence does not cite a real in-remit record
+        (`read_records`, already self-feed-filtered — INV-27) is DROPPED.
+      - EMISSION HITL — the deterministic in-remit-certainty gate. An emission is
+        surfaced as a `role-emission-confirm` CLARIFICATION for the owner (never
+        silently written to the base) whenever the engine cannot CERTIFY the note's
+        free-form `text` stayed in-remit. Two triggers, OR-combined:
+          · INJECTION FIREWALL (INV-17): the tick ingested EXTERNAL TOOL content
+            (from the engine-owned TOOL STAGE ctx — `_resolve_firewall_flag`, never a
+            payload flag) — a confused-deputy risk.
+          · UN-CAGED BODY (INV-15 honesty): the tick body ran WITHOUT a verified
+            no-FS cage (`payload["body_caged"]` is not true — the shipped honor-system
+            runtime). An un-caged body could raw-read an out-of-remit note and
+            paraphrase it into `text`, which — unlike `evidence` — is free-form and
+            NOT corpus-checkable. So autonomous write requires BOTH no external
+            ingestion AND a verified body cage; PLAN 1 ships no verified cage, so
+            every emission is owner-confirmed (the leak is closed by construction on
+            the WRITE side, independent of whether the body honoured its remit). The
+            gate relaxes only when the cage is verified.
+      - CUMULATIVE BUDGET (INV-20/28): the anti-salami ceiling on acts + inbox
+        writes (`roles_budget`); past it, emissions DEFER (a `role-budget-exhausted`
+        surfaces once) rather than pile.
+
+    Returns `(emitted, deferred, gated)` — written / budget-deferred / HITL-gated.
+    """
+    if not cfg.emit_inbox:
+        return 0, 0, 0
+    raw = payload.get("inbox_emissions")
+    if not isinstance(raw, list) or not raw:
+        return 0, 0, 0
+    corpus = set(read_records)
+    ingested_external = _resolve_firewall_flag(cfg, payload, tool_ctx)
+    # Two out-of-band env markers can relax the emission owner-confirm, both unforgeable by
+    # a body/payload (a body / a regressed SKILL heredoc cannot set an env var — same trust
+    # model as the secret master key / ZTN_DEV):
+    #   - the VERIFIED no-FS cage (`ZTN_ROLES_CAGE_VERIFIED`) — the else-branch below relaxes
+    #     to firewall-only (no ingestion + body_caged); absent it, that branch is ALWAYS HITL.
+    #   - owner-accepted autonomy (`ZTN_ROLES_AUTONOMOUS_ACK`) on an `autonomous`-dialed role
+    # relaxes the emission confirm too — an autonomous role feeds the base without nagging
+    # (the owner consented to autonomy for THIS role). A role without an autonomous mandate
+    # (advisory, or no mandate at all) keeps the safe owner-confirm default.
+    if roles_mandate.autonomy_of(cfg.mandate) == "autonomous" and _autonomous_ack():
+        hitl = False
+    else:
+        body_caged = bool(payload.get("body_caged", False)) and _cage_verified()
+        hitl = ingested_external or not body_caged
+    run_at = payload.get("run_at") or now_iso_utc()
+    budget_state = roles_budget.load_budget(role_id, base)
+    remaining = roles_budget.budget_remaining(budget_state)
+
+    emitted = deferred = gated = 0
+    budget_notified = False
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        evidence = item.get("evidence")
+        if not isinstance(evidence, (list, tuple)) or not evidence:
+            continue  # ungrounded → dropped (a role never emits on unreal ground)
+        if ungrounded_refs(evidence, corpus):
+            continue  # a citation outside the in-remit corpus → dropped
+        is_sensitive = bool(item.get("is_sensitive", False))
+
+        if hitl:
+            # HITL rather than auto-write — the engine cannot certify `text` stayed
+            # in-remit. Reason is honest about which trigger fired.
+            if ingested_external:
+                why = ("this tick ALSO read an external tool (injection firewall) — an "
+                       "emission derived from external content is owner-confirmed")
+            else:
+                why = ("this tick's body ran without a verified no-FS cage, so the "
+                       "engine cannot certify the note stayed in your role's zone "
+                       "(the honor-system runtime — INV-15)")
+            subject = _inbox_subject(role_id, " ".join(text.split()))
+            if clarification_seen_resolved("role-emission-confirm", subject, base):
+                continue
+            if emit_clarification(
+                ctype="role-emission-confirm",
+                subject=subject,
+                context=(
+                    f"Role {role_id} proposes writing this to your base's inbox, but "
+                    f"{why} — so it is surfaced for your confirmation rather than "
+                    f"written automatically. Proposed note: «{text[:400]}». Grounded "
+                    f"in: {', '.join(str(e) for e in evidence)}."
+                ),
+                source=f"roles tick for {role_id} (inbox emission, owner-confirm)",
+                suggested_action="Approve to let it become a base note, or discard it.",
+                action_taken="Held for confirmation; nothing written to the base.",
+                base=base,
+            ):
+                gated += 1
+            continue
+
+        if remaining <= 0:
+            deferred += 1
+            if not budget_notified:
+                budget_notified = True
+                subject = f"{role_id} inbox budget"
+                emit_clarification(
+                    ctype="role-budget-exhausted",
+                    subject=subject,
+                    context=(
+                        f"Role {role_id} reached its cumulative inbox/act budget this "
+                        "period; further emissions defer to the next period. Raise the "
+                        "ceiling via /ztn:role:edit if it is legitimately busier."
+                    ),
+                    source=f"roles tick for {role_id} (budget)",
+                    suggested_action="Leave as-is (they wait), or raise the ceiling.",
+                    action_taken="Deferred the remaining emissions this period.",
+                    base=base,
+                )
+            continue
+
+        roles_inbox.write_emission(role_id, text, evidence, is_sensitive, run_at, base)
+        roles_budget.record_writes(role_id, 1, base)
+        remaining -= 1
+        emitted += 1
+    return emitted, deferred, gated
+
+
 def _process_identity_suggestion(
     role_id: str, payload: dict, read_records: list[str], base: Path | None
 ) -> int:
@@ -1701,11 +1979,634 @@ def _process_identity_suggestion(
     return 1 if wrote else 0
 
 
+def _process_tool_request(
+    role_id: str, payload: dict, read_records: list[str], base: Path | None
+) -> int:
+    """Surface a role's request for a NEW tool as a `role-tool-request` CLARIFICATION —
+    a real colleague says «I'd do this better with access to X». The body proposes an
+    optional `payload["tool_request_proposal"]` = `{text, evidence[]}` (what it wants +
+    why, grounded in what it actually hit this tick); this surfaces it for the owner, who
+    grants via `/ztn:role:edit` (adds the tool to a part's grant / wires a new tool).
+
+    Same safety spine as an identity suggestion — grounded-or-dropped, dedup, always HITL,
+    never a self-grant (a role can NEVER give itself a tool — INV-3): it only asks.
+    Returns 1 if emitted, else 0."""
+    req = payload.get("tool_request_proposal")
+    if not isinstance(req, dict):
+        return 0
+    clean = _clean_nudge_text(req.get("text"))
+    if not clean:
+        return 0
+    evidence = req.get("evidence")
+    if not isinstance(evidence, (list, tuple)) or not evidence:
+        return 0  # ungrounded → dropped (a role can't ask on unreal ground)
+    if ungrounded_refs(evidence, set(read_records)):
+        return 0
+    subject = _proactive_subject(role_id, clean)
+    if clarification_seen_resolved("role-tool-request", subject, base):
+        return 0  # already seen + closed → don't re-nag
+    wrote = emit_clarification(
+        ctype="role-tool-request",
+        subject=subject,
+        context=(
+            f"Role {role_id} would do its job better with a tool it does not have: "
+            f"{clean}  —  it is ASKING, never granting itself (a role can never give "
+            "itself a tool — INV-3). If you agree, grant it via `/ztn:role:edit` (add the "
+            "tool to the relevant part, or wire a new one). "
+            f"Grounded in: {', '.join(str(e) for e in evidence)}."
+        ),
+        source=f"roles tick for {role_id} (tool request)",
+        suggested_action=f"Grant via `/ztn:role:edit {role_id}` if you agree, or dismiss.",
+        action_taken="Surfaced as a tool request; nothing granted — the role's tools are unchanged.",
+        base=base,
+    )
+    return 1 if wrote else 0
+
+
+# -----------------------------------------------------------------------------
+# Act path (CONTRACT §6.2/§6.5, INV-16/28) — two-phase HITL: stage in the tick,
+# execute on owner approval. The engine (`roles_act`) is transport-agnostic; the writer
+# owns pending_acts I/O, secret resolution, mandate/HITL gating, budget, watermark, and
+# the coupled inbox close-events. Transport is injectable (`exec_http`) for testability;
+# in production it is `roles_tool_http.exec_tool` (Python-exec, secret injected in-
+# process — INV-12; NEVER an mcp/skill act in the harness).
+# -----------------------------------------------------------------------------
+
+def _pending_acts_path(role_id: str, base: Path | None) -> Path:
+    """The role's staged-acts store (its own home beside `triggers.json`/`budget.json`).
+    Holds acts awaiting owner approval (`role-act-confirm`) with their TOCTOU baselines,
+    the coupled inbox close-events, and the pending trigger watermarks."""
+    return role_dir(role_id, base) / "pending_acts.json"
+
+
+def _load_pending_acts(role_id: str, base: Path | None) -> dict:
+    path = _pending_acts_path(role_id, base)
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _save_pending_acts(role_id: str, data: dict, base: Path | None) -> None:
+    _atomic_write_text(_pending_acts_path(role_id, base),
+                       json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+
+
+def _clear_pending_acts(role_id: str, base: Path | None) -> None:
+    path = _pending_acts_path(role_id, base)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass  # best-effort — a stale pending file is re-derived, never data loss
+
+
+def _act_transport():
+    """The production act transport — `roles_tool_http.exec_tool` (Python-exec; the
+    runner injects the resolved secret in-process, out of the LLM's sight — INV-12)."""
+    import roles_tool_http
+    return roles_tool_http.exec_tool
+
+
+def _audit_act(role_id: str, tool_id: str, outcome, base: Path | None) -> None:
+    """Append one act-outcome row to the shared tool audit (`roles-tool-audit.jsonl`) —
+    symmetric with the read-tool audit, so every network act a role takes is
+    reconstructable (§3.5). Records only the op/target/status/effect — NEVER a raw
+    return, a body, or a secret (INV-10/12). Best-effort; an audit failure never masks
+    the act."""
+    try:
+        import roles_tool_stage
+        path = roles_tool_stage.tool_audit_path(base)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "at": now_iso_utc(), "role_id": role_id, "kind": "act",
+            "tool_id": tool_id, "op": outcome.op, "target_ref": outcome.target_ref,
+            "status": outcome.status, "summary": outcome.effect or outcome.detail,
+        }
+        with open(path, "a", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:  # noqa: BLE001 — observability must never break the act path
+        pass
+
+
+def _resolve_act_secret(cred_ref: str | None, base: Path | None) -> tuple[str | None, str | None]:
+    """Resolve an act tool's `secret://` credential in memory (INV-12). (None, None) when
+    no credential; (None, reason) on a resolve failure (honest-degrade — the act refuses,
+    never writes with a missing token)."""
+    if not cred_ref:
+        return None, None
+    try:
+        import roles_secrets
+        secret = roles_secrets.resolve_secret(cred_ref, base)
+    except Exception as exc:  # noqa: BLE001 — SecretError / missing module → honest-degrade
+        return None, f"credential {cred_ref} could not be resolved: {exc}"
+    # An empty resolved secret is a fail-CLOSED case, not «no credential»: without it the
+    # write would be attempted UNAUTHENTICATED (the http adapter only adds the header for a
+    # truthy secret). Refuse rather than send an unauthenticated act (INV-12 posture).
+    if not secret:
+        return None, f"credential {cred_ref} resolved empty — refusing an unauthenticated act"
+    return secret, None
+
+
+def _coupled_emissions(payload: dict) -> list[dict]:
+    """The tick's inbox close-events, coupled to the acts (emitted only on confirmed
+    act success — §6.5). Unlike a standalone emission (`_process_inbox_emissions`, which
+    requires in-remit grounding OR the firewall gate), a reconcile close-event is
+    EXTERNAL-derived (it reports what the act did to the board), so it is NOT checked
+    against the in-remit corpus — its HITL gate is the owner's act approval itself
+    (`role-act-confirm`), which the owner sees before anything is written (INV-15/17).
+    `evidence` is kept as the informational «grounded in» line for the owner's judgment,
+    not a grounding bar. Only a non-empty `text` is required."""
+    raw = payload.get("inbox_emissions")
+    out: list[dict] = []
+    if not isinstance(raw, list):
+        return out
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        ev = item.get("evidence")
+        evidence = [str(e) for e in ev] if isinstance(ev, (list, tuple)) else []
+        out.append({"text": text, "evidence": evidence,
+                    "is_sensitive": bool(item.get("is_sensitive", False))})
+    return out
+
+
+def _stage_acts(
+    role_id: str, cfg: RoleConfig, payload: dict, read_records: list[str],
+    base: Path | None, tool_ctx: Path | None, pending_watermarks: dict,
+    exec_http=None,
+) -> dict:
+    """Phase 1: validate the mandate + ground each act + capture the TOCTOU baseline
+    (a READ, never a write), stage the acts + coupled inbox close-events + pending
+    watermarks into `pending_acts.json`, and — for an HITL tick (the default: an advisory
+    role, or an autonomous role with no consent marker) — emit ONE `role-act-confirm`.
+    Executes NOTHING, advances no watermark (§6.5).
+
+    When the tick is NON-HITL (`autonomy: autonomous` + the owner's consent marker
+    `ZTN_ROLES_AUTONOMOUS_ACK`, or a future verified cage), `run()` auto-approves inline via
+    `_execute_pending_acts` after parts persist. Returns a stats dict
+    `{staged, refused, executed, skipped, drift, failed, hitl, refusals[]}`."""
+    from roles_tools import get_tool
+    exec_http = exec_http or _act_transport()
+    raw = payload.get("acts")
+    stats = {"staged": 0, "refused": 0, "executed": 0, "skipped": 0,
+             "drift": 0, "failed": 0, "hitl": False, "pending_exists": False,
+             "refusals": []}
+    if cfg.mandate is None or not isinstance(raw, list) or not raw:
+        return stats
+
+    # Do NOT overwrite an un-approved pending set: if acts are already staged awaiting the
+    # owner's `--approve-acts`, this re-tick must not silently swap what the owner is about
+    # to approve (the external-state trigger re-fires every tick while the watermark is
+    # held, so an unguarded re-stage would overwrite the shown set daily). Skip re-staging;
+    # the existing pending stands — its TOCTOU baseline guards staleness at approval, and a
+    # drift re-reconciles from fresh state. The watermark stays held (act_stats is a dict).
+    if _load_pending_acts(role_id, base).get("acts"):
+        stats["pending_exists"] = True
+        return stats
+
+    today = date.fromisoformat(today_iso())
+    ingested_external = _resolve_firewall_flag(cfg, payload, tool_ctx)
+    # The act gate keys on the env cage marker directly (`_cage_verified()`), NOT on the
+    # payload `body_caged` flag the emission gate ANDs in (§_process_inbox_emissions). This
+    # asymmetry is intentional, not a bug: an act is structured + already mandate/TOCTOU/
+    # allowlist-gated, so the unforgeable env marker is a sufficient cage signal; a free-form
+    # inbox emission (its `text` is not corpus-checkable) is held to the stricter
+    # `body_caged AND env` bar. Both fail-closed today (env unset ⇒ both HITL).
+    cage = _cage_verified()
+    ack = _autonomous_ack()
+    autonomy = roles_mandate.autonomy_of(cfg.mandate)
+
+    staged_ops: list[dict] = []
+    refusals: list[str] = []
+    tick_hitl = False
+    for raw_act in raw:
+        op = roles_act.ActOperation.from_dict(raw_act)
+        if op is None:
+            refusals.append("malformed act delta")
+            continue
+        # Per-part grant (CONTRACT §1.1) — an act must name a REAL part of this role, and
+        # its tool must be granted to THAT part. A tool granted to part A cannot be invoked
+        # while acting as part B, and an act cannot be attributed to a part that does not
+        # exist. Defence-in-depth beside the mandate (which names tool + surface): this
+        # scopes the tool to the part that earned it, mirroring the read TOOL STAGE's
+        # per-part grant-check — the body cannot borrow another part's hand.
+        part_spec = next((p for p in cfg.parts if p.id == op.part), None)
+        if part_spec is None:
+            refusals.append(f"act names unknown part {op.part!r}")
+            continue
+        if op.tool not in part_spec.tools:
+            refusals.append(f"tool {op.tool!r} is not granted to part {op.part!r}")
+            continue
+        # An act is EXTERNAL-driven (justified by the ephemeral tool read — INV-10), NOT
+        # grounded against the in-remit record corpus: the gate is the MANDATE
+        # (authorization) + TOCTOU (a real, unchanged target) + idempotency + the HITL
+        # act-confirm (the owner sees it before any write) + the firewall — not a
+        # record citation. `op.evidence`/`op.reason` document WHY for the owner's
+        # judgment; they are informational, never a drop bar.
+        surface, sreason = roles_mandate.resolve_surface(cfg.mandate, op.tool)
+        if surface is None:
+            refusals.append(sreason)
+            continue
+        decision = roles_mandate.authorize_act(cfg.mandate, op.tool, surface, today)
+        if not decision.allowed:
+            refusals.append(decision.reason)
+            continue
+        spec = get_tool(op.tool, base)
+        if spec is None or not spec.is_act:
+            refusals.append(f"tool {op.tool!r} is not an active act tool")
+            continue
+        secret, serr = _resolve_act_secret(spec.credential_ref, base)
+        if serr is not None:
+            refusals.append(serr)
+            continue
+        staged_op, stage_out = roles_act.stage_act(spec, surface, op, secret, exec_http)
+        if not stage_out.ok:
+            refusals.append(f"{op.op} {op.target_ref or ''}: {stage_out.detail}")
+            continue
+        hitl, _hreason = roles_mandate.act_is_hitl(decision, autonomy, ingested_external, cage, ack)
+        tick_hitl = tick_hitl or hitl
+        staged_ops.append({**staged_op.to_dict(), "surface": surface})
+
+    stats["staged"] = len(staged_ops)
+    stats["refused"] = len(refusals)
+    stats["refusals"] = refusals
+    if not staged_ops:
+        # ALL acts refused (no live secret, expired/out-of-scope mandate, malformed) —
+        # the role silently would not act. Surface it as a CLARIFICATION, not just a log
+        # line, so the owner sees WHY the role's hands stopped and can fix it.
+        if refusals:
+            reauth = any("credential" in r or "resolved empty" in r or "expired" in r
+                         for r in refusals)
+            stats["refused_clar"] = "role-tool-reauth" if reauth else "role-act-failed"
+            emit_clarification(
+                ctype=stats["refused_clar"],
+                subject=f"{role_id} · all {len(refusals)} proposed act(s) refused",
+                context=(f"Role {role_id} wanted to act on its board but EVERY proposed "
+                         f"act was refused, so nothing was staged and the role did not "
+                         "act this tick. Reasons:\n"
+                         + "\n".join(f"· {r}" for r in refusals[:20])
+                         + ("\n\nA credential / mandate issue — re-auth via the concierge "
+                            "or renew the mandate via /ztn:role:edit." if reauth else
+                            "\n\nReview the role's mandate / act config.")),
+                source=f"roles tick for {role_id} (act staging — all refused)",
+                suggested_action="Fix the credential / mandate, then the role resumes acting.",
+                action_taken="Nothing staged, nothing written; surfaced the refusals.",
+                base=base)
+        return stats
+
+    stats["hitl"] = tick_hitl
+    # The coupled close-events feed the BASE — gate them on the same opt-in every other
+    # inbox write obeys (INV-4): a role with a mandate but `emit_inbox: false` acts on the
+    # board but must NOT push anything into the owner's memory.
+    coupled = _coupled_emissions(payload) if cfg.emit_inbox else []
+    pending = {
+        "staged_at": now_iso_utc(),
+        "run_at": payload.get("run_at") or now_iso_utc(),
+        "pending_watermarks": pending_watermarks or {},
+        "acts": staged_ops,
+        "inbox_emissions": coupled,
+    }
+    _save_pending_acts(role_id, pending, base)
+
+    if tick_hitl:
+        _emit_act_confirm(role_id, staged_ops, coupled, refusals, base)
+    # NON-HITL (autonomous — the owner set `ZTN_ROLES_AUTONOMOUS_ACK`, or a future verified
+    # cage): the acts are STAGED here but executed AFTER the tick persists its parts (§6.5
+    # ordering: persist parts → execute act → advance watermark). The caller (`run`) runs
+    # the autonomous execute post-finalize; `stats["hitl"]` False + `staged` > 0 is the
+    # signal. Absent the marker `tick_hitl` is true and the acts wait for `--approve-acts`.
+    return stats
+
+
+def _emit_act_confirm(role_id: str, staged_ops: list[dict], coupled: list[dict],
+                      refusals: list[str], base: Path | None) -> None:
+    """Surface the staged acts for the owner's approval (`role-act-confirm`) — the
+    harness HITL gate (INV-16/PLAN-2 §1). Shows the exact acts AND the coupled inbox
+    close-events that will reach the base on approval (so the owner confirms BOTH the
+    outward writes and what the base will learn), plus any acts refused this tick (so a
+    dropped act — e.g. an expired mandate — is never invisible). Nothing is written to
+    the external system until the owner runs `/ztn:roles --approve-acts {id}`."""
+    lines = []
+    for a in staged_ops:
+        ref = a.get("target_ref")
+        tgt = f"#{ref}" if ref else "(new)"
+        lines.append(f"· {a.get('op')} {tgt}: {a.get('reason') or a.get('dedup_match') or ''}".strip())
+    body = "Proposed acts:\n" + "\n".join(lines)
+    if coupled:
+        body += ("\n\nAnd these notes will be fed to your base (as close-events) on "
+                 "success:\n" + "\n".join(f"· {e.get('text', '')}" for e in coupled))
+    if refusals:
+        body += ("\n\nAlso proposed but REFUSED this tick (not staged):\n"
+                 + "\n".join(f"· {r}" for r in refusals))
+    # Subject is the bare role id (one open block per role) — MUST match the three
+    # `resolve_clarification("role-act-confirm", role_id, …)` calls on the approve-acts
+    # paths, mirroring `_cold_start_signal`. The act count lives in the context/body, not
+    # the subject; baking a per-tick count into the subject would (a) leave the block
+    # unresolved after `--approve-acts` (subject mismatch) and (b) spawn a second block on
+    # a re-tick with a different count instead of deduping.
+    subject = role_id
+    emit_clarification(
+        ctype="role-act-confirm",
+        subject=subject,
+        context=(
+            f"Role {role_id} reconciled its zone against an external board and proposes "
+            f"{len(staged_ops)} act(s) — staged, NOT yet executed (in the harness every "
+            "act is owner-confirmed, INV-16). The TOCTOU baseline is captured; on approval "
+            "each act runs idempotently and is re-validated against drift immediately "
+            "before the write. " + body + "\n\n"
+            f"Approve with `/ztn:roles --approve-acts {role_id}` (executes them, then "
+            "feeds the base the close-events + advances the watermark), or discard."
+        ),
+        source=f"roles tick for {role_id} (act staging)",
+        suggested_action=f"Run `/ztn:roles --approve-acts {role_id}` to execute, or discard.",
+        action_taken="Staged the act(s); nothing written to the external system yet.",
+        base=base,
+    )
+
+
+def _execute_pending_acts(
+    role_id: str, cfg: RoleConfig, base: Path | None, exec_http=None,
+) -> dict:
+    """Phase 2: execute the staged acts idempotently with a TOCTOU re-validate. On
+    confirmed FULL success (§6.5): emit the coupled inbox close-events + advance the
+    watermark + record the cumulative budget + clear the pending store. On ANY
+    failure/drift: surface it, clear the pending store (avoid a stale-baseline loop —
+    the next tick re-reconciles from fresh state), and advance NEITHER the inbox nor the
+    watermark. Returns a stats dict."""
+    from roles_tools import get_tool
+    exec_http = exec_http or _act_transport()
+    stats = {"executed": 0, "skipped": 0, "drift": 0, "failed": 0,
+             "inbox_emitted": 0, "watermark_advanced": False, "budget_hit": False,
+             "outcomes": []}
+    pending = _load_pending_acts(role_id, base)
+    acts = pending.get("acts") or []
+    if not acts:
+        return stats
+
+    # Re-check the mandate at EXECUTE time (Phase 2), not only at stage: the mandate can
+    # expire (or be revoked / re-pointed) in the stage→approve window, and a staged act
+    # must not execute under a mandate that is no longer live (INV-16 re-consent). On
+    # expiry: refuse the whole set, surface it, hold the watermark, clear the stale
+    # pending — the owner renews via /ztn:role:edit and the next tick re-stages.
+    if not roles_mandate.mandate_is_live(cfg.mandate, date.fromisoformat(today_iso())):
+        emit_clarification(
+            ctype="role-act-failed",
+            subject=f"{role_id} · mandate expired — staged acts not executed",
+            context=(f"Role {role_id} had {len(acts)} act(s) staged, but its act mandate "
+                     "is no longer live (expired or revoked) — nothing was executed "
+                     "(INV-16 re-consent). Renew or re-point the mandate via "
+                     "`/ztn:role:edit`; the next tick re-reconciles."),
+            source=f"roles act execution for {role_id} (mandate)",
+            suggested_action="Renew the mandate `until` (or re-point its surface) via /ztn:role:edit.",
+            action_taken="Refused the staged acts (mandate not live); cleared pending; watermark held.",
+            base=base)
+        stats["failed"] = len(acts)
+        _clear_pending_acts(role_id, base)
+        resolve_clarification("role-act-confirm", role_id, "mandate expired — not executed", base=base)
+        return stats
+
+    # The cumulative anti-salami ceiling (INV-20/28) bounds ACTS + inbox emissions
+    # TOGETHER. Gate each WRITE against the remaining budget BEFORE it happens: a real
+    # write (an `executed` act / an emitted close-event) consumes one; an idempotent
+    # `skip` consumes none (so an all-idempotent re-run never budget-stops). Once the
+    # ceiling is reached, stop — never over-write past it (the earlier code only gated
+    # emissions and clamped acts at the ledger AFTER writing — a no-op bound).
+    budget_state = roles_budget.load_budget(role_id, base)
+    remaining = roles_budget.budget_remaining(budget_state)
+    outcomes: list[roles_act.ActOutcome] = []
+    writes_done = 0
+    budget_hit = False
+    for staged in acts:
+        if writes_done >= remaining:
+            budget_hit = True  # ceiling reached — do not execute further writes
+            break
+        op = roles_act.ActOperation.from_dict(staged)
+        surface = staged.get("surface")
+        spec = get_tool(op.tool, base) if op is not None else None
+        # Re-check `is_act` at EXECUTE, not only at stage (INV-23): a tool flipped
+        # read↔act (or deactivated) in the registry between stage and approve must not
+        # drive a write on a now-wrong direction.
+        if op is None or spec is None or not surface or not spec.is_act:
+            outcomes.append(roles_act.ActOutcome(
+                str((staged or {}).get("op", "?")), (staged or {}).get("target_ref"),
+                "failed", "staged act no longer resolvable / not an active act tool "
+                          "(config/tool changed since staging)"))
+            continue
+        secret, serr = _resolve_act_secret(spec.credential_ref, base)
+        if serr is not None:
+            outcomes.append(roles_act.ActOutcome(op.op, op.target_ref, "failed", serr))
+            continue
+        outcome = roles_act.execute_act(spec, surface, op, secret, exec_http)
+        outcomes.append(outcome)
+        _audit_act(role_id, op.tool, outcome, base)
+        if outcome.status == "executed":
+            writes_done += 1
+            # Record each write to the cumulative ledger AS IT LANDS (incremental), not
+            # once at the end — so a crash after a write but before finalisation still
+            # charges it (a re-run finds it idempotent → skip → 0, which would otherwise
+            # never charge the landed write, eroding the ceiling over crashes — INV-20).
+            roles_budget.record_writes(role_id, 1, base)
+
+    for o in outcomes:
+        stats[o.status if o.status in ("executed", "skipped", "drift") else "failed"] += 1
+    stats["outcomes"] = [
+        {"op": o.op, "target_ref": o.target_ref, "status": o.status,
+         "detail": o.detail, "effect": o.effect} for o in outcomes]
+
+    executed_all_acts = len(outcomes) == len(acts)  # false when the budget stopped us
+    acts_clean = executed_all_acts and all(o.ok for o in outcomes) and not budget_hit
+
+    # Coupled inbox close-events — only when the ACTS fully succeeded, and only within the
+    # SAME cumulative ceiling (a budget-truncated emission set is NOT a full success —
+    # otherwise the board mutates, the base never learns, and the watermark would falsely
+    # mark it processed: silent loss / laundering).
+    run_at = pending.get("run_at") or now_iso_utc()
+    emissions = pending.get("inbox_emissions") or []
+    emissions_emitted = 0
+    if acts_clean:
+        for em in emissions:
+            # Crash-safe budget accounting: an emission whose content-hashed file is
+            # already on disk (a prior --approve-acts run crashed after the write but
+            # before pending was cleared, and it re-uses the SAME persisted run_at →
+            # same filename) must NOT be re-charged or re-gated — it already landed and
+            # was charged once. Count it emitted so the tick still reaches full success.
+            if roles_inbox.emission_path(role_id, run_at, em["text"], base).exists():
+                emissions_emitted += 1
+                continue
+            if writes_done >= remaining:
+                budget_hit = True
+                break
+            roles_inbox.write_emission(
+                role_id, em["text"], em.get("evidence", []),
+                bool(em.get("is_sensitive", False)), run_at, base)
+            writes_done += 1
+            emissions_emitted += 1
+            roles_budget.record_writes(role_id, 1, base)  # incremental (crash-safe)
+    stats["inbox_emitted"] = emissions_emitted
+
+    stats["budget_hit"] = budget_hit
+    full_success = acts_clean and emissions_emitted == len(emissions) and not budget_hit
+    # A `refused` outcome (a create with no dedup key, an update with no fields) is a
+    # real problem too — surface it, don't let it fall through as an unexplained "failed".
+    has_problem = any(o.status in ("drift", "failed", "refused") for o in outcomes)
+
+    if full_success:
+        # Advance the watermark ONLY now — after the confirmed act (INV-26).
+        roles_triggers.commit_gate_pass(role_id, pending.get("pending_watermarks") or {}, base)
+        stats["watermark_advanced"] = True
+        _clear_pending_acts(role_id, base)
+        # Close the loop: the acts executed → resolve the role-act-confirm the owner
+        # answered (mirrors _approve_coldstart resolving role-cold-start).
+        resolve_clarification("role-act-confirm", role_id, "executed via approve-acts", base=base)
+        return stats
+
+    # Not a full success — advance NEITHER the inbox nor the watermark, clear the pending
+    # store so a stale baseline never loops (the next reconcile re-derives from the real
+    # board state — any act that DID write is idempotent and re-confirms as a skip).
+    # Honest disclosure (mirrors the budget branch): when SOME acts executed this tick but
+    # the tick did not fully succeed, the executed acts' coupled close-events were held and
+    # are NOT auto-recovered — the body won't re-propose a note for an act it already
+    # completed. Surface that loss so it is never silent (§6.5, INV-3 no-silent).
+    some_executed = any(o.status == "executed" for o in outcomes)
+    dropped_note = (
+        " NOTE, honestly: a close-event for an act that ALREADY executed this tick is NOT "
+        "auto-recovered — the act is done, so the body won't re-propose it, and that "
+        "base-note is missed (the board is correct; your memory just won't record those "
+        "specific closes)."
+    ) if some_executed else ""
+    for o in outcomes:
+        if o.status == "drift":
+            emit_clarification(
+                ctype="role-act-drift",
+                subject=f"{role_id} · act drift on {o.op} #{o.target_ref}",
+                context=(f"Role {role_id}'s staged act ({o.op} #{o.target_ref}) was "
+                         f"aborted: {o.detail}. The target changed since it was staged, "
+                         "so the write was NOT applied over someone else's change "
+                         "(TOCTOU — INV-16/28). The next tick re-reconciles from fresh "
+                         "state; the watermark did not advance." + dropped_note),
+                source=f"roles act execution for {role_id}",
+                suggested_action="Nothing to do — the next reconcile picks up the current state.",
+                action_taken="Aborted the drifted act; no double-write. Pending cleared.",
+                base=base)
+        elif o.status in ("failed", "refused"):
+            emit_clarification(
+                ctype="role-act-failed",
+                subject=f"{role_id} · act {o.status} on {o.op} {o.target_ref or ''}".strip(),
+                context=(f"Role {role_id}'s staged act ({o.op} {o.target_ref or ''}) "
+                         f"{o.status}: {o.detail}. The bounded self-heal could not recover, "
+                         "so the reconcile did not fully succeed — no close-event was "
+                         "fed to the base and the watermark did not advance (§6.5). Any "
+                         "acts that DID succeed are idempotent and re-confirm next tick."
+                         + dropped_note),
+                source=f"roles act execution for {role_id}",
+                suggested_action="Re-auth / adjust if needed; the next tick re-reconciles.",
+                action_taken="Surfaced the failure; pending cleared to re-derive next tick.",
+                base=base)
+    if budget_hit and not has_problem:
+        # The reconcile could not complete within the cumulative ceiling this period.
+        emit_clarification(
+            ctype="role-budget-exhausted",
+            subject=f"{role_id} act/inbox budget",
+            context=(f"Role {role_id} reconciled but hit its cumulative act/inbox ceiling "
+                     "this period — some acts/close-events could not be written and the "
+                     "watermark did not advance (§6.5, INV-20). Next period (budget reset) "
+                     "any UNDONE act re-reconciles idempotently. NOTE, honestly: a "
+                     "close-event for an act that ALREADY executed this tick is NOT "
+                     "auto-recovered — the act is done, so the body won't re-propose it, "
+                     "and that base-note is missed (the board is correct; your memory just "
+                     "won't record those specific closes). If this role is legitimately "
+                     "busy, RAISE the ceiling via /ztn:role:edit so a tick finishes within "
+                     "budget and no close-events are dropped."),
+            source=f"roles act execution for {role_id} (budget)",
+            suggested_action="Leave as-is (it completes next period) or raise the ceiling.",
+            action_taken="Wrote up to the ceiling; held the rest + the watermark; pending cleared.",
+            base=base)
+    _clear_pending_acts(role_id, base)
+    # The staged set is consumed (cleared) — resolve the confirm the owner answered; the
+    # drift/failed/budget clarifications above now carry what actually happened.
+    resolve_clarification("role-act-confirm", role_id,
+                          "consumed via approve-acts (partial — see act-drift/failed/budget)",
+                          base=base)
+    return stats
+
+
+def _approve_acts(role_id: str, cfg: RoleConfig, run_at: str, base: Path | None,
+                  exec_http=None) -> dict:
+    """The `--approve-acts` mode (mirrors `--approve-coldstart`): execute the role's
+    staged acts (Phase 2). Writes one run + log entry and returns a summary. On full
+    success the reconcile's close-events reach the base + the watermark advances; on
+    drift/failure those are surfaced and neither advances (§6.5)."""
+    stats = _execute_pending_acts(role_id, cfg, base, exec_http)
+    total = stats["executed"] + stats["skipped"] + stats["drift"] + stats["failed"]
+    clar_types: list[str] = []
+    if total == 0:
+        run_status, outcome = "empty", "no-pending-acts"
+        log_lines = ["no pending acts to approve"]
+    elif stats["watermark_advanced"]:
+        # Full success — every act ran cleanly + every close-event was fed to the base.
+        run_status, outcome = "ok", "acts-executed"
+        log_lines = [_act_log_line(stats)] + _act_effect_lines(stats)
+    else:
+        # Not a full success: a drift/failure OR the cumulative budget stopped us — the
+        # watermark did not advance, the reconcile completes next tick/period.
+        run_status, outcome = "rejected", "acts-partial"
+        if stats["drift"]:
+            clar_types.append("role-act-drift")
+        if stats["failed"]:
+            clar_types.append("role-act-failed")
+        if stats["budget_hit"] and not (stats["drift"] or stats["failed"]):
+            clar_types.append("role-budget-exhausted")
+        log_lines = [_act_log_line(stats)] + _act_effect_lines(stats)
+    counts = make_run_counts(added=stats["executed"] + stats["inbox_emitted"])
+    _write_run(role_id, run_at, run_status, counts, log_lines, base)
+    return _summary(role_id, outcome, run_status, counts, clar_types, {}, exit_code=0)
+
+
+def _act_log_line(stats: dict) -> str:
+    """A one-line summary of an act execution for the run log (§3.5 observability)."""
+    parts = [f"acts: {stats.get('executed', 0)} executed"]
+    if stats.get("skipped"):
+        parts.append(f"{stats['skipped']} skipped (idempotent)")
+    if stats.get("drift"):
+        parts.append(f"{stats['drift']} drift")
+    if stats.get("failed"):
+        parts.append(f"{stats['failed']} failed")
+    if stats.get("inbox_emitted"):
+        parts.append(f"{stats['inbox_emitted']} close-event(s) fed to base")
+    if stats.get("budget_hit"):
+        parts.append("budget ceiling reached — reconcile incomplete (watermark held)")
+    if stats.get("watermark_advanced"):
+        parts.append("watermark advanced")
+    return ", ".join(parts)
+
+
+def _act_effect_lines(stats: dict) -> list[str]:
+    """Per-target act effects for the run log (§3.5 — «which #id was touched», not just a
+    count). One bounded line per non-trivial outcome; empty when nothing meaningful."""
+    lines: list[str] = []
+    for o in stats.get("outcomes") or []:
+        eff = o.get("effect") or o.get("detail") or ""
+        if eff:
+            lines.append(f"  · {o.get('op')} {o.get('status')}: {eff}")
+    return lines[:20]  # bounded — a huge reconcile never floods the log
+
+
 def run(
     role_id: str,
     payload: dict | None,
     approve_coldstart: bool = False,
     base: Path | None = None,
+    tool_ctx: Path | None = None,
+    pending_watermarks: dict | None = None,
+    approve_acts: bool = False,
 ) -> dict:
     """Persist one role tick (or approve a cold-start). Returns a summary dict.
 
@@ -1734,6 +2635,9 @@ def run(
 
     if approve_coldstart:
         return _approve_coldstart(role_id, cfg, prior_states, plugins, run_at, base)
+
+    if approve_acts:
+        return _approve_acts(role_id, cfg, run_at, base)
 
     if payload is None or not isinstance(payload, dict):
         raise RoleError("a delta payload is required for a tick")
@@ -1792,17 +2696,56 @@ def run(
     # is still cold-starting (any part staged / re-surfaced this tick) — a role does
     # not speak proactively before the owner has adopted its first draft.
     cold_starting = any(r.outcome in ("staged", "resurfaced") for r in results)
+    acts_proposed = (cfg.mandate is not None
+                     and isinstance(payload.get("acts"), list) and payload.get("acts"))
+    act_stats: dict | None = None
     if cold_starting:
         nudge_stats = (0, 0)
         identity_emitted = 0
+        tool_request_emitted = 0
+        inbox_stats = (0, 0, 0)
     else:
         nudge_stats = _process_nudges(role_id, payload, read_records, base)
         identity_emitted = _process_identity_suggestion(role_id, payload, read_records, base)
+        tool_request_emitted = _process_tool_request(role_id, payload, read_records, base)
+        if acts_proposed:
+            # ACTING tick: stage the acts (§6.5 two-phase) — this couples the inbox
+            # close-events + the trigger watermarks with the acts, emitted/advanced only
+            # on confirmed act success (Phase 2). The Phase-1 inbox path is SKIPPED so an
+            # emission never reaches the base before its act is confirmed.
+            act_stats = _stage_acts(role_id, cfg, payload, read_records, base, tool_ctx,
+                                    pending_watermarks or {})
+            inbox_stats = (0, 0, 0)
+        else:
+            inbox_stats = _process_inbox_emissions(
+                role_id, cfg, payload, read_records, base, tool_ctx)
 
-    return _finalize_tick(
+    gate_reason = payload.get("gate_reason") if isinstance(payload.get("gate_reason"), str) else ""
+    acts_proposed_but_coldstart = bool(cold_starting and acts_proposed)
+    summary = _finalize_tick(
         role_id, cfg, plugins, prior_states, results, unroutable,
-        degraded_signals, nudge_stats, identity_emitted, run_at, base,
+        degraded_signals, nudge_stats, identity_emitted, inbox_stats, run_at, base,
+        tool_ctx, gate_reason, act_stats, pending_watermarks or {},
+        acts_proposed_but_coldstart, tool_request_emitted,
     )
+
+    # Autonomous acts (`hitl` False — an owner who DIALED `autonomy: autonomous` AND set
+    # the consent marker `ZTN_ROLES_AUTONOMOUS_ACK`, or a future verified cage) execute
+    # AFTER parts have persisted (§6.5 ordering: persist parts → execute act → advance
+    # watermark), so a part-persist failure can never leave the watermark advanced over
+    # un-persisted state. Absent the marker every act stays HITL (staged), so this branch
+    # is inert by default. `_execute_pending_acts` writes its own outcome clarifications +
+    # audit; fold its counts into the summary.
+    if (act_stats and act_stats.get("staged") and not act_stats.get("hitl")
+            and not act_stats.get("pending_exists")):
+        exec_stats = _execute_pending_acts(role_id, cfg, base)
+        summary["counts"]["added"] += exec_stats.get("executed", 0)
+        for t in ("role-act-drift", "role-act-failed"):
+            if (t == "role-act-drift" and exec_stats.get("drift")) or \
+               (t == "role-act-failed" and exec_stats.get("failed")):
+                if t not in summary["clarifications"]:
+                    summary["clarifications"].append(t)
+    return summary
 
 
 def _finalize_tick(
@@ -1815,8 +2758,15 @@ def _finalize_tick(
     degraded_signals: list[ClarificationSignal],
     nudge_stats: tuple[int, int],
     identity_emitted: int,
+    inbox_stats: tuple[int, int, int],
     run_at: str,
     base: Path | None,
+    tool_ctx: Path | None = None,
+    gate_reason: str = "",
+    act_stats: dict | None = None,
+    pending_watermarks: dict | None = None,
+    acts_proposed_but_coldstart: bool = False,
+    tool_request_emitted: int = 0,
 ) -> dict:
     """Aggregate per-part results into one tick: sync state.md, write part jsons,
     append decisions, emit clarifications, write one run + log, return a summary."""
@@ -1904,11 +2854,51 @@ def _finalize_tick(
         clar_types.append("role-nudge")
     if identity_emitted:
         clar_types.append("role-identity-suggest")
+    if tool_request_emitted:
+        clar_types.append("role-tool-request")
+
+    # Tools observability (§3.5): surface tool failures needing a HUMAN decision as a
+    # `role-tool-reauth` CLARIFICATION (the self-heal exhausted — INV-29), and keep the
+    # activity/failure/firewall lines for the run log below.
+    ctx_data = _load_tool_ctx(tool_ctx)
+    reauth_emitted = 0
+    for tid in _reauth_tool_ids(ctx_data):
+        if _emit(_reauth_signal(role_id, tid, ctx_data), base):
+            reauth_emitted += 1
+            clar_types.append("role-tool-reauth")
+
+    # Inbox door (§4.2): written emissions are NOT clarifications (they land as
+    # source files); firewall-gated + budget-deferred ones ARE clarifications.
+    inbox_emitted, inbox_deferred, inbox_gated = inbox_stats
+    if inbox_gated:
+        clar_types.append("role-emission-confirm")
+    if inbox_deferred:
+        clar_types.append("role-budget-exhausted")
+
+    # Act path (§6.2/§6.5): a HITL-staged tick surfaced a `role-act-confirm` (emitted in
+    # `_stage_acts`); an autonomous tick that executed inline may have surfaced drift /
+    # failed (emitted in `_execute_pending_acts`). Count them for the summary.
+    acts_staged_hitl = bool(act_stats and act_stats.get("staged") and act_stats.get("hitl"))
+    act_confirm_emitted = 1 if acts_staged_hitl else 0
+    act_drift = act_stats.get("drift", 0) if act_stats else 0
+    act_failed = act_stats.get("failed", 0) if act_stats else 0
+    if act_confirm_emitted:
+        clar_types.append("role-act-confirm")
+    if act_drift:
+        clar_types.append("role-act-drift")
+    if act_failed:
+        clar_types.append("role-act-failed")
+    if act_stats and act_stats.get("refused_clar"):  # all-refused stage surfaced one
+        clar_types.append(act_stats["refused_clar"])
 
     counts = _sum_counts([r.counts for r in results])
     counts["clarifications"] += (
         cold_emitted + unroutable_emitted + nudge_emitted + identity_emitted
+        + tool_request_emitted
+        + inbox_gated + (1 if inbox_deferred else 0) + reauth_emitted
+        + act_confirm_emitted + act_drift + act_failed
     )
+    counts["added"] += inbox_emitted + (act_stats.get("executed", 0) if act_stats else 0)
     counts["rejected"] += len(unroutable)
 
     run_status = _role_run_status(results)
@@ -1921,6 +2911,8 @@ def _finalize_tick(
         outcome = "rejected"
 
     log_lines = [r.log_line for r in results if r.log_line]
+    if gate_reason:
+        log_lines.append(f"gate: {gate_reason}")  # which trigger fired (observability)
     if unroutable:
         log_lines.append(f"{len(unroutable)} unroutable delta(s) rejected")
     if nudge_emitted or nudge_deferred or identity_emitted:
@@ -1930,6 +2922,55 @@ def _finalize_tick(
         if identity_emitted:
             parts_msg += f", {identity_emitted} identity suggestion(s)"
         log_lines.append(f"proactive voice: {parts_msg}")
+    # Inbox door + tool activity — make them visible in the tick's own log block, not
+    # only in the separate audit/source files (§3.5 observability).
+    if inbox_emitted or inbox_gated or inbox_deferred:
+        imsg = f"inbox: {inbox_emitted} emitted"
+        if inbox_gated:
+            imsg += f", {inbox_gated} HITL-gated (firewall)"
+        if inbox_deferred:
+            imsg += f", {inbox_deferred} deferred (budget)"
+        log_lines.append(imsg)
+    # Act path observability (§3.5) — every act outcome legible from the run log alone.
+    if act_stats is not None:
+        if act_stats.get("pending_exists"):
+            log_lines.append("acts: a staged set already awaits approval — not re-staged "
+                             "(run `--approve-acts` or discard it first)")
+        elif acts_staged_hitl:
+            amsg = f"acts: {act_stats.get('staged', 0)} staged for approval (role-act-confirm)"
+            if act_stats.get("refused"):
+                amsg += f", {act_stats['refused']} refused"
+            log_lines.append(amsg)
+        elif act_stats.get("executed") or act_drift or act_failed or act_stats.get("skipped"):
+            log_lines.append(_act_log_line(act_stats))  # autonomous inline execution
+            log_lines.extend(_act_effect_lines(act_stats))
+        elif act_stats.get("refused"):
+            log_lines.append(f"acts: {act_stats['refused']} refused (mandate/grounding)")
+        # The exact refusal reasons — so a dropped act (expired mandate, malformed) is
+        # never invisible, even when some acts DID stage (O1).
+        for r in (act_stats.get("refusals") or [])[:20]:
+            log_lines.append(f"  · act refused: {r}")
+    elif acts_proposed_but_coldstart:
+        # A cold-starting tick holds proposed acts (parts not yet adopted) — make the
+        # deferral visible rather than silently dropping the acts.
+        log_lines.append("acts: proposed but held — role is cold-starting (adopt its "
+                         "draft via --approve-coldstart, then acts resume)")
+    log_lines.extend(_tool_activity_lines(ctx_data))
+
+    # Watermark ownership (INV-26, §8): the WRITER advances the trigger watermark on a
+    # confirmed successful tick. For an ACTING tick (acts were proposed → `act_stats is
+    # not None`) the watermark is coupled to the act — advanced in Phase 2 by
+    # `_execute_pending_acts` (or, on refusal/failure, deliberately NOT advanced so the
+    # external change is re-processed) — so `_finalize_tick` never advances it here. A
+    # cold-starting tick has not reconciled the external state yet (its parts are frozen
+    # for approval), so it HOLDS the watermark too — advancing it would mark the external
+    # change «processed» before the role ever acted on it (INV-26). A live non-acting
+    # tick advances it now.
+    cold_starting_final = any(r.outcome in ("staged", "resurfaced") for r in results)
+    if (act_stats is None and pending_watermarks and not cold_starting_final
+            and run_status in ROLES_SUCCESS_STATUSES):
+        roles_triggers.commit_gate_pass(role_id, pending_watermarks, base)
+
     _write_run(role_id, run_at, run_status, counts, log_lines, base)
 
     parts_detail = {
@@ -2073,12 +3114,38 @@ def main(argv: list[str] | None = None) -> int:
         help="adopt every pending cold-start draft live and advance the watermarks",
     )
     parser.add_argument(
+        "--approve-acts", action="store_true",
+        help="execute the role's staged acts (Phase 2 — CONTRACT §6.5): idempotent + "
+             "TOCTOU-revalidated; on full success emits the coupled inbox close-events "
+             "and advances the watermark, on failure neither. Omit --payload.",
+    )
+    parser.add_argument(
+        "--pending-watermarks", default=None,
+        help="the gate's pending trigger watermarks (JSON), authored by the runner from "
+             "the trigger-gate. The WRITER commits them (INV-26/§8): now on a successful "
+             "non-acting tick, or coupled to a confirmed act (Phase 2) on an acting tick.",
+    )
+    parser.add_argument(
         "--base", default=None,
         help="zettelkasten base override (else ZTN_BASE / derived)",
+    )
+    parser.add_argument(
+        "--tool-ctx", default=None,
+        help="the per-tick TOOL STAGE ctx file — the ENGINE-authored injection-firewall "
+             "belt (INV-17): the writer reads `ingested_external` from it, so a body-"
+             "supplied flag can never open the firewall. Omit when no tool ran.",
     )
     args = parser.parse_args(argv)
 
     base = Path(args.base).resolve() if args.base else None
+    tool_ctx = Path(args.tool_ctx) if args.tool_ctx else None
+    pending_watermarks: dict = {}
+    if args.pending_watermarks:
+        try:
+            parsed = json.loads(args.pending_watermarks)
+            pending_watermarks = parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, ValueError):
+            pending_watermarks = {}
 
     try:
         payload = _load_payload(args.payload)
@@ -2091,7 +3158,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        summary = run(args.role, payload, args.approve_coldstart, base)
+        summary = run(args.role, payload, args.approve_coldstart, base, tool_ctx,
+                      pending_watermarks, args.approve_acts)
     except (RoleConfigError, RoleArchetypeError, RoleError) as exc:
         # `ask` is read-only by contract: it never persists and never leaves a run
         # in the tick index. Genuine tick / cold-start errors are still recorded.

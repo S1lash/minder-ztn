@@ -56,7 +56,65 @@ contract violation.
   commit.
 
 **Bash is permitted only for the helper invocations explicitly listed
-in the steps below.** Anything else is a contract violation.
+in the steps below** — plus the `/ztn:roles` skill's own `_system/...` script
+steps and the `cd zettelkasten && …` prefix they run under (see «Working
+directory»). Anything else is a contract violation.
+
+## Working directory (read first)
+
+Two roots are in play — keep them straight so no step wastes effort locating
+files. The layout is FIXED; do not go discovering it.
+
+- **Repo root** — the routine's starting directory. Holds `scripts/scheduler/*.sh`
+  and `.claude/skills/`. Run every `bash scripts/scheduler/...` helper (Steps 0–2
+  and 5) and every slash invocation from here.
+- **ZTN base** = `zettelkasten/` under the repo root. Holds `_system/`, the role
+  dirs, and the pipeline Python. The `/ztn:roles` skill resolves its `_system/...`
+  script paths relative to THIS base, so run its script steps from the base —
+  prefix each with `cd zettelkasten && …`. The shell CWD resets to the repo root
+  between commands, so the prefix goes on EACH script step, not once. The base is
+  ALWAYS `zettelkasten/`; never spend a step searching for `_system/scripts`.
+
+`/ztn:sync-data` (Step 3) operates on git from the repo root — no `cd` needed.
+
+## Secrets — the master key (fill per-instance; needed only for acting / auth roles)
+
+A role that reaches an AUTHENTICATED external system (an act tool, or any tool with a
+`secret://` credential) resolves its token from the encrypted blob using the secrets
+master key. That key must be in this routine's **environment** as
+`ZTN_SECRET_MASTER_KEY` for the autonomous tick to resolve it — the tick STAGES acts
+(a baseline read) and PROBES external state, both of which need the credential.
+
+Set it **once, per-instance**, out of band from git (never commit a real key). The key
+the concierge printed when you wired your first secret must be in this routine's
+**environment** — put it in the **routine's own env / secret config** as
+`ZTN_SECRET_MASTER_KEY`. That is the ONLY reliable carrier: the `/ztn:roles` skill runs
+its Python in separate subprocesses, and a shell `export` does NOT persist across them —
+so the durable routine-env var is what every helper + subprocess actually inherits.
+
+Fill these in your routine's env / secret config (per-instance, NEVER committed). Both
+are OFF until you set them, so a missing key never acts by accident:
+
+```
+# --- roles routine env / secret config (per-instance, never committed) ---
+# 1. Master key — needed for a role that reads/acts on an AUTHENTICATED system.
+#    Paste the key the concierge printed when you wired your first secret:
+ZTN_SECRET_MASTER_KEY=<paste your master key here>
+
+# 2. Autonomous acting — set to 1 ONLY if you want acting roles to make their board
+#    changes on their own on schedule (no per-act approval). Leave UNSET to keep every
+#    act owner-confirmed. This is your explicit consent: an autonomous role acts in the
+#    un-caged runtime on YOUR say-so (a prompt-injection in content it reads could steer
+#    an act, bounded to the mandate's surface). Only a role you DIALED `autonomy:
+#    autonomous` is affected; advisory roles still stage regardless.
+ZTN_ROLES_AUTONOMOUS_ACK=1
+```
+
+(An in-prompt `export ZTN_SECRET_MASTER_KEY="…"` only helps a runtime where all of a
+tick's steps share ONE shell — it is not a substitute for the routine-env var.)
+**If you run no acting / secret-bearing roles, leave BOTH unset:** secret resolution
+honest-degrades (the tool is skipped, its refusal is surfaced, the tick still completes)
+and every act stays owner-confirmed — the routine is never blocked by a missing key.
 
 ## Failure handling
 
@@ -71,7 +129,11 @@ Then exit `partial` immediately.
 
 ## Steps
 
-0. `bash scripts/scheduler/ensure-skills.sh` — verify the project-level
+0. **Secrets key (acting / auth roles only).** `ZTN_SECRET_MASTER_KEY` must live in the
+   routine's env/secret config (see «Secrets» above) — that is what the skill's
+   subprocesses inherit; a shell `export` here does not reach them. Nothing to do in this
+   step if it is set there (or unset by design — the tick honest-degrades). Then:
+   `bash scripts/scheduler/ensure-skills.sh` — verify the project-level
    ZTN skills resolve at `.claude/skills/<name>/SKILL.md` before any slash
    invocation. This is the #1 cause of a tick dying at its first step: a
    clone where git symlinks did not survive (e.g. a Windows commit with
@@ -98,7 +160,9 @@ Then exit `partial` immediately.
      `"sync-data blocked, owner action needed"`, exit `sync-blocked`.
 
 4. `/ztn:roles --all-due` — exactly ONE invocation. Iterates all
-   due roles sequentially, writes outputs + machine index. Role-level
+   due roles sequentially, writes outputs + machine index. Its `_system/...`
+   script steps run from the `zettelkasten/` base (prefix `cd zettelkasten && …` —
+   see «Working directory»); the base is fixed, do not search for it. Role-level
    failures degrade to clarifications and do not abort the whole run.
    - On skill-level error (registry unreadable, etc.) → run
      failure-handling, exit `partial`.
@@ -178,4 +242,8 @@ Then exit `partial` immediately.
 ## Output
 
 Single-line status: `success` / `partial` / `sync-blocked`. If a commit
-landed, append the SHA. No prose.
+landed, append the SHA. If the tick staged owner-approval work — a
+`role-act-confirm` or `role-cold-start` in the run summary — append
+`(N awaiting approval)` so a friend scanning the routine log sees the queue is
+waiting on them (the acts/drafts are staged, not lost; approve via the morning
+routine). No other prose.

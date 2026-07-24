@@ -13,9 +13,11 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import yaml
@@ -378,10 +380,12 @@ class MinderQueryTest(unittest.TestCase):
         via_role = self._run_cli(
             ["--role", "minder-pm", "--base", str(self.base), "--list", "--compact"]
         )
-        via_json = self._run_cli(
-            ["--remit-json", json.dumps(remit), "--base", str(self.base),
-             "--list", "--compact"]
-        )
+        # --remit-json is a dev override, now gated behind ZTN_DEV=1 (INV-15).
+        with unittest.mock.patch.dict(os.environ, {"ZTN_DEV": "1"}):
+            via_json = self._run_cli(
+                ["--remit-json", json.dumps(remit), "--base", str(self.base),
+                 "--list", "--compact"]
+            )
         self.assertEqual(via_role["role_id"], "minder-pm")
         self.assertEqual(via_role["parts"], [{"id": "board", "kind": "ledger"}])
         self.assertEqual(

@@ -10,13 +10,18 @@ description: >
   config on disk. Resolves a free-text role reference (display name / id /
   transliteration, STT-tolerant) the same way `ask` does — confirm on fuzzy, never
   guess. Ordinary edits (persona / cadence / name / hooks / activation / adding a new
-  part) just validate and write. A remit change stages a re-baseline instead of
-  silently churning the tracked state; a parts-shape change that would strand state is
-  refused in favour of a new role. Acquires `.roles.lock` before writing.
+  part) just validate and write. It also runs the **acting lifecycle**: renew / revoke
+  / re-point a role's outward **mandate** (the act grant + scope + expiry), and **grant
+  a tool** the role asked for via a `role-tool-request` (add a registered tool to a
+  part, or hand off to `/ztn:role:add` to wire a new one) — human-gated, never a
+  self-grant. A remit change stages a re-baseline instead of silently churning the
+  tracked state; a parts-shape change that would strand state is refused in favour of a
+  new role. Acquires `.roles.lock` before writing.
   Triggers: «давай улучшим Kitchen Reno», «переучи роль», «поменяй как звучит роль»,
   «расширь что она смотрит», «переименуй роль», «поставь роль на паузу», «верни
-  роль», «убери роль», «improve my PM role», «retune / rename / widen / pause /
-  resume / retire this role».
+  роль», «убери роль», «дай роли доступ к…», «продли / отзови мандат», «improve my PM
+  role», «retune / rename / widen / pause / resume / retire this role», «grant the role
+  a tool», «renew / revoke its mandate».
 disable-model-invocation: false
 ---
 
@@ -151,6 +156,8 @@ ask is ambiguous, then run its rule.
 | **rename** it (what the owner calls it) | **name edit** | ordinary config edit of the `name` display field (may be non-ASCII); the machine `id` / directory is stable — see «Rename» |
 | change its INSTRUCTIONS — what «stewarding this zone» means, what to flag, its tone in the hook | **hook edit** | rewrite `hooks/tick.md` / `hooks/ask.md`; must still fit `_frame.md` |
 | change / add its private STEER notes channel | **brief edit** | set / unset `brief: brief.md`; create an empty `brief.md` the owner fills — the engine never writes it |
+| change whether / how long it can ACT on an external board (keep it going, stop it touching the board, point it at a different board) | **mandate edit** | rewrite or remove the `mandate:` block (see «Mandate lifecycle») — ordinary config edit, never a schema extension |
+| GRANT a new tool the role asked for (it raised a `role-tool-request`) | **tool-grant** | add an existing registered tool to the relevant part's `tools:` grant, or hand off to `/ztn:role:add` to register a brand-new one — human-gated, never a self-grant (see «Tool-grant») |
 | **ADD a new part** to the composite (e.g. add an alignment narrative to a ledger-only PM) | **add-part edit** | append to `parts[]`; it COLD-STARTS on the next tick (see «Add a part») |
 | change WHAT ZONE it watches (widen / narrow / re-aim the remit) | **remit change** | write new remit + emit `role-remit-changed` re-baseline — NEVER a silent churn (see «Remit change») |
 | REMOVE / REPLACE a part, or change a part's KIND | **parts-shape change** | **DISALLOWED on a live role** — offer a new role (see «Parts-shape change») |
@@ -388,6 +395,65 @@ the owner accept or adjust. The owner never sees the field name.
 
 Then go to Step 6 (validate-before-write).
 
+### Mandate lifecycle — renew / revoke / re-point (owner language only)
+
+A role with a `mandate:` block (`autonomy`, `scope: [{target, surface, mode, blast}]`,
+`until`) is authorized to ACT on an external board (`_system/scripts/roles_common.py` →
+`MandateSpec`; a real example is `_system/roles/minder-pm/config.yml`). The owner never
+says «mandate» / «scope» / «blast» / «until» — they say things like «let it keep
+updating my board» or «stop letting it touch my board». Map the plain ask to one of
+three moves, then go to Step 6 like any other identity edit:
+
+- **Renew.** «Let it keep going» / «extend it» / «don't let it stop acting» → update
+  `until` to a later ISO date, or drop `until` entirely for open-ended. `until` is the
+  date `roles_mandate.mandate_is_live` checks before authorizing any act — once it's
+  past, every act is refused outright, not paused-and-resumable. A mandate that lapsed
+  is the usual trigger for this edit (see the `role-act-failed` boundary case below) —
+  this skill is the renewal path.
+- **Revoke.** «Stop letting it touch my board» / «make it read-only again» → remove the
+  whole `mandate:` block. `roles_mandate.authorize_act` refuses any act with no mandate,
+  so the role reverts to read-only stewarding; its existing ledger / narrative state is
+  untouched.
+- **Re-point.** «Point it at a different board» / «it's watching the wrong page now» →
+  change the scope target's `surface` (the specific board id), keeping the same
+  `target` tool. Tell the owner plainly: the role's READ zone (`remit`) and its WRITE
+  target (`mandate.scope[].surface`) are two separate settings (INV-16) — re-pointing
+  one never silently moves the other.
+
+**The two guards stay, always — state them for the owner plainly, never as jargon:**
+1. Every act the role stages is still owner-confirmed in the harness, regardless of the
+   `autonomy` dial — a mandate never grants a silent write.
+2. An act tool that needs its own auth is `http` / `local` only, never `mcp` / `skill`.
+
+A malformed mandate (missing `scope`, a `surface` that isn't a real id, a non-ISO
+`until`) is refused and retried at Step 6 like any other identity edit — never left
+invalid on disk.
+
+### Tool-grant — grant a role's tool request (human-gated, never a self-grant)
+
+A running role can ASK for a tool it would work better with — it raises a
+`role-tool-request` CLARIFICATION (grounded in what its ticks actually needed, HITL, and
+**never a self-grant**: a role cannot give itself a tool, by construction). This skill is
+the human-gated grant path — the grant only ever happens here, on the owner's word. When
+the owner decides to grant it, map to one of two moves, then go to Step 6 like any
+ordinary identity edit:
+
+- **The requested tool already exists** in the registry (`_system/registries/TOOLS.md`) —
+  add its tool id to the relevant part's `tools:` grant (INV-19 per-part grant). Validate
+  it in temp and swap atomically (Step 6) like any config edit; the loader refuses a grant
+  naming a tool the registry doesn't hold, so a typo can't reach disk. Tell the owner
+  plainly which part now holds the tool and what it can now read / do.
+- **The requested tool is brand-new** (no registry row yet) — registering a tool needs its
+  adapter kind, any credential + verify-at-creation, and its `TOOLS.md` row. That is the
+  concierge's setup walk, not a config field this skill can conjure. Hand off: «Adding a
+  tool the engine has never seen needs the setup walk — `/ztn:role:add` registers it
+  (adapter, any login, a test that it works), then it's granted to the role.»
+
+The two guards from a mandate edit hold here too: the role never grants itself, and an
+ACT tool stays `http` / `local`, never `mcp` / `skill` (a harness-executed adapter has no
+out-of-band runner to hand a secret to — CONTRACT §5). The owner later resolves the
+open `role-tool-request` item in `/ztn:resolve-clarifications`.
+
 ### Remit change → `role-remit-changed` re-baseline (never a silent churn)
 
 The remit is the allow-list the role reads. Changing it means the tracked state was built
@@ -400,8 +466,12 @@ the remit and moves on. Instead:
 1. **Probe the new remit before writing it** (calibration — same as `add` Step 4b). Run
    the resolver with the DRAFTED remit and show the owner what it lands on now:
 
+   `--remit-json` is a dev/preview scope override gated behind `ZTN_DEV=1` (the hard
+   read-lock refuses it otherwise — INV-15); the remit-preview probe is the sanctioned
+   dev use, so set the marker:
+
    ```bash
-   python3 _system/scripts/minder_query.py \
+   ZTN_DEV=1 python3 _system/scripts/minder_query.py \
      --remit-json '{"globs":["1_projects/x/**"],"project_ids":["x"],"decision_notes":false,"all":false}' \
      --no-body --compact
    ```
@@ -633,6 +703,14 @@ The skill never auto-commits.
   cold-starts it.
 - **Never extend the schema.** New field / cadence / stance / part-kind / hook → blocked,
   routed to the engine maintainer.
+- **Never let a mandate edit bypass the owner-confirm gate or grant a disallowed tool
+  kind.** Renew / revoke / re-point only ever touch `autonomy` / `scope` / `until` —
+  every staged act still needs `/ztn:roles --approve-acts`, and an act tool stays
+  `http` / `local`, never `mcp` / `skill`.
+- **Never let a role grant itself a tool, and never grant a tool the registry doesn't
+  hold.** A `role-tool-request` is granted only here, on the owner's word — an existing
+  tool onto a part's `tools:`, or a hand-off to `/ztn:role:add` for a brand-new one; an
+  act tool stays `http` / `local`.
 - **Never rename the machine `id` / move the directory** in place (it anchors all state) —
   a genuine id change is a new role.
 - **Never flip status except on an explicit owner command.** pause / resume / retire are
@@ -657,6 +735,7 @@ The skill never auto-commits.
 - `_system/state/roles-runs.jsonl` (the role's run history — expert read, Step 3).
 - `_system/roles/` (to enumerate roles on a generic / unresolved reference).
 - `_system/roles/_frame.md` (the contract a rewritten hook must fit).
+- `_system/registries/TOOLS.md` (to confirm a requested tool exists on a tool-grant).
 - `_system/scripts/roles_archetype_*.py` `CONCIERGE_MANIFEST` (when adding a part).
 - `_system/SOUL.md`, `_system/docs/communication-baseline.md`,
   `_system/views/constitution-core.md` (language + reader alignment).
@@ -687,7 +766,8 @@ and only on typed confirmation.
   role to life on its next look, and owns the re-baseline after a remit change. Exclusive
   on a role dir via `.roles.lock` — this skill takes the same lock for its write.
 - `/ztn:resolve-clarifications` — where the owner later resolves the `role-remit-changed`
-  item this skill stages (and any `role-*` item a running role raises).
+  item this skill stages (and any `role-*` item a running role raises, including a
+  `role-act-failed` pointing back here for a mandate renewal).
 - `/ztn:save` — the owner's commit step; this skill never commits.
 
 ---
@@ -703,6 +783,9 @@ and only on typed confirmation.
 | Remit change lands on 0 notes | Block, re-aim — an empty remit is a dead role. |
 | Remove / replace / re-kind a part on a live role | Refuse; offer `/ztn:role:add` for a new role. |
 | Add a new part | Allowed; it cold-starts on the next tick; existing parts keep memory. |
+| A staged act can't run because its mandate expired (owner sees a `role-act-failed` CLARIFICATION pointing here) | Renew — update or drop `until`; see «Mandate lifecycle». |
+| «Stop letting it touch my board» / «point it at a different board» | Revoke or re-point the `mandate:` block; see «Mandate lifecycle». |
+| A role asked for a new tool (owner sees a `role-tool-request` CLARIFICATION) | Grant an existing registered tool onto the relevant part's `tools:`, or hand off to `/ztn:role:add` to register a brand-new one; human-gated, never a self-grant (see «Tool-grant»). |
 | «Also watch / observe a pattern» or «also pull a raw daily number» | Cross-route at Step 2 — a lens (`/ztn:agent-lens-add`) or a metric source (`/ztn:source-add`), not a part; a metrics part tracking an EXISTING number stays a valid add-part. |
 | Pure lifecycle (pause / resume / retire) or rename | Skips the Step 3 expert read — applies the class rule directly (Step 2 → Step 4); no unrequested improvement proposals. |
 | Rename (display) | Edit `name`; machine id / dir stable. |

@@ -1162,7 +1162,9 @@ class FenceHelperRobustnessTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "note.md"
-            p.write_text(text, encoding="utf-8", newline="")
+            # write exact bytes (CRLF preserved, no newline translation) — `write_bytes`
+            # is portable; `write_text(newline=...)` is Python 3.10+ and breaks on 3.9.
+            p.write_bytes(text.encode("utf-8"))
             self.assertFalse(c.frontmatter_closed_before_body(p))
             self.assertTrue(c.repair_misplaced_fence(p))
             self.assertTrue(c.frontmatter_closed_before_body(p))

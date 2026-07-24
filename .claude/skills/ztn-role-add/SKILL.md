@@ -11,8 +11,13 @@ description: >
   shape from the owner's own words when the wish is a set of things, a stream of entries,
   a number toward a target, a keyed verdict, or an argued position — fights for the
   highest-leverage role FOR the owner (proposes power-uses grounded in their real
-  data, a growth-calibrated persona, a meeting-aware remit), designs the remit (the
-  zone the role watches), probes the user's real notes to show what the role would
+  data, a growth-calibrated persona, a meeting-aware remit), grants a part read-tools when the
+  wish reaches into an external system (a Notion board, Google Drive, the web) and — when the wish
+  is to ACT on a board (update / close) — grants an act-tool and composes an owner mandate scoping
+  the specific surface (asking autonomous-vs-manual: staged for approval by default, or acting
+  on its own when the owner opts in), wires triggers
+  and an inbox door when the role needs to wake on more than a clock or feed a fact back, designs
+  the remit (the zone the role watches), probes the user's real notes to show what the role would
   actually find, and generates a complete, validation-passing role — config + hook
   bodies — calibrated to the user's data and intent. Cross-routes a wish that is
   really a lens or a metric source to the right skill. User never sees `config.yml`
@@ -21,7 +26,8 @@ description: >
   to use casually. Triggers: «заведи роль…», «мне нужна роль, которая…», «create a
   role that…», «be the PM of…», «watch / steward / keep track of…», «keep a
   catalog / log of…», «track a number toward a target», «keep a verdict on each
-  thing», «argue against me from my own principles».
+  thing», «argue against me from my own principles», «watch my Notion board», «read
+  my Drive when a task is unclear», «tell me when the outside system has moved».
 disable-model-invocation: false
 ---
 
@@ -71,6 +77,21 @@ ledger) AND the project's meaning + alignment (a narrative); another role pairs 
 running log (a registry) with a living read of what that log adds up to (a narrative).
 The concierge composes them — the user never names a «part-kind».
 
+**A part can also reach beyond its own zone.** Where the wish needs the role to SEE an
+external system — a Notion board, a Google Drive, the web — the concierge grants that
+part a **read-tool** (its eyes into that system); it can wire a **trigger** so the role
+wakes on more than the clock (when its zone is mentioned, or when the outside system has
+moved since it last looked), and give it an **inbox door** to feed a fact it learns back
+into the base as just another source. ACTING outward on an external system (updating that
+board, closing a done task) is a further reach that needs an owner **mandate** — a scoped,
+time-bounded grant naming the SPECIFIC surface the hands may touch; the concierge grants
+the acting part an **act-tool** and composes the mandate from the wish. By default (an
+`advisory` mandate) every act is owner-confirmed — the role stages what it WOULD do and
+writes only after the owner approves; an owner who chooses `autonomous` (and sets the
+consent marker) lets it act on its own. The owner
+never names a tool, a trigger, an inbox door, or a mandate — the concierge composes them
+from the wish (see «Tools — a part's reach beyond its zone»).
+
 The success metric is two-part: (1) the owner or a friend walks away with the
 **highest-leverage** role for them after one conversation — not just a role that
 matches the literal words, but the role that best serves the underlying need; (2)
@@ -98,12 +119,16 @@ tick produces a sensible cold-start draft per part, not noise.
   «part-kind» to the user. When the wish is a set of things or a stream of entries,
   capture its shape into a `registry` (Step 2c); when it is a number toward a target,
   a keyed verdict, or an argued position, compose the matching reference kind and
-  capture its shape too (Step 2c). If the wish needs a capability that is NOT built
-  yet (a part that reaches into an external tool, or one that ACTS on the world), say
-  so plainly and offer what IS available — or cross-route if the wish is really a
-  different primitive (a pure passive observer is a lens, not a role; raw daily-number
-  intake is a metric source, not a role — Step 2b). Never fabricate a capability that
-  cannot run. (See «Part-kind composition».)
+  capture its shape too (Step 2c). When the wish needs a part to SEE an external system
+  (Notion, Drive, the web), grant that part a **read-tool** — that reach IS built; wire
+  triggers + an inbox door if the wish needs them (see «Tools — a part's reach beyond
+  its zone»). If the wish needs a role to ACT outward on the world (update a board, close
+  a done task), grant the acting part an **act-tool** and compose an owner **mandate**
+  scoping the specific surface — that reach IS built; in the harness every act is
+  owner-confirmed (staged, then approved), so say plainly it never writes on its own.
+  Cross-route if the wish is really a different primitive (a pure passive observer is a lens, not a role;
+  raw daily-number intake is a metric source, not a role — Step 2b). Never fabricate a
+  capability that cannot run. (See «Part-kind composition» and «Tools».)
 - **Show before tell.** Before asking «is this what you want?», show a
   concrete sample of what EACH part of the role and its answers would look
   like, in plain language. User decides from the preview, not a spec.
@@ -131,9 +156,9 @@ tick produces a sensible cold-start draft per part, not noise.
   single turn. Each turn ≤ 10 lines unless presenting a preview or the
   finished role. Wait for the user's reply before continuing.
 - **Honest about limits.** Sparse data, missing notes, a wish that reaches beyond
-  what's built (a part that acts on the world or pulls from an external tool),
-  broad-scope sensitivity, first-run cold-start — skill names these plainly with
-  options. Never papers over.
+  what's built (a capability no built tool or kind serves), the harness always-confirm
+  gate on acts, broad-scope sensitivity, first-run cold-start — skill names these
+  plainly with options. Never papers over.
 - **Quality over speed.** A bad role produces noisy state that erodes trust
   in the whole subsystem. Better to push back («too vague — one more
   question») than to ship a half-baked role.
@@ -207,6 +232,36 @@ phase / rename history, no personal names (placeholders, or read
   exposing a `CONCIERGE_MANIFEST` (plain_purpose / triggers / produces_preview
   / determinism_note / built). The skill reads these to compose parts from the
   wish and to preview each part honestly — it never hardcodes a kind list.
+- `_system/registries/TOOLS.md` — the tool whitelist (one active row per tool).
+  The concierge reads it to know which read-tools / act-tools a part can be granted (and
+  an act tool's `Act Config`), and APPENDS an active row when the wish needs a tool not
+  yet registered.
+- `_system/scripts/roles_tools.py` — tool registry loader/validator
+  (`load_tools_registry`, `get_tool`, `import_tool_adapter`). The skill uses it
+  to confirm a granted tool resolves and to load its adapter for the
+  verify-at-creation test read.
+- `_system/scripts/roles_secrets.py` — the secrets store (`store_secret`,
+  `resolve_secret`, `generate_master_key`, `master_key_present`; env
+  `ZTN_SECRET_MASTER_KEY`). Powers the concierge's first-secret onboarding.
+- `_system/scripts/roles_triggers.py` — trigger-gate evaluator (`evaluate_gate`)
+  the concierge runs once at verify-at-creation to confirm the wired trigger
+  fires sanely; the runner owns it at tick time.
+- `_system/scripts/roles_tool_stage.py` — the runtime tool-stage runner
+  (grant-check → secret-resolve → adapter exec → per-tool budget, and the
+  bounded self-heal-then-clarify path). The concierge does NOT invoke it at
+  create time; it is named here so the concierge can honestly tell the owner
+  how the role's hands behave at runtime.
+- `_system/scripts/roles_mandate.py` — the deterministic act-authorization gate
+  (`authorize_act`, `act_is_hitl`, `resolve_surface`): refuses an act with no live,
+  in-scope mandate, and computes HITL — always for an `advisory` role, and for an
+  `autonomous` role UNLESS the owner set the consent marker `ZTN_ROLES_AUTONOMOUS_ACK`
+  (then it acts in-tick). The concierge grounds its mandate claims here — it never runs
+  the gate at create time.
+- `_system/scripts/roles_act.py` — the act engine: the deterministic
+  rmw / idempotency / TOCTOU / atomicity spine over the `http` transport, driven by the
+  act tool's `Act Config` DATA (INV-19). Named here so the concierge grounds what an act
+  actually does; the writer (`roles_persist` → `roles_act`) executes it on approval, never
+  the concierge.
 - `_system/docs/ENGINE_DOCTRINE.md` §3.6 — owner-LLM contract: never
   auto-run without consent, never extend schema, never populate a part's
   state (that is `roles_persist.py`'s cold-start job).
@@ -325,18 +380,20 @@ buys tighter engine-enforcement for the common case; the registry buys form-as-d
 everything else — including any near-miss of a reference. The user never hears any of
 this; the concierge just picks, and for a variation it captures the shape at Step 2c.
 
-**When a facet needs an UNBUILT capability** (a part that ACTS on the world — books,
-sends, files — or PULLS from an external tool: the Layer-2 seams, none of the built
-reference kinds) → be plain, do not fabricate: name the facet, say that shape isn't
-built yet, build the parts that ARE available for the rest, and note the deferred
-facet so it's ready when that capability ships. Never fake a capability that cannot
-run.
+**A facet that reaches OUTWARD is built — reading AND acting.** Seeing an external system
+(e.g. Notion / Drive / the web) is a **read-tool** grant; acting on it (e.g. updating a
+board, closing a done task, creating a calendar event — any REST-shaped target under a
+mandate, a board is just one example) is an **act-tool** grant plus an owner **mandate** — and by
+default every act is owner-confirmed (the role stages what it WOULD do; the owner
+approves), unless the owner opts the role into `autonomous`. Compose both from the wish; do not defer them. The honesty
+gate still fires for anything genuinely beyond the engine (a capability no built tool or
+kind can serve) — name it plainly, build the parts that ARE available, never fabricate a
+capability that cannot run.
 
-> «One honest note. Part of what you want — {acting on the outside for you / reaching
-> into an external tool} — is a shape that isn't built yet, so I won't fake it. But
-> the rest fits: I can give this role {the workstream tracker / a living read of
-> where the project stands}. Want me to build that now and flag the {acting /
-> external-tool} piece for when it ships?»
+> «One honest thing about the acting part. This role can update your {board} for you —
+> but I never let it change anything on its own: each time it wants to, it shows you
+> exactly what it would do and only does it after you say go. Want me to give it that,
+> pointed at {the specific board / page}?»
 
 ### Cross-routing — when the wish is really a different primitive
 
@@ -374,6 +431,336 @@ wish genuinely wants a standing steward of a zone's status and/or meaning.
 
 ---
 
+## Tools — a part's reach beyond its zone (read + act, both built)
+
+A role reads its own ZTN zone through the remit. A **tool** is a part's reach BEYOND
+that zone — to read an external system (e.g. Notion, Drive, the web), AND to act on it
+under an owner mandate. **A role acts on an external system under a mandate; a REST
+board is one example, not the definition** — the same reach can create a calendar event
+or update a task in a task API, any REST-shaped target. Concretely: the BUILT act adapter
+is a read-modify-write over a structured board (e.g. a GitHub-issues board, a Jira
+project, a Notion database — create / update / close under a mandate); a non-board target
+that is REST-shaped (e.g. create a calendar event, update a task in a task API) uses the
+SAME `http` act adapter + `act_config`, and a fundamentally different shape is a future
+adapter, not this one — never fabricate it (see the offer-gate in B). The concierge
+composes tools from the wish the same way it composes parts: it excavates the true intent,
+architects the most powerful complete solution grounded in the owner's real data, and
+wires it silently. **The owner never sees a tool id, an adapter, an endpoint, a credential name, a
+trigger predicate, a budget number, a mandate, a scope, a blast radius, or the words
+act-config / TOCTOU / rmw.** They describe THEIR thing («keep an eye on my Notion board»;
+«read the project doc when a task is unclear»; «keep my board in sync — but always ask me
+first»; «only wake up when the board actually moved») — the concierge picks the tools,
+the wiring, the wake conditions, and (for an acting role) the mandate, and speaks back in
+plain language.
+
+**Deep-architect, not order-taker (INV-24).** Think several steps ahead of the literal
+words. A PM wish over a project that lives half in ZTN and half in Notion is half-blind
+without a Notion read-tool AND a Drive read-tool for the descriptions — propose the
+complete reach, grounded in what the owner's data actually needs, and explain each offer
+with a plain example. Ask only when genuinely unclear.
+
+### What the concierge composes (the owner never sees these words)
+
+Where the wish reaches outward, the concierge fills these config fields (all additive;
+a role with none is a normal zone-only role):
+
+- **`PartSpec.tools: [<tool-ref>, …]`** — the tools a part may reach, each a `Tool ID`
+  from `TOOLS.md`. Grant a **read-tool** whenever the role needs to SEE an external
+  system to do its job, and the **act-tool** to the specific part that ACTS on it. The
+  grant is **per-part**: the act-tool goes on the part that does the acting (a `ledger`
+  reconciling a board gets the board's act-tool in ITS `tools:` list), and the mandate
+  `target` names that same tool — so the act reach is scoped to the part that earned it,
+  never a role-wide union. Empty = no hands (the default). The runner grant-checks
+  against the registry before executing — it never trusts a tool the body asks for but
+  the part wasn't granted.
+- **`triggers:`** (role-level, §1.3) — an OR-combined list of wake conditions, AND-ed
+  on top of cadence + activation. Two kinds:
+  - `{kind: zone-mention, match: [<tokens>]}` — wake when the zone mentions the thing;
+    matched STT-robustly (EN/RU, garbled — «Minder» / «миндер» / «миндера» all fire),
+    and a role's OWN emitted records are excluded so it never triggers on itself.
+  - `{kind: external-state, probe: <tool>.<field>, state: watermark}` — wake when an
+    external system has MOVED since the role last processed it (e.g.
+    `notion-board.last_edited_time`), on external state alone even if no note changed.
+  Absent → the role runs on cadence + activation only (ungated), which is the right
+  default for most roles.
+- **`emit_inbox: true`** — opt-in. When set, the role may feed a fact it learns back
+  into the base through the **inbox door** (a human-phrased note that `/ztn:process`
+  folds in like any source). Default off — most roles only keep their own state.
+- **Per-tool budget** lives in the tool's `TOOLS.md` row (`Budget` column), NOT in the
+  role config: `unlimited` or an integer. `unlimited` is a conscious owner grant — «I
+  don't care how many reads it takes to finish the job» (Drive / Notion, where
+  task-completion beats call economy); a cap (e.g. web search = 5) protects call
+  economy on a metered tool. The concierge decides per tool from the wish, and may ask
+  when it's genuinely a judgment call.
+- **`mandate:`** (role-level, §1.2) — the outward-ACT grant. A mandate is composed ONLY
+  for a role that acts OUTWARD; a read-only role has none. Its shape is
+  `{autonomy: advisory|autonomous, scope: [{target: <act tool-ref>, surface: <the
+  specific board/repo/page id>, mode: read-modify-write, blast: bounded|open}],
+  until: <ISO date>}`:
+  - **`autonomy`** is a GENUINE OWNER CHOICE — ASK it explicitly, with plain examples, and
+    honour the answer (never a silent default). The question, in the owner's words:
+    «**Will this role act on its own on a schedule, or will you drive it yourself?**»
+    - **On its own (autonomous)** → set `autonomy: autonomous`. The role executes its
+      acts IN the scheduled tick with NO per-act confirm — because in a cron job there is
+      no one to ask. This works when the owner has set the consent marker
+      `ZTN_ROLES_AUTONOMOUS_ACK=1` in their roles scheduler env (the concierge tells them
+      to, once — like the master key; see Step 11). Once the owner grants autonomy, the
+      engine does NOT re-ask per act — **including an irreversible surface (an email, a
+      public post): if the owner permitted it, the role does it without asking.** The
+      concierge's job is to SURFACE the stakes at grant time («this sends real emails on
+      its own — sure?»), not to override the owner's grant with a forced confirm.
+    - **You drive it (manual)** → set `autonomy: advisory`. The role STAGES what it would
+      do and writes only after the owner approves (`--approve-acts`). Then ask the
+      follow-up: «approve each batch, or okay them in one go?» — either way nothing runs
+      until the owner acts.
+    Honest framing to keep: the un-caged harness has no verified sandbox, so an autonomous
+    role's acts run on the owner's informed consent (the ack marker), not on a proven-safe
+    runtime — a prompt-injection in external content it reads could steer an unwanted act,
+    bounded to the surface(s) the mandate scopes. State this plainly for an autonomous
+    acting role; the owner decides. (`autonomy: autonomous` WITHOUT the ack marker still
+    stages — the marker, set out-of-band, is the unforgeable consent, exactly like the
+    master key.)
+  - **`scope`** names the SPECIFIC surface the hands may touch — a `{target, surface, mode,
+    blast}` per surface. `target` is the act tool-ref; `surface` is the concrete
+    board/repo/page id (ask the owner WHICH one — point it at a staging surface first,
+    promote to the real one later). `mode` is `read-modify-write` for a structured board
+    (read the target, reconcile against the actual data, write the delta — never a blind
+    overwrite). `blast` records reversibility: `bounded` = a fixed reversible surface
+    (a board whose edits can be undone), `open` = an irreversible / broadcast surface (an
+    email, a public post). For an `open` / irreversible surface, SURFACE the higher stakes
+    to the owner explicitly before composing an autonomous mandate — but if they knowingly
+    grant it, honour it (the ack marker carries their consent); do not force a silent
+    downgrade.
+  - **`until`** is an optional re-consent date (absent = open-ended; past → expired, the
+    runner refuses acts until re-consented).
+  - **Read-source ⊥ write-target (INV-16):** any combination — read Notion / write Notion,
+    read Drive / write GitHub, read one board / write another. The concierge composes the
+    combo from the wish; the engine hard-binds no source to any target.
+
+> **Two different `mandate` things — do not conflate.** The advisory **counter-persona
+> mandate** the skill attaches to a `counter` stance-axis (Step 5.1 / Step 2c —
+> `{scope, expires, owner_consent_ref}`) is about how the role TALKS and pushes back; it
+> never acts. The role-level **act-mandate** above (INV-16) is the outward-acting grant —
+> `{autonomy, scope: [{target, surface, mode, blast}], until}`. They are distinct homes
+> with distinct shapes; a role can carry both (a counter stance AND an act-mandate). Never
+> merge them.
+
+### A. Grant a read-tool from the wish
+
+Match the wish's external-reach facet to an active `read` row in `TOOLS.md` and add its
+`Tool ID` to the serving part's `tools:` list. The built read-tools cover the common
+shapes: a Notion board, a Google Drive, a web search (capped), a plain HTTP GET. Grant
+the tool to the part that actually needs the sight — a `ledger` part that reconciles
+against Notion gets `notion-board`; a `narrative` part that opens a description doc gets
+`gdrive`. One part may hold several tools.
+
+### B. Register a tool the wish needs but isn't in the registry
+
+If the wish needs a tool with no active row yet, the concierge APPENDS one active row to
+`_system/registries/TOOLS.md`. **Copy the exact column set from that file's own header
+row** (the SoT — do not reproduce the columns from memory; the schema evolves there).
+Fill each column per the `## Schema` table in `TOOLS.md`. The columns that need judgment:
+
+- `Direction` is `read` for a read-tool, `act` for a tool that writes the world.
+- `Adapter` ∈ `{mcp, http, local, web, skill, subagent}` — a CLOSED taxonomy, NO
+  `custom`. **The concierge OFFERS only the adapters proven end-to-end: `http` (proven
+  live — read AND act) and `mcp` (harness-executed — the SKILL makes the call). It
+  consults `roles_tools.is_offerable_adapter(kind)` before proposing any adapter, and
+  never proposes one that returns false.** `web` / `local` / `skill` / `subagent` are
+  DEFINED seams the registry accepts (a maintainer may wire and prove one), but the
+  concierge does NOT propose them until they are proven end-to-end — so it never offers a
+  capability that doesn't work. If a wish seems to need one of those seams, say plainly it
+  isn't wired yet (honest-degrade) — offer the closest proven reach or note the gap;
+  never compose a tool that won't run. For the adapter it DOES offer, pick the kind that
+  fits how the system is reached (an MCP server → `mcp`; a public JSON endpoint →
+  `http`). **An `act` tool that needs auth
+  is `http`/`local` ONLY, NEVER `mcp`/`skill`** (INV-12, CONTRACT §5): the runner IS the
+  LLM in the harness, so a secret handed to an `mcp`/`skill` call would enter LLM context.
+  The deterministic writer injects the token in-process for an `http`/`local` adapter, out
+  of the LLM's sight. Do NOT compose a secret-requiring `mcp`/`skill` act tool — the guard
+  is absolute.
+- `MCP Binding` — **required for an `mcp` tool**: the ONE concrete `mcp__server__tool`
+  the tool_id is pinned to (a read endpoint — e.g. `mcp__notion__query`). The body can
+  never redirect a pinned read tool to an act MCP tool (INV-23). An `mcp` row with no
+  valid binding is DROPPED by the registry as unsafe — so a working `mcp` tool MUST
+  pin one. `—` for a non-mcp adapter (including every `act` tool, since acts are never `mcp`).
+- `Act Config` — **required for an `act` tool driven by `roles_act`** (a REST-board rmw),
+  `—` for a read tool. The endpoint AND the board's OWN status vocabulary as DATA (INV-19
+  — dispatch by config, never `if tool ==`). Semicolon-delimited `key=value`; the
+  concierge declares the board's own vocabulary — it NEVER lets a non-GitHub board
+  silently inherit GitHub semantics (refuse-don't-assume). The required keys
+  (`roles_act.REQUIRED_ACT_CONFIG`):
+  - **endpoint** — `base_host` · `collection` · `version_field` (the TOCTOU version) ·
+    `match_field` (the create-idempotency key) · `id_field`;
+  - **status vocabulary** — `state_field` · `open_value` · `closed_value` (what THIS
+    board calls open vs closed — never assumed, always declared);
+  - **field allowlists** (comma-lists) — `create_fields` · `update_fields` (which body
+    fields a create / an update may set).
+  Optional: `search_query` (the dedup search; absent → DERIVED from the declared open
+  vocab, `{state_field}={open_value}`). A MISSING required key makes `roles_act` REFUSE
+  the act with an actionable error, never a silent default — so the concierge fills ALL
+  of them at creation and verifies with a test read (D.4). e.g.
+  `base_host=https://api.github.com;collection=issues;version_field=updated_at;match_field=title;id_field=number;state_field=state;open_value=open;closed_value=closed;create_fields=title,body;update_fields=title,body,state`.
+  The SAME act tool serves ANY REST-shaped target by config — another board, a task-API
+  item, a calendar event — the SPECIFIC target (repo / page / calendar id) is NOT here;
+  it is the mandate `surface`, joined at act time (tool = how to talk to the API, surface
+  = which target). No `|` in the cell.
+- `Cadence Slot` — `on-demand` (the body reasons whether to reach for it) vs
+  `every-tick` / `pre-tick-gate` (wired to a fixed slot, called every tick with fixed
+  args).
+- `Grounding Landing` — a read-tool is `ephemeral` (its return informs this tick's
+  reasoning but never grounds persisted state); an `act` tool is `round-trip` (a confirmed
+  act's close-event goes back through the inbox).
+- `Budget` — `unlimited` or an int, per the owner grant above.
+- `Credential` — `secret://<name>` when the tool needs auth, else `—`. Never inline.
+  **A credential-bearing `http`/`local` READ tool MUST also declare `base_host` in its
+  `Act Config` cell** (e.g. `base_host=https://api.github.com`) — the host-pin. The http
+  adapter attaches the token ONLY to a request whose URL host matches `base_host`, so a
+  body-chosen URL can never exfiltrate the secret to another host (INV-12). A
+  credential-bearing tool with no `base_host` is fail-closed (the adapter refuses to
+  attach the token) — so ALWAYS set it when the read tool carries a `secret://`. (An act
+  tool already declares `base_host` as part of its full `Act Config`; a no-credential
+  read tool needs none.)
+- `Plain Purpose` + `Usage Note` — the owner's plain language, no `|` in the cell; these
+  are what the frame shows the body, the only tool words a human might see.
+
+No SKILL-code change is needed to grant an existing adapter kind — the registry is data.
+
+### C. First-secret onboarding (when a tool needs auth)
+
+When a granted tool carries `credential_ref: secret://<name>`, the concierge runs the
+first-secret flow so a non-technical owner never edits a tracked file by hand:
+
+0. **Ensure the crypto dependency (do it FOR them — no manual `pip` step).** The blob
+   uses `cryptography`; install it silently before storing:
+   `python3 -m pip install --quiet cryptography` (or
+   `python3 -m pip install --quiet -r zettelkasten/_system/scripts/requirements.txt`).
+   If pip is unavailable / restricted, THEN — and only then — surface the one-line manual
+   fallback; otherwise the owner never sees it.
+1. **Ask in plain language** for the credential («paste the token you use for Notion»).
+2. **Store it ENCRYPTED** into this clone's own blob via a `python3` heredoc calling
+   `roles_secrets.store_secret(name, plaintext, base)`. This needs
+   `ZTN_SECRET_MASTER_KEY` in the environment, so on a FIRST secret **do step 3 (generate
+   the master key) FIRST** and set it in this process's env, THEN store — otherwise the
+   store fails with no key. (If a key already exists, it's already in the routine env and
+   you just store.)
+
+   ```bash
+   # Run from the repo root; base=None resolves the blob via repo_root() / ZTN_BASE
+   # (a string base like "." would break — the path helpers need Path|None).
+   ZTN_SECRET_MASTER_KEY="$key" python3 - <<'PY'
+   import sys; sys.path.insert(0, "_system/scripts")
+   from roles_secrets import store_secret
+   store_secret("notion", "<the token the owner pasted>", base=None)
+   PY
+   ```
+
+3. **If no master key exists yet** (`roles_secrets.master_key_present()` is false),
+   generate one with `roles_secrets.generate_master_key()`, show it to the owner ONCE,
+   and instruct them to place it ONE TIME into their **roles scheduler routine's
+   environment** as the env var **`ZTN_SECRET_MASTER_KEY=<key>`** — out-of-band from
+   git, NEVER committed. This is the EXACT variable name the autonomous tick reads
+   (`roles_secrets.py` env `ZTN_SECRET_MASTER_KEY`); the canonical placement guidance is
+   `scheduler-prompts/roles-nightly.md → §Secrets`. Be concrete about WHERE: it goes in
+   the routine's own env / secret config (a Cloud Routine's env field, or the `env` of a
+   local cron / GitHub-Actions job) — NOT an in-prompt `export` (that does not survive
+   into the skill's Python subprocesses). The encrypted blob
+   (`_system/state/secrets.enc.json`) IS committed; the key is not. Forks stay isolated
+   — each clone has its own blob and its own routine key. Without this env var the
+   autonomous tick cannot decrypt the credential and every act/read of that tool
+   honest-degrades silently — so state this recurring requirement plainly at Step 11.
+
+The secret never enters the LLM and never sits in git as plaintext (INV-12): the runner
+resolves it in memory at run time; the body sees only tool RESULTS, never the token.
+
+### D. Verify-at-creation dry-run (before the role goes live — INV-29)
+
+A config error is caught up front, not in production. Before declaring the role live, the
+concierge runs this checklist and shows the owner a preview of the first tick:
+
+1. **Auth live?** — resolve the secret with `roles_secrets.resolve_secret(name, base)`;
+   a failure here means the credential is wrong or the master key is missing — fix it
+   with the owner now, not at 3am in a scheduled run.
+2. **Test read.** — do a REAL adapter call through the tool and confirm it responds
+   sanely: load the spec with `roles_tools.get_tool(tool_id)` and its adapter with
+   `roles_tools.import_tool_adapter(spec.adapter)`; for an `http` tool call
+   `roles_tool_http.exec_tool(spec, request, secret)`; for an `mcp` tool make the MCP
+   call (the concierge session can — `roles_tool_mcp.prepare` / `normalize` shape the
+   request/return). Confirm a non-error, non-empty response.
+3. **Evaluate the trigger.** — run `roles_triggers.evaluate_gate(...)` once so a wired
+   trigger is confirmed to fire sanely (not always-skip, not always-pass).
+4. **For an ACT tool — test-READ the surface + PREVIEW the first reconcile, never write.**
+   An act tool is verified WITHOUT executing any write:
+   - **Auth + read the board.** Resolve `secret://<name>`, then do a REAL read of the
+     mandate `surface` through the act tool's `http` transport (a `GET` on
+     `{base_host}/{surface}/{collection}`) — confirm the board responds and the credential
+     is right. This is a READ; `roles_tool_http` gates an `act` tool's read to `GET`/`HEAD`.
+   - **Preview the reconcile.** Show the owner, in plain language, what the role WOULD
+     stage on its first run — «it'd want to close these 2 done tasks and create these 3
+     missing ones» — WITHOUT staging or executing anything. This proves the shape before
+     the role ever acts.
+   - **Show the owner the confirm loop.** Say plainly that every act is HITL-staged: the
+     role raises a `role-act-confirm` and writes nothing until the owner runs
+     `/ztn:roles --approve-acts {id}`. Never a silent write, never a write at creation.
+5. **Preview the first tick.** — show the owner, in plain language, what the role would
+   produce on its first run with these tools and this trigger — so they approve the
+   composed reach before it goes live.
+
+Only after this passes does the concierge go live. If a step fails, fix it with the owner
+in the same conversation (re-ask the credential, re-aim the trigger, re-point the mandate
+surface, drop a tool the wish doesn't really need) — never ship a role whose hands are
+untested.
+
+### E. Runtime self-heal, then clarify (what the owner is told — INV-29)
+
+Tell the owner plainly how the role's hands behave when something goes wrong at runtime,
+so they trust it and aren't bothered needlessly: at tick time an unexpected tool/config
+error triggers a **bounded self-heal FIRST** — retry a transient blip, re-resolve a
+secret, or honest-degrade (skip that tool and NOTE it in the tick, never fabricate a
+result). Only when a genuine HUMAN decision is required — a re-auth, a changed scope —
+does the role raise a `role-tool-reauth` CLARIFICATION for the owner to resolve. Self-heal
+is for mechanical failures; a clarification is for decisions. (This is enforced in
+`roles_tool_stage.py`; the concierge just states the behaviour honestly at disclosure.)
+
+### F. Grant an act-tool + compose the mandate (when the wish wants ACTING)
+
+If the wish needs the role to write OUTWARD — «keep my board in sync», «close the done
+tasks for me» — compose the acting reach:
+
+1. **Grant the act-tool** to the specific part that acts (its `tools:` list), matching an
+   active `act` row in `TOOLS.md` or appending one (B — `http`/`local` only if it needs
+   auth, with a COMPLETE `Act Config`: the board's own endpoint + status vocabulary +
+   `create_fields`/`update_fields`, all filled — a missing key makes `roles_act` refuse
+   the act). One part reconciling a board holds BOTH the read-tool (to see
+   the board) and the act-tool (to write it).
+2. **Compose the mandate** (the `mandate:` bullet): ask the owner WHICH board/page it may
+   touch (point it at a staging surface first, promote later), set `mode:
+   read-modify-write` and a `blast` (`bounded` for a reversible surface). ASK
+   autonomous-vs-manual and set `autonomy` from the answer (default `advisory`). Say
+   plainly: an advisory role stages every act for approval; an autonomous role acts on
+   its own once the owner sets `ZTN_ROLES_AUTONOMOUS_ACK` (else it too stages — fail-safe).
+3. **Run the act verify-at-creation** (D.4) — auth + test-read the surface, preview the
+   first reconcile without writing, show the `role-act-confirm` → `/ztn:roles
+   --approve-acts` loop.
+
+Speak plainly throughout — «this role can update your board; it will always show you the
+changes and only make them after you say go; it points at the {staging} board you named».
+The owner never hears mandate / scope / blast / rmw / TOCTOU. Never fake a capability the
+engine cannot run; but acting on a REST board IS built — compose it, don't defer it. An
+IRREVERSIBLE broadcast (a public post, an email) has no reversible surface — surface its
+higher stakes to the owner explicitly rather than composing a silent «autonomous».
+
+### G. When a running role later asks for a new tool
+
+A running role can ASK for a tool it would do its job better with — it raises a
+`role-tool-request` CLARIFICATION (grounded in what it actually hit, HITL, never a
+self-grant: the role never grants itself a capability). The OWNER grants such a request
+through `/ztn:role:edit` — add the tool to a part's grant, or have the concierge register
+a new tool there and wire it in. The concierge / `role:edit` is the human-gated grant
+path; the role only ever asks.
+
+---
+
 ## Complexity tiers
 
 Skill detects tier from the initial wish and adapts behaviour. Tiers are
@@ -381,14 +768,14 @@ internal — never named to the user.
 
 | Aspect | Simple | Standard | Complex |
 |---|---|---|---|
-| Trigger | one obvious zone, one part serves it («PM my-side-project», one project folder) | a zone spanning a couple of folders / a hub, a couple of parts, some scope ambiguity | broad remit (multiple projects, or whole-base `all`), OR a facet needing an unbuilt (outward-acting / external-tool) capability / a wish that is really a lens or a raw metric-source intake (reframe / cross-route), OR a sensitive zone |
+| Trigger | one obvious zone, one part serves it («PM my-side-project», one project folder) | a zone spanning a couple of folders / a hub, a couple of parts, some scope ambiguity | broad remit (multiple projects, or whole-base `all`), OR an outward-ACTING facet (act-tool + mandate + secret + verify), OR a facet needing a genuinely-unbuilt capability / a wish that is really a lens or a raw metric-source intake (reframe / cross-route), OR a sensitive zone |
 | Remit questions | 1 (confirm the one zone) | 1-2 (zone + boundary) | 2-3 (zone + boundary + what to exclude) |
 | Preview depth | 1 short part sample | 1-2 part samples + 1 ask sample | 2-3 part samples spanning the zone + 1 ask sample |
 | Real-data probe | offer, default-yes | offer, default-yes | **strongly default-yes**; broad/`all` remit → frame as near-mandatory |
 | Persona discussion | default all-inherit, one confirm | default all-inherit, offer own voice | offer own/counter with a plain explanation |
 | Cadence discussion | default weekly Monday, quick confirm | confirm + offer alternatives | confirm + discuss activation floor if broad |
 | Disclosures shown | universal + part-kind | universal + part-kind + remit-scope | full (incl. broad-scope sensitivity + counter-persona if used) |
-| Push-back assertiveness | low | medium | high (block on empty/over-broad remit, force honesty on an unbuilt (outward-acting / external-tool) facet or a cross-route) |
+| Push-back assertiveness | low | medium | high (block on empty/over-broad remit, force honesty on a genuinely-unbuilt facet or a cross-route, default acts to advisory + always-confirm) |
 
 **When in doubt between two tiers, escalate.** Cost of treating Simple as
 Standard: a slightly longer chat. Cost of treating Complex as Simple: a
@@ -564,6 +951,50 @@ projects):**
   it never changes what gets written to the ledger (still grounded and
   validated). It's advisory.»
 
+**Tool-bearing role (only if a part was granted a read-tool):**
+- «This role can READ {plain systems — e.g. your Notion board, your Drive}. That
+  reach is read-only — it looks, it never changes anything in {those systems}. What it
+  reads is used to reason in the moment; it isn't copied into your notes.»
+- {credential} «To read {system} it uses a token you give it, kept ENCRYPTED — it never
+  sits in plain text and is never shown to the role's reasoning, only the results are.»
+- {budget} «{unlimited: It reads {system} as many times as it needs to finish the job —
+  you told me you don't care about the count there. | capped: It reads {system} at most
+  {N} times per run, so a metered service isn't over-used.}»
+- «If a tool ever hiccups mid-run, the role tries to fix it itself first (retry, or just
+  skip that source and say so — it never makes up a result); it only bothers you when a
+  real decision is needed, like re-authorising access.»
+
+**Act-bearing role (only if a part was granted an act-tool + a mandate). Show the branch
+that matches the autonomy the owner chose at the mandate step:**
+- {MANUAL (advisory — the default)} «This role can UPDATE {plain surface — e.g. your
+  GitHub board / the {staging} page} for you — but it never changes anything on its own.
+  Each time it wants to, it shows you exactly what it would do and writes only after you
+  approve (a one-line ‘approve’ step). Nothing goes out silently.»
+- {AUTONOMOUS (owner opted in)} «This role UPDATES {plain surface} on its own on schedule
+  — you don't approve each change. You turned that on with `ZTN_ROLES_AUTONOMOUS_ACK` in
+  your roles routine; it's your standing ‘yes, act without asking me’. It still reads the
+  target fresh and reconciles (never clobbering a change you made), and it only ever
+  touches the ONE board you named.»
+- «It only touches the ONE board you named — {plain surface}; it can't reach anywhere
+  else. When it updates something it reads it fresh first and reconciles, so it never
+  clobbers a change you made in between.»
+- {irreversible surface — MANUAL} «Because {a post / an email} can't be taken back, this
+  one always asks you first — there's no ‘just do it’ mode for something you can't undo.»
+- {irreversible surface — AUTONOMOUS, owner knowingly granted} «Because {a post / an
+  email} can't be taken back and this one sends on its own, be sure: once autonomy is on,
+  it {posts / emails} without a check. You granted that knowingly — you can switch it back
+  to ask-first any time via `/ztn:role:edit`.»
+
+**Inbox door (only if `emit_inbox` was set):**
+- «When this role learns something the base should reflect, it drops a plain note into
+  your inbox for the normal processing step to fold in — it never writes your records
+  directly, and it never re-reads and re-reports its own notes.»
+
+**Trigger (only if a trigger was wired):**
+- «Besides its schedule, it also wakes when {plain condition — e.g. your notes mention
+  {thing}, or your Notion board has moved since it last looked}, so it stays current
+  without you nudging it.»
+
 ---
 
 ## Step 0 — Pre-flight (silent)
@@ -618,10 +1049,10 @@ question). Skill's first turn does ALL of:
 4. **Ask exactly ONE question** — the intent excavation first (below); the
    WHERE-does-the-zone-live question follows on the next turn.
 
-If a facet needs an **unbuilt** capability (an outward-acting or external-tool part),
-or the wish is really a **different primitive** (a lens / a raw metric-source intake)
-→ the load-bearing first move is the honesty gate / cross-route (Step 2), not a design
-question.
+If a facet needs a **genuinely-unbuilt** capability (one no built tool or kind serves —
+reading and REST-board acting are both built), or the wish is really a **different
+primitive** (a lens / a raw metric-source intake) → the load-bearing first move is the
+honesty gate / cross-route (Step 2), not a design question.
 
 **Intent excavation (the opening turn — one question, always skippable).** Before
 aiming the role at a zone, understand WHY the owner wants it — the pain it relieves,
@@ -672,19 +1103,27 @@ the thread on») and ask which resonates.
 
 Two checks, run BEFORE any design work — both from «Part-kind composition»:
 
-**2a — a facet needs an UNBUILT capability** (a part that ACTS on the world, or PULLS
-from an external tool — the Layer-2 seams, none of the built reference kinds). If the
-wish has a facet no built kind can serve:
+**2a — a facet needs an UNBUILT capability.** First place the external-reach shapes —
+BOTH reading and acting on a REST board are built:
+
+- **Reading an external system** (SEE Notion / Drive / the web) is built — grant the
+  serving part a **read-tool** («Tools — a part's reach beyond its zone»). Compose it.
+- **Acting on a structured board** (update / close under a mandate) is built too — grant
+  the acting part an **act-tool** and compose an owner **mandate** (F). By default every
+  act is owner-confirmed; the owner may opt the role into `autonomous`. Compose it, don't defer it.
+
+The honesty gate still fires when a facet needs a capability the engine genuinely cannot
+run (not reading, not a REST-board act — e.g. an irreversible broadcast the owner won't
+gate, or a shape no built tool or kind serves):
 
 - Name the facet they actually described, plainly.
-- State that shape isn't built yet and that you won't fake a capability that
-  can't run.
-- Build the parts that ARE available (ledger / narrative / registry / metrics /
-  assessment / stance) for the rest of the wish; note the deferred facet so it's
-  ready when that capability ships.
-- If the ENTIRE wish is a single unbuilt facet with nothing else to compose,
-  offer the closest honest reframe into a built kind; if the user declines,
-  note the wish for later and exit, writing nothing.
+- State honestly what isn't available and that you won't fake a capability that can't run
+  — offer the closest honest version that IS built (e.g. read-only sight, or a
+  gated-and-confirmed act instead of an ungated broadcast).
+- Build the parts + tools that ARE available for the rest of the wish.
+- If the ENTIRE wish is a single genuinely-unbuildable facet with nothing else to
+  compose, offer the closest honest reframe; if the user declines, note the wish for
+  later and exit, writing nothing.
 
 **2b — the wish is really a different primitive (a lens / a raw metric-source intake).**
 Run the cross-route from «Cross-routing»: name the better-fit primitive, say
@@ -975,10 +1414,14 @@ against the user's real base and shows what it would actually watch —
 before anything is written.
 
 Run the resolver with the drafted remit as inline JSON (no config exists
-yet):
+yet). `--remit-json` is a dev/preview scope override, so it is gated behind
+`ZTN_DEV=1` (the hard read-lock refuses it unconditionally otherwise — INV-15);
+the create-time probe is exactly the sanctioned dev use, so set the env marker.
+Do NOT switch to `--enforced --role` here — no config exists yet at probe time,
+which is the whole point of probing a *drafted* remit before write:
 
 ```bash
-python3 _system/scripts/minder_query.py \
+ZTN_DEV=1 python3 _system/scripts/minder_query.py \
   --remit-json '{"globs":["1_projects/my-side-project/**"],"project_ids":["my-side-project"],"decision_notes":false,"all":false}' \
   --no-body --compact
 ```
@@ -1075,6 +1518,38 @@ push for their good, don't echo what's pleasant to hear.)
 
 Everything here is an OFFER. A friend who just wants a simple tracker gets a simple
 tracker — the expert calibration proposes, it never forces richness on a plain wish.
+
+---
+
+## Step 4d — Tools, mandate, triggers, inbox door (only when the wish reaches outward)
+
+Skip this step entirely for a zone-only role (most roles). Run it when the wish needs a
+part to SEE an external system, wake on more than a clock, or feed a fact back. The full
+mechanics are in «Tools — a part's reach beyond its zone»; the flow, in owner-plain
+language:
+
+1. **Grant the read-tool(s)** the wish needs (A / B) — match to an active `TOOLS.md` row,
+   or append one if the tool isn't registered yet. Offer each with a plain example
+   («I'd have it read your Notion board to see what's already done — good?»). Set the
+   per-tool budget (unlimited vs a cap) from the wish; ask if it's a real judgment call.
+2. **Wire a trigger** if the wish implies a wake condition beyond the clock (C) — a
+   zone-mention or an external-state watermark. Absent → cadence-only, the default.
+3. **Offer the inbox door** (`emit_inbox`) only if the role should feed a learned fact
+   back into the base; default off.
+4. **First-secret onboarding** (C) for any granted tool that needs auth — ask for the
+   credential in plain language, store it encrypted, set up the master key once.
+5. **Grant the act-tool + compose the mandate** (F) if the wish acts outward — grant the
+   acting part its `act` tool, compose the `mandate` (surface the owner names, `mode:
+   read-modify-write`, `blast`, default `autonomy: advisory`), and say plainly every act
+   is owner-confirmed in the harness.
+6. **Verify-at-creation dry-run** (D) — resolve the secret, test-read through the tool,
+   evaluate the trigger, and preview the first tick to the owner; for an act tool ALSO
+   test-read the mandate surface and preview the first reconcile WITHOUT writing (D.4).
+   Only go live after this passes. Fold the runtime self-heal behaviour (E) into the
+   Step 8 disclosures.
+
+One question per turn holds here as everywhere — never batch the tool, trigger, secret,
+mandate-surface, and budget questions into one turn.
 
 ---
 
@@ -1192,6 +1667,51 @@ User-invisible. Skill builds:
    - `schema_version: 2`
    - `brief: brief.md` — ONLY if the owner asked for a standing-notes channel
      (Step 5.4); omit otherwise. The engine never writes it; the owner does.
+   - **Tool-reach fields (additive; present ONLY when the wish reaches outward — Step 4d):**
+     - a part granted a read-tool AND/OR an act-tool carries `tools: [<tool-ref>, …]`, each
+       ref an active `TOOLS.md` `Tool ID`, e.g. the acting part holds both:
+       `{id: workstreams, kind: ledger, tools: [github-read, github-board]}` (read the
+       board, act on it). The act-tool goes on the part that acts (per-part grant).
+     - `triggers:` (role-level) — the OR-combined wake list from Step 4d, e.g.
+       `triggers: [{kind: zone-mention, match: [minder]}, {kind: external-state, probe: github-board.issues-updated, state: watermark}]`.
+     - `emit_inbox: true` — only when the inbox door was offered and accepted; omit
+       otherwise (defaults false).
+     - `mandate:` — written ONLY for a role that acts outward (Step 4d/F): a mapping
+       `{autonomy: advisory, scope: [{target: <act tool-ref>, surface: <board/repo/page id>,
+       mode: read-modify-write, blast: bounded|open}], until: <ISO date>}`. Default
+       `autonomy: advisory` (safe default; `autonomous` acts in-tick only when the owner
+       set `ZTN_ROLES_AUTONOMOUS_ACK`, else it too stages — fail-safe).
+       `target` matches the act-tool granted on the acting part; `surface` is the specific
+       board the owner named. A read-only role omits `mandate` entirely. This is DISTINCT
+       from the advisory counter-persona `mandate` mapping a `counter` axis carries via
+       Step 5.1 (`{scope, expires, owner_consent_ref}`) — a role may carry both.
+     Empty defaults keep an existing zone-only `schema_version: 2` config parsing
+     unchanged — these fields are omitted entirely for a role with no outward reach.
+
+   **An acting PM role, minimal shape** (the acting part holds the read-tools AND the
+   act-tool; the `mandate` scopes that act-tool to the ONE surface the owner named):
+
+   ```yaml
+   parts:
+     - {id: purpose, kind: narrative}
+     - {id: workstreams, kind: ledger, tools: [github-read, perplexity, github-board]}
+   remit:
+     globs: ["1_projects/my-side-project/**"]
+     project_ids: ["my-side-project"]
+   mandate:
+     autonomy: advisory                          # safe default; autonomous needs the owner's ACK marker
+     scope:
+       - {target: github-board, surface: <owner>/staging-board,
+          mode: read-modify-write, blast: bounded}
+     until: 2027-01-01
+   triggers:
+     - {kind: external-state, probe: github-board.issues-updated, state: watermark}
+   emit_inbox: true
+   ```
+
+   (`workstreams` is granted `github-board`; the mandate `target` names that same tool
+   and its `surface` is the specific board — model it on
+   `zettelkasten/_system/roles/minder-pm/config.yml`, which carries a real mandate.)
 
 3. **`hooks/tick.md`** — a free-text body (owner-editable) telling the role its
    persona and what «stewarding this zone» means ACROSS ITS PARTS. Composite-aware:
@@ -1309,10 +1829,11 @@ an explicit deliberate confirmation → confirm + attach the broad-scope
 disclosure. (Both already handled in Step 4/4b; this is the final gate.)
 
 ### 7.4 Part-composition re-check
-If, over the conversation, a facet drifted to an UNBUILT capability (an
-outward-acting or external-tool part), or the wish turned out to be a different
-primitive (a lens / a raw metric-source intake) → return to the honesty gate /
-cross-route (Step 2). Never compose a part-kind that isn't built.
+If, over the conversation, a facet drifted to a GENUINELY-UNBUILT capability (one no
+built tool or kind serves — reading and REST-board acting are both built), or the wish
+turned out to be a different primitive (a lens / a raw metric-source intake) → return to
+the honesty gate / cross-route (Step 2). Never compose a part-kind that isn't built. An
+outward-ACTING facet is composed (act-tool + mandate, always-confirm), not deferred.
 
 ### 7.5 Schema-extension block
 User asks for a new config field, a part-kind beyond the built kinds
@@ -1426,6 +1947,14 @@ Disk writes happen here — atomically, validated, or not at all.
    user «I hit an internal snag generating a valid role — nothing was
    written», and stop. Never leave an invalid config on disk.
 
+   **Tool-bearing role:** `load_role_config` parses the new fields
+   (`PartSpec.tools`, `triggers`, `emit_inbox`) but does NOT test the outside world.
+   A role granted a read-tool ALSO requires the Step 4d verify-at-creation dry-run
+   (secret resolves → test read responds → trigger evaluates) to have passed before
+   this write. A granted tool-ref must resolve to an active `TOOLS.md` row
+   (`roles_tools.get_tool`); an unresolvable ref is a generation bug — fix it (register
+   the row or drop the grant) before shipping.
+
 4. **Rollback on any write failure:** the role dir is brand-new, so
    rollback = remove `_system/roles/{id}/` entirely. No half-state, and
    the skill NEVER touches an existing role dir (the collision check
@@ -1444,27 +1973,64 @@ state** — every `parts/{part_id}.json` and `state.md` is created by the first
 
 ## Step 11 — Bring it to life
 
-After a successful, validated write, tell the user exactly how to wake the
-role — and offer to do it now:
+After a successful, validated write, bring the role to life FOR the owner with the
+fewest steps they must think about. The load-bearing move: **ask the owner the ONE
+cold-start preference question, in plain language, and honour it** — do not make them
+learn `--approve-coldstart` if they just want it working.
 
-> «Done — `{id}` is created and valid. It's not tracking anything yet; its first
-> look builds a draft for each part that you approve.
->
-> To bring it to life:
-> 1. First look now: `/ztn:roles --role {id}` (runs it once regardless of
->    schedule) — it produces a FROZEN draft per part and asks for your approval.
-> 2. Approve the draft: `/ztn:roles --approve-coldstart {id}` — this makes every
->    part live and starts the role.
->
-> After that it runs on its own {cadence in plain words}, only when something
-> changed. To ask it anything later: `/ztn:role:ask {name}` «…».
->
-> Want me to run the first look now? [yes / later]»
+> «Done — `{Name}` is created and valid. Before it starts tracking, it takes a first
+> look and drafts what it sees. Two ways to go:
+> · **Just get it running** — I take that first look now and set the draft live for
+>   you, so it's working from this moment. [go]
+> · **Let me see it first** — I run the first look, show you the draft, and you say the
+>   word to make it live. [show me]»
 
-If `yes` → hand off to `/ztn:roles --role {id}` (the concierge does not
-run the tick itself — it points the user / session at the runner, which
-owns the lock and the cold-start). If `later` → «it'll be there when
-you're ready».
+- **[go] (the «just make it work» path — the default for a friend who doesn't want to
+  fiddle):** hand off to the runner to do BOTH steps back to back — `/ztn:roles --role
+  {id}` (produces the frozen draft) then `/ztn:roles --approve-coldstart {id}` (adopts
+  it live). The owner does nothing; the role is live. This is safe — a cold-start draft
+  is the role's own tracked state, not an outward act, so adopting it needs no external
+  confirmation. (The concierge never runs the tick or takes `.roles.lock` itself — it
+  points the session at the runner, which owns both.)
+- **[show me]:** hand off to `/ztn:roles --role {id}` only; show the draft; the owner
+  runs `/ztn:roles --approve-coldstart {id}` when ready (or later).
+
+Then the autonomy line, in plain words:
+
+> «From here it runs on its own {cadence in plain words}, only when something changed —
+> as long as your daily roles check is scheduled. If you already run one, it picks
+> {Name} up automatically; if not, it just waits until you ask it by hand — either is
+> fine. Ask it anything: `/ztn:role:ask {name}` «…».»
+
+**Read-only, no-secret role → stop here. It is now genuinely zero-maintenance** — no
+key, no approvals, nothing to remember. Most roles are this.
+
+**ONLY for a role that uses a secret, add the ONE key-paste fact** (a secret is
+irreducible — the key lives in the owner's scheduler env, out-of-band from git):
+
+> «One paste, once — your key is `{the generated key}`. Put it in your roles schedule's
+> settings as `ZTN_SECRET_MASTER_KEY={the key}` (the token itself I've kept encrypted;
+> this key is what unlocks it at night). That's the only setup; without it the nightly
+> run just skips the tool and tells you.»
+
+**For a role that ACTS on a board, close on the autonomy the owner chose at the mandate
+step** — the two branches, in plain words:
+
+- **Autonomous (owner chose «on its own»):** «It'll make its board changes on its own on
+  schedule — you don't approve each one. For that, add ONE more line to your roles
+  schedule's settings: `ZTN_ROLES_AUTONOMOUS_ACK=1` (that's you telling it ‘yes, act
+  without asking me’ — it's off until you set it, so nothing acts hands-free by
+  accident). {irreversible surface: Since it {sends emails / posts publicly}, I want to
+  be sure — that goes out without a check once this is on. Good?}»
+- **Manual (owner chose «I'll drive it»):** «It never touches your board on its own —
+  when it wants to, it shows you exactly what and waits for your go (`/ztn:roles
+  --approve-acts {id}`, or from `/ztn:resolve-clarifications`). It's YOUR board, so
+  nothing goes out without you.»
+
+Do NOT show the secret/act block for a read-only, no-secret role — it would invent
+friction that role doesn't have. Keep the whole close-out to the owner's density (per
+«Reader alignment»): a friend who said «just build it» gets the `[go]` path run and one
+plain sentence, not the full walk-through.
 
 ---
 
@@ -1493,9 +2059,33 @@ Skill never auto-commits.
 
 - **Never compose a part-kind that isn't built.** `parts[].kind` is only a kind
   that resolves to an installed plugin (`ledger` / `narrative` / `registry` /
-  `metrics` / `assessment` / `stance`). A wish needing an unbuilt (Layer-2, outward-
-  acting / external-tool) capability is deferred / cross-routed honestly at Step 2,
-  never faked.
+  `metrics` / `assessment` / `stance`). Reading an external system AND acting on a REST
+  board are both built — grant a read-tool / act-tool, don't defer them. Only a
+  genuinely-unbuildable facet is deferred / cross-routed honestly at Step 2.
+- **Never grant a tool that doesn't resolve.** A `PartSpec.tools` ref must be an active
+  `TOOLS.md` `Tool ID` (`roles_tools.get_tool`). Register the row first or drop the grant
+  — never name a tool the runner can't grant-check.
+- **Never compose a secret-requiring `mcp`/`skill` act tool.** An act tool that needs auth
+  is `http`/`local` ONLY (INV-12, CONTRACT §5) — the deterministic writer injects the
+  token out of the LLM's sight; a token in an `mcp`/`skill` call would enter LLM context.
+- **Never compose an act-mandate without asking the owner autonomous-vs-manual.** An
+  outward-acting role carries a `mandate` (INV-16). Default and safe is `advisory`: every
+  act is staged (`role-act-confirm`), executed only on `/ztn:roles --approve-acts` — never
+  a silent or at-creation write. If the owner explicitly chooses `autonomous`, the role
+  acts in-tick without per-act confirm ONCE the owner sets the out-of-band consent marker
+  `ZTN_ROLES_AUTONOMOUS_ACK` (absent the marker, `autonomous` still stages — fail-safe).
+  For an irreversible surface, SURFACE the stakes at grant time before composing an
+  autonomous mandate — but honour a knowing grant (do not force a silent downgrade). The
+  advisory counter-persona `mandate` (Step 5.1) is a distinct mapping; a role
+  may carry both.
+- **Never leave a tool-bearing role unverified.** A granted tool requires the Step 4d
+  verify-at-creation dry-run (secret resolves → test read → trigger evaluates → first-
+  tick preview) before going live. An act tool ALSO requires a test-READ of the mandate
+  surface + a preview of the first reconcile with NO write (D.4) — never a write at
+  creation.
+- **Never inline or commit a secret.** A credential goes through
+  `roles_secrets.store_secret` (encrypted blob); the master key is placed in the
+  scheduler routine out-of-band, never in git. The secret never enters the LLM.
 - **Never generate a schema-bearing part without a captured shape.** A registry
   carries a natural key + at least one attribute + catalog-or-log mode + a grounding;
   a metrics part carries its metrics (key / source / target / direction / unit) with
@@ -1537,6 +2127,13 @@ Skill never auto-commits.
 - `_system/roles/{id}/hooks/ask.md`
 - `_system/roles/{id}/brief.md` — only when the owner asked for a standing-notes channel
 
+When the wish reaches outward (Step 4d), the skill may ALSO write, outside the role dir:
+- `_system/registries/TOOLS.md` — an APPENDED active row, only when a needed tool isn't
+  registered yet (B). Existing rows are never rewritten.
+- `_system/state/secrets.enc.json` — via `roles_secrets.store_secret`, only when a
+  granted tool needs auth and the owner supplies a credential (C). Encrypted; the master
+  key is never written to git (it goes into the owner's scheduler routine out-of-band).
+
 Nothing else. In particular: no `parts/*.json` and no `state.md` (both seeded by
 `roles_persist.py` on the first tick / cold-start), no `decisions.jsonl`, no
 `roles-runs.jsonl` / `log_roles.md` entry, no `ROLES.md` registry edit (rendered by
@@ -1554,6 +2151,11 @@ Nothing else. In particular: no `parts/*.json` and no `state.md` (both seeded by
 - `_system/views/constitution-core.md` (reader alignment — ai-interaction
   presentation deltas)
 - the `minder_query.py` probe output (Step 4b)
+- `_system/registries/TOOLS.md` (Step 4d — which read-tools / act-tools a part can be
+  granted, incl. each act tool's `Act Config`)
+- the tool adapter test-read output (Step 4d verify-at-creation — via
+  `roles_tools` + the `roles_tool_{adapter}` adapter, incl. the act tool's surface
+  test-read), and `roles_triggers.evaluate_gate` output (trigger check)
 
 ## Coordination with other skills
 
@@ -1574,7 +2176,12 @@ Nothing else. In particular: no `parts/*.json` and no `state.md` (both seeded by
 
 | Case | Behaviour |
 |---|---|
-| Wish has a facet needing an unbuilt capability (an outward-acting or external-tool part) | Step 2 honesty gate: name the facet, say it isn't built, build the parts that ARE available (ledger / narrative / registry / metrics / assessment / stance) for the rest, note the deferred facet; never fake it. |
+| Wish needs the role to SEE an external system (read Notion / Drive / the web) | Grant the serving part a **read-tool** (Step 4d / «Tools»): match or append a `TOOLS.md` row, first-secret onboarding if it needs auth, verify-at-creation dry-run before live. Built — not deferred. |
+| Wish needs the role to ACT outward (update / close on a REST board) | Built. Step 4d / F: grant the acting part an **act-tool** (`http`/`local` only if it needs auth — never `mcp`/`skill`), ASK autonomous-vs-manual, compose an owner **mandate** (surface the owner names, `mode: read-modify-write`, `blast`, `autonomy` per the owner's choice — default `advisory`), first-secret onboard, act verify-at-creation (test-read surface + preview reconcile, no write). Manual → every act owner-confirmed (`role-act-confirm` → `--approve-acts`); autonomous → acts in-tick once the owner sets `ZTN_ROLES_AUTONOMOUS_ACK`. |
+| Wish needs an IRREVERSIBLE broadcast (public post / email) | Surface the higher stakes to the owner explicitly at grant time. Default to owner-confirm; but if the owner KNOWINGLY grants `autonomous`, honour it (the ack marker carries their consent — an irreversible autonomous act is allowed on explicit grant). Never a SILENT «autonomous» — the stakes are always surfaced first. |
+| Wish implies waking on more than a clock (zone mention / external system moved) | Wire a **trigger** (Step 4d): `zone-mention` (STT-robust, self-emissions excluded) or `external-state` watermark. Absent → cadence-only default. |
+| Wish should feed a learned fact back into the base | Offer the **inbox door** (`emit_inbox`); default off. The role drops a plain note for `/ztn:process`; never writes records directly, never re-reads its own emission. |
+| A granted tool needs auth | First-secret onboarding (C): ask in plain language, `roles_secrets.store_secret` (encrypted), master key into the routine once (never git). |
 | Wish is really a different primitive (a passive observer / raw numeric intake) | Step 2 cross-route: name the better-fit primitive (a lens → `/ztn:agent-lens-add`, a metric source for RAW-number ingest — distinct from a metrics PART, which consumes an existing source), say why it serves better, hand off; a wish can be both a role AND a lens. |
 | Wish is a meaning / purpose / alignment shape («hold the point of X», «is my work drifting») | Compose a **narrative** part — it's built; no honesty gate needed. |
 | Wish reframes cleanly into discrete items (e.g. «track my goals» as a ledger) | Offer the reframe honestly; compose a ledger part if the user agrees. |
@@ -1742,6 +2349,38 @@ Nothing else. In particular: no `parts/*.json` and no `state.md` (both seeded by
 > trail); nothing's deleted, just flagged gone; and for facts you just tell it,
 > it proposes and you confirm. Create it?»
 
+### Example E: Acting role, owner casual (act-tool + mandate, always-confirm)
+
+> Owner: «I want a PM over my-side-project that keeps my project board in sync —
+> closes tasks that are done and adds the ones I've decided on»
+>
+> Skill: «That's a PM with hands: it tracks the workstreams AND can update your
+> board for you. One thing I'll set up front — I never let it change the board on
+> its own. Each time it wants to, it shows you exactly what it'd do and only does
+> it after you say go. Which board is it — and is there a safe/staging one I should
+> point it at first?»
+>
+> Owner: «Point it at my staging board for now»
+>
+> Skill: [grants the read + act tools, onboards the token, test-reads the board]
+> «Wired it to your staging board and did a test read — it can see it. On its first
+> look it'd want to: close 2 tasks it can tell are done, and add 3 you've decided on
+> in your notes. I'm NOT doing any of that yet — that's just the preview. When it
+> runs for real it'll stage those and wait for your one-line approve. Look right?»
+>
+> Owner: «Yes»
+>
+> Skill: «Done — a PM over my-side-project, weekly, in your voice. It reads your
+> notes and your board, and it can update the board — but only the staging one you
+> named, only after you approve each change, reading it fresh first so it never
+> clobbers your edits. Name `my-side-project-pm`. Create it?»
+>
+> Owner: «Yes»
+>
+> Skill: [writes, validates] «Done and valid. `/ztn:roles --role my-side-project-pm`
+> for its first look. When it wants to touch the board it'll ask; approve with
+> `/ztn:roles --approve-acts my-side-project-pm`. Run the first look now?»
+
 ---
 
 ## Anti-patterns the skill MUST avoid
@@ -1749,9 +2388,21 @@ Nothing else. In particular: no `parts/*.json` and no `state.md` (both seeded by
 - ❌ Asking «what remit axes?» / «which cadence_anchor?» — never. Skill
   decides silently, surfaces plain choices.
 - ❌ Showing `config.yml` / ledger schema before the user asks.
-- ❌ Fabricating a part whose kind isn't built (an outward-acting or external-tool
-  part) — the whole point of the honesty gate. Metrics, assessment, and stance ARE
-  built now; compose them, don't decline or defer them.
+- ❌ Deferring a built capability as if it weren't — reading an external system AND
+  acting on a REST board are BOTH built (grant a read-tool / act-tool + mandate). Metrics,
+  assessment, and stance are built too — compose them, don't decline them. Only fabricate
+  nothing the engine can't run.
+- ❌ Composing a secret-requiring `mcp`/`skill` ACT tool — an act tool that needs auth is
+  `http`/`local` ONLY (a token in an `mcp`/`skill` call would enter LLM context).
+- ❌ Composing an act-mandate that writes silently or at creation — every act is
+  owner-confirmed (staged `role-act-confirm` → `/ztn:roles --approve-acts`); default
+  `autonomy: advisory`; an irreversible broadcast is never bounded-exempt.
+- ❌ Granting a tool-ref that isn't an active `TOOLS.md` row, an adapter outside
+  `{mcp, http, local, web, skill, subagent}`, or a `custom` adapter — the taxonomy is closed.
+- ❌ Inlining a credential in `TOOLS.md` / config, or committing the master key —
+  secrets go through `roles_secrets.store_secret` (encrypted blob); the key is
+  out-of-band.
+- ❌ Shipping a tool-bearing role without the Step 4d verify-at-creation dry-run.
 - ❌ Generating a registry part without the Step 2c shape capture (a natural
   key + attributes + catalog-or-log mode), or recording an owner-confirm
   keeper's facts on the owner's behalf, or promising a graph a registry can't
@@ -1775,16 +2426,23 @@ Nothing else. In particular: no `parts/*.json` and no `state.md` (both seeded by
 
 When evolving the Roles subsystem, watch these compatibility points:
 
-- **Layer-2 capabilities are the next unlocks.** The reference library is complete —
-  `ledger`, `narrative`, `registry`, `metrics`, `assessment`, `stance` all ship as
-  plugins, each with a `CONCIERGE_MANIFEST` this skill reads. What remains unbuilt is
-  Layer-2: a part that PULLS from an external tool, one that ACTS on the world, and the
-  hard read-lock. When such a capability ships, this skill's «Part-kind composition»
-  table gains its row, the detection heuristics compose it, and it needs its own
-  preview shape + hook template. The seam is part-kind-agnostic already (`parts[]` is
-  an ordered list of `{id, kind}`, each kind a plugin — a schema-bearing kind
-  additionally carries its owner-captured `schema`); this skill is the human-facing
-  half that learns each shape.
+- **Read + REST-board acting both ship; unattended autonomy is the remaining unlock.**
+  The reference part library is complete (`ledger` / `narrative` / `registry` / `metrics`
+  / `assessment` / `stance`), and BOTH tool seams are built: a part can be granted a
+  `read` tool AND an `act` tool from `TOOLS.md`, wired with triggers + an inbox door, with
+  secrets + verify-at-creation, and an act-tool + role-level `mandate` composed for
+  outward acting (see «Tools»). Autonomy is REAL and shipped via two out-of-band consent
+  markers `roles_mandate.act_is_hitl` honours: `ZTN_ROLES_AUTONOMOUS_ACK` (the launch path
+  — owner consent to autonomous acting in the un-caged runtime, risk knowingly taken) and
+  `ZTN_ROLES_CAGE_VERIFIED` (a future verified sandbox, where the firewall's bounded-blast
+  rule still applies as defense-in-depth). Absent both markers, an `autonomous` dial
+  fail-safes to staging. This skill's composition asks autonomous-vs-manual and sets the
+  dial; when the future verified sandbox ships, only the runtime trust model tightens — the
+  composition does not change.
+- **The two `mandate` homes stay distinct.** The skill writes the advisory counter-persona
+  `mandate` (Step 5.1 — `{scope, expires, owner_consent_ref}`) AND, for an acting role, the
+  role-level act-mandate (`{autonomy, scope: [{target, surface, mode, blast}], until}`).
+  A role may carry both; never merge them into one mapping.
 - **Config schema is validated by `roles_common.load_role_config`.** New optional
   fields are safe; new required fields or enum members break existing roles and must
   move in lockstep with the loader. A schema-bearing kind (`REQUIRES_SCHEMA = True` —

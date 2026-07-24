@@ -2,6 +2,62 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.51.0 — Acting roles: real autonomy when you want it, honest setup
+
+Acting roles now run the way you choose, and the friend-facing setup for running one on a
+schedule is correct and complete end-to-end:
+
+- **You pick autonomous or manual — and autonomous is real.** At creation the concierge
+  asks: should the role act on its own on schedule, or will you drive it? If you say «on
+  its own», it makes its board changes in the nightly run with no per-act approval —
+  including sending an email or posting, if you granted that. You turn it on with one
+  honest switch in your scheduler's settings (`ZTN_ROLES_AUTONOMOUS_ACK=1`) — off until
+  you set it, so nothing acts hands-free by accident. The honest caveat, stated plainly:
+  the runtime isn't a verified sandbox yet, so an autonomous role acts on your informed
+  say-so (a booby-trapped doc it reads could steer an act, bounded to the board you
+  scoped). Prefer «manual» and it stages every change for your one-word approval, as
+  before.
+
+- **The inbox door reaches existing clones.** A one-time migration registers the `roles`
+  source in your live registry, so a role that notes facts back into your base
+  (`emit_inbox`) is actually folded in — previously only brand-new clones had it. Runs
+  automatically on `/ztn:update`.
+- **The master-key instruction is now correct and concrete.** The concierge and the docs
+  now name the exact environment variable (`ZTN_SECRET_MASTER_KEY`) and where it goes —
+  your roles routine's env / secret config, never the prompt. An earlier wording named a
+  variable that didn't exist, so a secret-bearing role would silently skip its tool at
+  3am.
+- **Scheduling now explains acting/secret roles.** The scheduling guide has a dedicated
+  section: an acting role stages its board edits and waits for you (`--approve-acts`), a
+  new role's first draft waits for `--approve-coldstart`, and the master key must live in
+  the routine's env — plus a morning-routine step to approve what your roles staged.
+- **Fixes.** A staged act's approval now clears its "needs you" prompt instead of leaving
+  it lingering; the concierge's remit-preview probe works as documented; the nightly roles
+  routine now knows its own layout up front — it runs the tick from the `zettelkasten` base
+  without stopping to hunt for the pipeline scripts, so a scheduled run no longer wastes
+  steps (or risks a misstep) locating them.
+
+## 0.50.0 — A role can keep an external board in sync — with your hand on it
+
+A role can now reach OUT: read a project's docs and its task board, work out what's
+out of sync, and update the board for you — create a missing task, move a status,
+close a done one. Two things stay true so you can trust it:
+
+- **Nothing is written until you approve it.** Every change the role wants to make is
+  shown to you first — the exact edits AND what it will note back into your memory — and
+  runs only when you say go (`--approve-acts`). It re-checks the target right before
+  writing, so it never overwrites a change someone else made in between, and it never
+  double-creates a task that's already there.
+- **Your notes are the source of truth; the board is a projection.** The role reconciles
+  the outside board TOWARD what your grounded notes say — when they disagree, your notes
+  win and the board is corrected, never the reverse.
+
+To raise a role that acts on an external system you wire one credential once (the
+concierge walks you through it) and grant the role a mandate scoping the specific board
+— see the onboarding guide's «raise a role into an external system». The board tool is
+config-only: the same engine drives a GitHub-issues board, a Jira project, or a Notion
+database by a registry row, no code.
+
 ## 0.49.0 — Roles that track a number, keep a verdict, or push back on you
 
 The reference library is complete: a role can now steward the shapes a plain catalog
@@ -25,8 +81,7 @@ never pick a "type".
 
 Everything a role records stays grounded and safe by construction: the thinking half
 only proposes, a deterministic writer checks the grounding before anything is written,
-and a role never asserts a fact — or forges a principle — it can't back up. The next
-step is roles that reach out to other systems.
+and a role never asserts a fact — or forges a principle — it can't back up.
 
 ## 0.48.0 — A role can steward almost anything you describe
 

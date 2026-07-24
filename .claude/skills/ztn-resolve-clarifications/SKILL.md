@@ -1043,6 +1043,40 @@ available — owner override path is editing
 class_key, then re-running auto-mode. Direct interactive `apply` of
 a veto'd item is also valid (owner judgement supersedes resolver).
 
+**The `*-confirm` family — present-and-defer, never dismiss inline.**
+`role-act-confirm`, `role-cold-start`, and `role-emission-confirm` are not
+resolved by any option in this round — they are resolved by RUNNING the
+role's own action skill (`/ztn:roles --approve-acts <id>` /
+`--approve-coldstart <id>` / the equivalent emission approval). The
+underlying work — a staged act in `pending_acts.json`, a frozen
+cold-start draft in a part's `staging`, a not-yet-certified inbox
+emission — lives outside this skill's write surface entirely
+(`_system/scripts/roles_persist.py` → `_approve_acts` /
+`_execute_pending_acts` resolve `role-act-confirm` on completion, so the
+queue item clears on its own once the acts actually run). Render the item
+normally (essence, files, context), but its only offered options are
+**present + point at the command**, `skip`, and `defer` — never `dismiss`.
+Dismissing a `*-confirm` item here does not cancel the staged work; it
+just strands it, with the acts/draft/emission sitting unexecuted and the
+role's trigger watermark held until the owner separately notices and runs
+the real approval command.
+
+**The `role-tool-*` family — present + point at `/ztn:role:edit`, don't
+resolve here.** `role-tool-request` (a role asks for a NEW tool it would do
+its job better with) and `role-tool-reauth` (a tool's bounded self-heal
+could not recover — a credential needs re-auth or the scope changed) are
+also resolved OUTSIDE this skill: the owner grants / re-auths via
+`/ztn:role:edit` (or re-runs the concierge's secret step). Render the item
+normally, but its only offered options are **present + point at
+`/ztn:role:edit`**, `skip`, and `defer`. A `dismiss` here is legitimate only
+as a deliberate DECLINE of the request (no tool is granted / the tool stays
+honest-degraded); it never grants or re-auths — surface that so the owner
+does not dismiss expecting the tool to come back.
+
+The **informational** `role-*` types (`role-act-drift`, `role-act-failed`,
+`role-budget-exhausted`) report something that already happened — they take
+ordinary Class A dismiss / archive like any other item.
+
 **On every owner click for a Class L item (apply / reject / modify):**
 
 1. Append a row to `_system/state/lens-resolution-history.jsonl` via
@@ -1455,6 +1489,13 @@ If clean → print «Working tree clean — nothing to commit». Exit.
 - **Extraction `m` (modify) is bounded — one edit cycle.** Owner gives
   a 1-line correction, skill re-drafts once. Second wrong answer →
   drop (`n`). No recursive sub-menus inside the batch UI.
+- **The `*-confirm` family is never dismissed inline.** `role-act-confirm`
+  / `role-cold-start` / `role-emission-confirm` present the item and point
+  at its owning command (`/ztn:roles --approve-acts` / `--approve-coldstart`
+  / the emission approval); only `skip` / `defer` are offered. Dismissing
+  one here strands staged acts, a frozen cold-start draft, or an
+  unconfirmed emission — the queue item is meant to clear only when the
+  action skill actually runs the work.
 
 ---
 
@@ -1544,3 +1585,6 @@ the pipeline.)
   without recursive sub-menus.
 - Does not run extraction in `--auto-mode` (no owner conversation),
   `--dry-run` (preview only), or `--no-extraction` (explicit opt-out).
+- Does not dismiss a `role-act-confirm` / `role-cold-start` /
+  `role-emission-confirm` item inline — those resolve only by the owner
+  running the item's own action skill; this skill presents and defers.

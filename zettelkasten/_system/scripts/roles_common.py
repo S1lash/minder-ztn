@@ -82,7 +82,33 @@ ROLE_CLARIFICATION_TYPES: frozenset[str] = frozenset({
     "role-nudge",
     "role-orphaned-part",
     "role-owner-confirm",
+    # Tools engine (CONTRACT §1.3/§2.3/§6 — PLAN 1). Each is a HUMAN-DECISION gate,
+    # not a mechanical failure (those self-heal per INV-29).
+    "role-trigger-skip-streak",  # INV-18: a trigger skipped N ticks running — is it wired right?
+    "role-tool-reauth",          # INV-29: self-heal exhausted, a human decision required (re-auth / changed scope)
+    "role-emission-confirm",     # INV-15/17: an inbox emission the engine can't certify stayed in-remit (external-tool-derived OR un-caged body) — owner-confirmed
+    "role-budget-exhausted",     # INV-20/28: the cumulative act/inbox ceiling reached — the rest defer
+    # Act path (CONTRACT §6.2/§6.5 — PLAN 2). An act is HITL-staged in the harness.
+    "role-act-confirm",          # INV-16: an outward act staged for owner approval (harness always HITL) — run --approve-acts
+    "role-act-drift",            # INV-16/28: TOCTOU — the target changed between propose and execute; aborted, re-reconcile
+    "role-act-failed",           # INV-28: an act transport/HTTP failure the self-heal could not recover — surfaced honestly
+    "role-tool-request",         # a role asks for a NEW tool it would do better with — grounded, HITL, owner grants via /ztn:role:edit (never a self-grant)
 })
+
+# Tools-engine vocabularies (CONTRACT §1.2/§1.3, §2.1). Closed + small, enforced by
+# the loader (fail-closed on any other value — an unsupported value never silently
+# degrades). Kept beside the other canonical vocabularies (SoT for the shapes).
+AUTONOMY_LEVELS: frozenset[str] = frozenset({"advisory", "autonomous"})
+# Mandate write mode: a blind `write` vs a `read-modify-write` reconcile (the safer,
+# idempotent shape — INV-28). The engine never hard-binds a source to a target.
+MANDATE_MODES: frozenset[str] = frozenset({"write", "read-modify-write"})
+# Blast radius of an act target: `bounded` (a fixed reversible/staging surface —
+# firewall-exempt per INV-17) vs `open`.
+BLAST_LEVELS: frozenset[str] = frozenset({"bounded", "open"})
+# Trigger predicate kinds (INV-18). `zone-mention` fires on an entity match in the
+# role's own zone (STT-robust); `external-state` fires on a cheap external probe moving
+# past a runner-owned watermark — independent of any zone change.
+TRIGGER_KINDS: frozenset[str] = frozenset({"zone-mention", "external-state"})
 
 # A role's proactive voice (emission). A tick may surface a bounded, grounded nudge
 # — the coach's push, the PM's «that workstream is what's blocking three others»,
@@ -545,6 +571,63 @@ class PartSpec:
     grounding: str = "records"
     append_only: bool = False
     grounding_check: bool = False
+    # Tools-forward (CONTRACT §1.1, INV-19/21): the tool-refs THIS part may request.
+    # The runner grant-checks a body's `tool_request` against this list before
+    # executing (never trusts the request). Empty = no hands (the default, so every
+    # existing part is unchanged). A ref names a `tool_id` in the TOOLS.md registry.
+    tools: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class MandateTarget:
+    """One write target inside a role's `mandate.scope` (CONTRACT §1.2, INV-16).
+
+    Names a specific external `target` (a tool-ref whose adapter `direction: act`),
+    an opaque `surface` id (the exact page / project / table — a staging surface the
+    owner can point the hands at safely and promote later), the write `mode`
+    (`write` | `read-modify-write`), and the `blast` radius (`bounded` + a fixed
+    surface = injection-firewall-exempt per INV-17; `open` is never exempt).
+    Read-source and write-target are independent — the engine hard-binds neither.
+    """
+    target: str
+    surface: str
+    mode: str
+    blast: str
+
+
+@dataclass(frozen=True)
+class MandateSpec:
+    """A role's outward-act grant (CONTRACT §1.2, INV-16). Absent → read-only role.
+
+    `autonomy` is an OWNER choice, not a safety default: `advisory` (surface, owner
+    acts) or `autonomous` (act without per-action ok — degrades to advisory in the
+    harness until a verified sandboxed runtime). `scope` is the non-empty list of write
+    targets the role may reach. `until` is an optional ISO date after which the mandate
+    is expired (the runner refuses acts past it — the owner re-consents / re-points via
+    `/ztn:role:edit`). The runner (`roles_persist` → `roles_act`) executes acts under
+    this mandate: scope + surface + TOCTOU + idempotency + the HITL act-confirm.
+    """
+    autonomy: str
+    scope: tuple[MandateTarget, ...]
+    until: str | None = None
+
+
+@dataclass(frozen=True)
+class TriggerSpec:
+    """One entry in a role's OR-combined `triggers` block (CONTRACT §1.3, INV-18/26).
+
+    Runner-evaluated BEFORE the body (a logged predicate, never a self-reported
+    tool). `zone-mention` carries a `match` list (entity tokens, STT-robust via
+    `normalize_role_ref`; self-authored records excluded per INV-27). `external-state`
+    carries a cheap `probe` (a projection like `notion-board.last_edited_time`,
+    distinct from the full read) whose value the runner compares against a watermark
+    in `triggers.json` (`state: watermark`). The whole block is AND-ed with
+    is_due + activation; an empty block leaves the role ungated (additive default).
+    """
+    kind: str
+    match: tuple[str, ...] = ()
+    probe: str | None = None
+    state: str | None = None
 
 
 @dataclass
@@ -573,6 +656,12 @@ class RoleConfig:
     name: str = ""
     brief: str | None = None
     path: Path | None = None
+    # Tools-forward, all additive (CONTRACT §1). `mandate` is the ONE home for the
+    # act grant — promoted from the old `persona["mandate"]` stash (SoT collision
+    # resolved). `triggers` OR-combined, empty → ungated. `emit_inbox` opt-in.
+    mandate: MandateSpec | None = None
+    triggers: tuple[TriggerSpec, ...] = ()
+    emit_inbox: bool = False
 
     @property
     def is_active(self) -> bool:
@@ -772,6 +861,10 @@ def _build_role_config(raw: dict, path: Path) -> RoleConfig:
     raw_brief = raw.get("brief")
     brief = raw_brief.strip() if isinstance(raw_brief, str) and raw_brief.strip() else None
 
+    mandate = _coerce_mandate(raw.get("mandate"), path)
+    triggers = _coerce_triggers(raw.get("triggers"), path)
+    emit_inbox = _coerce_emit_inbox(raw.get("emit_inbox"), path)
+
     return RoleConfig(
         id=role_id,
         parts=parts,
@@ -786,6 +879,9 @@ def _build_role_config(raw: dict, path: Path) -> RoleConfig:
         name=name,
         brief=brief,
         path=path,
+        mandate=mandate,
+        triggers=triggers,
+        emit_inbox=emit_inbox,
     )
 
 
@@ -856,10 +952,11 @@ def _parse_parts(
         schema, grounding, append_only, grounding_check = _parse_part_schema(
             entry.get("schema"), plugin, pid, path
         )
+        tools = _parse_part_tools(entry.get("tools"), pid, path)
         seen_ids.add(pid)
         specs.append(PartSpec(
             id=pid, kind=kind, schema=schema, grounding=grounding,
-            append_only=append_only, grounding_check=grounding_check,
+            append_only=append_only, grounding_check=grounding_check, tools=tools,
         ))
 
     # Cross-part validation — a schema-bearing kind whose schema REFERENCES another
@@ -924,6 +1021,26 @@ def _parse_part_schema(
     return schema, grounding, append_only, grounding_check
 
 
+def _parse_part_tools(raw: Any, pid: str, path: Path) -> tuple[str, ...]:
+    """Parse a parts[] entry's optional `tools:` grant list (CONTRACT §1.1). Fail-closed.
+
+    Absent / null → `()` (no hands — the default, so every existing part is
+    unchanged). A present-but-non-list value surfaces (`RoleConfigError`) rather than
+    silently degrading to no hands. Refs are non-empty strings, de-duplicated in
+    first-seen order (a `tool_id` in the TOOLS.md registry; the runner grant-checks
+    the body's request against this list and resolves the ref there — the loader does
+    not require the registry to exist yet, keeping config load registry-independent).
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise RoleConfigError(
+            f"{path}: part {pid!r} 'tools' must be a list of tool-refs, "
+            f"got {type(raw).__name__}"
+        )
+    return _str_tuple(raw)
+
+
 def _validate_anchor_for_cadence(path: Path, cadence: str, raw_anchor: Any) -> Any:
     """Validate `cadence_anchor` against `cadence`; return the normalised anchor.
 
@@ -985,10 +1102,154 @@ def _coerce_persona(raw: Any) -> dict:
     for axis in PERSONA_AXES:
         val = src.get(axis)
         persona[axis] = val if val in PERSONA_STANCES else "inherit"
-    mandate = src.get("mandate")
-    if isinstance(mandate, dict):
-        persona["mandate"] = mandate
+    # `mandate` is NO LONGER stashed here — it is promoted to the role-level
+    # `RoleConfig.mandate` (one home, SoT collision resolved — CONTRACT §1.2).
     return persona
+
+
+def _coerce_mandate(raw: Any, path: Path) -> MandateSpec | None:
+    """Parse the role-level `mandate` block into a `MandateSpec`, or None (CONTRACT §1.2).
+
+    Absent / null → None (a read-only role, no acts — the safe default). Present but
+    malformed → `RoleConfigError` (surface, don't guess: silently downgrading a
+    granted mandate to None would disable acts the owner asked for). A mandate MUST
+    carry a valid `autonomy` and a NON-EMPTY `scope` of well-formed targets.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise RoleConfigError(
+            f"{path}: 'mandate' must be a mapping, got {type(raw).__name__}"
+        )
+    autonomy = raw.get("autonomy")
+    if autonomy not in AUTONOMY_LEVELS:
+        raise RoleConfigError(
+            f"{path}: mandate 'autonomy' must be one of {sorted(AUTONOMY_LEVELS)}, "
+            f"got {autonomy!r}"
+        )
+    raw_scope = raw.get("scope")
+    if not isinstance(raw_scope, list) or not raw_scope:
+        raise RoleConfigError(
+            f"{path}: mandate 'scope' must be a non-empty list of write targets"
+        )
+    targets: list[MandateTarget] = []
+    for idx, entry in enumerate(raw_scope):
+        if not isinstance(entry, dict):
+            raise RoleConfigError(
+                f"{path}: mandate.scope[{idx}] must be a mapping, "
+                f"got {type(entry).__name__}"
+            )
+        target = entry.get("target")
+        surface = entry.get("surface")
+        mode = entry.get("mode", "read-modify-write")
+        blast = entry.get("blast", "bounded")
+        if not nonempty_str(target):
+            raise RoleConfigError(
+                f"{path}: mandate.scope[{idx}].target must be a non-empty tool-ref, "
+                f"got {target!r}"
+            )
+        if not nonempty_str(surface):
+            raise RoleConfigError(
+                f"{path}: mandate.scope[{idx}].surface must be a non-empty id, "
+                f"got {surface!r}"
+            )
+        if mode not in MANDATE_MODES:
+            raise RoleConfigError(
+                f"{path}: mandate.scope[{idx}].mode must be one of "
+                f"{sorted(MANDATE_MODES)}, got {mode!r}"
+            )
+        if blast not in BLAST_LEVELS:
+            raise RoleConfigError(
+                f"{path}: mandate.scope[{idx}].blast must be one of "
+                f"{sorted(BLAST_LEVELS)}, got {blast!r}"
+            )
+        targets.append(MandateTarget(
+            target=target.strip(), surface=surface.strip(), mode=mode, blast=blast,
+        ))
+    until = raw.get("until")
+    if until is not None:
+        # YAML parses a bare `2027-01-01` into a `date`; a quoted one stays a str.
+        # Normalise both to an ISO string; reject anything that is not a real date.
+        if isinstance(until, (date, datetime)):
+            until = until.strftime("%Y-%m-%d")
+        elif is_valid_iso_date(until):
+            until = str(until)
+        else:
+            raise RoleConfigError(
+                f"{path}: mandate 'until' must be an ISO date (YYYY-MM-DD), "
+                f"got {until!r}"
+            )
+    else:
+        until = None
+    return MandateSpec(autonomy=autonomy, scope=tuple(targets), until=until)
+
+
+def _coerce_triggers(raw: Any, path: Path) -> tuple[TriggerSpec, ...]:
+    """Parse the OR-combined `triggers` block (CONTRACT §1.3, INV-18). Fail-closed.
+
+    Absent / null → `()` (the role is ungated — additive default, current behaviour
+    preserved). Present but not a list, or any malformed entry → `RoleConfigError`
+    (surface, don't guess: a mis-wired trigger is a concierge bug, not something to
+    silently drop into a wider run).
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise RoleConfigError(
+            f"{path}: 'triggers' must be a list of predicate entries, "
+            f"got {type(raw).__name__}"
+        )
+    specs: list[TriggerSpec] = []
+    for idx, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            raise RoleConfigError(
+                f"{path}: triggers[{idx}] must be a mapping, "
+                f"got {type(entry).__name__}"
+            )
+        kind = entry.get("kind")
+        if kind not in TRIGGER_KINDS:
+            raise RoleConfigError(
+                f"{path}: triggers[{idx}].kind must be one of "
+                f"{sorted(TRIGGER_KINDS)}, got {kind!r}"
+            )
+        if kind == "zone-mention":
+            match = _str_tuple(entry.get("match"))
+            if not match:
+                raise RoleConfigError(
+                    f"{path}: triggers[{idx}] (zone-mention) needs a non-empty "
+                    "'match' list of entity tokens"
+                )
+            specs.append(TriggerSpec(kind=kind, match=match))
+        else:  # external-state
+            probe = entry.get("probe")
+            if not nonempty_str(probe):
+                raise RoleConfigError(
+                    f"{path}: triggers[{idx}] (external-state) needs a non-empty "
+                    "'probe' projection (e.g. notion-board.last_edited_time)"
+                )
+            state = entry.get("state", "watermark")
+            if state != "watermark":
+                raise RoleConfigError(
+                    f"{path}: triggers[{idx}] (external-state) 'state' must be "
+                    f"'watermark', got {state!r}"
+                )
+            specs.append(TriggerSpec(kind=kind, probe=probe.strip(), state=state))
+    return tuple(specs)
+
+
+def _coerce_emit_inbox(raw: Any, path: Path) -> bool:
+    """Parse the `emit_inbox` opt-in (CONTRACT §1.5). Absent → False.
+
+    Strict-bool: a non-bool present value surfaces (the string trap — `bool("false")`
+    is True — must never silently enable the inbox door).
+    """
+    if raw is None:
+        return False
+    if not isinstance(raw, bool):
+        raise RoleConfigError(
+            f"{path}: 'emit_inbox' must be a boolean, got {raw!r}"
+        )
+    return raw
 
 
 def _coerce_activation(raw: Any) -> dict:
@@ -1101,6 +1362,57 @@ def _fuzzy_ref_match(norm_q: str, norm_target: str) -> bool:
         return True
     limit = max(1, min(len(norm_q), len(norm_target)) // 4)
     return _edit_distance_within(norm_q, norm_target, limit)
+
+
+def is_role_authored_source(source: Any, role_id: str) -> bool:
+    """True when a record's `source:` marks it as THIS role's own emission (INV-27).
+
+    The load-bearing no-self-feed matcher — the SINGLE home shared by the grounding
+    filter (`roles_persist`) and the trigger filter (`roles_triggers`) so they agree.
+    A role's emission carries `source: role:{id}` in the INBOX file, but `/ztn:process`
+    re-stamps the DERIVED record's `source:` with the processed FILE PATH
+    (`_sources/processed/roles/{role-id}--{date}-{hash}.md`) — NOT the literal
+    `role:{id}`. That derived record is the one the role actually re-reads (it lands
+    in `_records/` and can re-enter the remit), so the filter must match the role
+    provenance that SURVIVES the round-trip: the `roles/{role-id}--` path segment (the
+    role-id is in the flat-md filename by construction). Matches BOTH forms — the raw
+    emission (`role:{id}`) and the processed record (path segment) — so the
+    emit→process→re-read→re-emit loop is broken deterministically, not by honour.
+    The `--` after the role-id makes it precise (`roles/minder--` ≠ `roles/minder-pm--`).
+    """
+    if not isinstance(source, str):
+        return False
+    s = source.strip().lower()
+    rid = str(role_id).strip().lower()
+    if not s or not rid:
+        return False
+    return s == f"role:{rid}" or f"roles/{rid}--" in s
+
+
+def stt_token_equal(a: Any, b: Any) -> bool:
+    """True when two tokens are the SAME entity mention under STT/transliteration
+    noise — normalised-equal, or one is a PREFIX of the other (length >= 4).
+
+    A zone-mention entity match must fire on `"minder"` / `"миндер"` / `"миндера"`
+    (Russian declensions add a SUFFIX — `миндера`→`mindera`, of which `minder` is a
+    prefix) but NOT on an unrelated real word (`"reminder"`, `"finder"`, `"minter"`),
+    and NOT on a SHORT token that shares a prefix with a different word (`"card"` must
+    not fire on `"cardio"`). A single-edit rule fails the first bar (fires on every
+    length-6 one-off neighbour); a short-prefix rule fails the second. So: normalised
+    equality, OR one token a PREFIX of the other WHEN THE SHORTER IS >= 5 chars — long
+    enough that a shared prefix is very likely the same entity declined, not a
+    coincidental substring. A short entity (`card`, `oura`) matches EXACT-only; the
+    owner/concierge lists explicit variants for it. No substring/edit-distance rule
+    (both over-match). Reused by the trigger-gate's `zone-mention` matcher (INV-18
+    STT-robust). Deterministic, ASCII-safe."""
+    na, nb = normalize_role_ref(a), normalize_role_ref(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    if min(len(na), len(nb)) < 5:
+        return False
+    return na.startswith(nb) or nb.startswith(na)
 
 
 def resolve_role_reference(text: Any, base: Path | None = None) -> list[RoleRef]:
@@ -1426,12 +1738,22 @@ def import_archetype(name: str):
 # Low-level write helpers (atomic; LF-forced for cross-platform determinism)
 # -----------------------------------------------------------------------------
 
-def _atomic_write(path: Path, text: str) -> None:
+def atomic_write_text(path: Path, text: str) -> None:
+    """The ONE home for the roles engine's atomic file-write idiom (SoT/DRY): create the
+    parent dir, write UTF-8 with LF endings to a `.tmp` sibling, then `Path.replace` it
+    over the target (atomic on POSIX + Windows). Leaf modules (triggers / budget /
+    tool-stage) call THIS instead of re-implementing the `.tmp`+`replace` dance, so the
+    idiom cannot diverge (e.g. if `fsync` is ever added it lands once). `roles_secrets`
+    keeps its own copy deliberately — it stays dependency-light (no roles_common import)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text)
     tmp.replace(path)
+
+
+def _atomic_write(path: Path, text: str) -> None:  # internal alias for existing callers
+    atomic_write_text(path, text)
 
 
 def _append_text(path: Path, text: str) -> None:

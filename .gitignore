@@ -25,6 +25,11 @@ integrations/claude-code/built/
 # Advisory flock files for telemetry / append-only buffers
 zettelkasten/_system/state/.*.lock
 
+# Staged outward acts awaiting the owner's --approve-acts. Transient, per-CLONE working
+# state (captured on THIS clone's tick, approved on THIS clone) — kept LOCAL so it never
+# splits brain across clones sharing one external board. Re-derived every reconcile.
+zettelkasten/_system/roles/*/pending_acts.json
+
 # ActivityWatch raw event dumps — kept LOCAL as the incident escape hatch,
 # never committed. ~180 KB/day gzipped (≈ hundreds of MB/year) AND the most
 # sensitive data in the base (months of verbatim window titles + client URLs).

@@ -305,6 +305,55 @@ Create a role only when a zone is busy enough to deserve a standing
 steward — you don't need any to start. To run the role tick on a
 schedule, see `docs/scheduling.md`.
 
+### Raise a role into an external system (a role with hands)
+
+A role can also **reach out** — read an external board (a GitHub-issues board, a Jira
+project, a Notion database) and, under your control, update it: create a missing task,
+move a status, close a done one. You choose at creation whether it acts on its own or
+waits for you (see «What autonomous means» below); by default it STAGES every change for
+your approval and never writes hands-free until you opt into autonomy. Three one-time
+steps, all walked by the concierge:
+
+1. **Install the crypto dependency** (only needed for an authenticated tool):
+   `pip install -r zettelkasten/_system/scripts/requirements.txt` (it declares
+   `cryptography`). The secrets blob is encrypted with it.
+2. **Wire the credential + the master key (once).** Tell `/ztn:role:add` you want a role
+   that updates your board; when it needs auth it asks for the credential in plain
+   language, stores it **encrypted** in a blob that is committed to your OWN private
+   repo, and — the first time — prints a **master key**. Put that key into your
+   scheduler routine's **env / secret config** as `ZTN_SECRET_MASTER_KEY=<key>`
+   (per-instance, **never committed**). Where exactly depends on your scheduler: a Cloud
+   Routine's env field, or the `env` of a local cron / GitHub-Actions job — see
+   `scheduler-prompts/roles-nightly.md → §Secrets`. An in-prompt `export` does NOT work
+   (it doesn't survive into the skill's Python subprocesses). Without the key in the
+   routine env, the autonomous tick can't resolve the credential and the tool
+   honest-degrades.
+3. **Approve its acts** (a MANUAL role — the default). The role STAGES what it wants to do
+   and surfaces a `role-act-confirm` showing the exact edits and the notes it will feed
+   back to your memory; you run `/ztn:roles --approve-acts <role>` to execute (it re-checks
+   the target for drift and never double-creates), or discard. (An AUTONOMOUS role you
+   opted in skips this — it acts in the nightly run; see «What autonomous means» below.)
+   Renew / revoke / re-point the mandate anytime via `/ztn:role:edit`.
+
+**What "autonomous" means today — honestly.** You choose, per role, at creation:
+- **Manual (the default):** the role STAGES every act and you approve it
+  (`--approve-acts`). Nothing goes out without you. Safe, but hands-on.
+- **Autonomous (your explicit opt-in):** dial the role `autonomous` AND set
+  `ZTN_ROLES_AUTONOMOUS_ACK=1` in your roles scheduler's env — then it makes its board
+  changes on its own on schedule, no per-act approval, including an irreversible surface
+  if you granted one. The honest caveat: the runtime is not yet a verified sandbox, so an
+  autonomous role acts on YOUR informed consent, not a proven-safe cage — a
+  prompt-injection in content it reads could steer an act, bounded to the surface(s) your
+  mandate scopes. The marker is off until you set it, so nothing acts hands-free by
+  accident. A fully verified sandboxed runtime is a later, service-era capability that
+  will remove even that caveat.
+
+To see, in plain words, what any role has been doing and what's waiting on you, just ask
+it: `/ztn:role:ask <role> "what did you do"`.
+
+Your grounded notes stay the source of truth; the external board is a projection the
+role reconciles toward them.
+
 ---
 
 ## Reference

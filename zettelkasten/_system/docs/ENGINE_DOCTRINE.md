@@ -461,7 +461,9 @@ change to integrate. The contract is engine-level, not skill-level.
   feedback substrate; consumed by lenses + future cross-source
   analysis, not by Minder backend
 - Role instance state (`_system/roles/{id}/` —
-  `parts/*.json` / `state.md` / `decisions.jsonl` / `config.yml`) —
+  `parts/*.json` / `state.md` / `decisions.jsonl` / `config.yml` /
+  `triggers.json` / `budget.json` / `pending_acts.json`) + the tools-engine state files under
+  `_system/state/` (`roles-tool-audit.jsonl`, `secrets.enc.json`) —
   owner-internal working memory of a running role, same posture as the
   content ledger and `OPEN_THREADS.md`. `/ztn:roles` produces no batch
   manifest; the rendered projection `_system/views/ROLES.md` is a
@@ -539,7 +541,7 @@ buffers) take the writer named here.
 | `_system/state/principle-candidates.jsonl` | `/ztn:capture-candidate`, `/ztn:bootstrap`, `/ztn:lint` (F.5 archive) | Append-only principle buffer |
 | `_system/state/people-candidates.jsonl` | `/ztn:process`, `/ztn:bootstrap`, `/ztn:lint` (dismiss/archive) | Append-only people buffer |
 | `_system/state/check-decision-runs.jsonl` | `/ztn:check-decision` | Append-only audit substrate (run + followup lines per invocation); consumed by `decision-review` lens + future cross-source autonomy analysis |
-| `_system/roles/{id}/` (`parts/*.json` / `state.md` / `decisions.jsonl` / `config.yml` / `hooks/` / `brief.md?`) | `roles_persist.py` sole writer of part state (invoked by `/ztn:roles`); `config.yml` + hooks owner-sovereign via `/ztn:role:add` (create) + `/ztn:role:edit` (change); `brief.md` owner-written | Per-role instance state — a role is a composition of parts (each part a built archetype — see `_frame.md`), with the working memory + decision log of a running role |
+| `_system/roles/{id}/` (`parts/*.json` / `state.md` / `decisions.jsonl` / `config.yml` / `hooks/` / `brief.md?` / `triggers.json` / `budget.json` / `pending_acts.json`) | `roles_persist.py` sole writer of part state (invoked by `/ztn:roles`); `config.yml` + hooks owner-sovereign via `/ztn:role:add` (create) + `/ztn:role:edit` (change); `brief.md` owner-written; `triggers.json` (via `roles_triggers`) + `budget.json` (via `roles_budget`) runner-owned cross-tick state; `pending_acts.json` (via `roles_persist`) the staged outward acts awaiting owner approval (Phase 1 stages, `--approve-acts` executes + clears — §6.5) | Per-role instance state — a role is a composition of parts (each part a built archetype — see `_frame.md`), with the working memory + decision log + trigger-gate/budget state of a running role. The tools-engine audit + secrets blob (`_system/state/roles-tool-audit.jsonl`, `secrets.enc.json`) share this owner-internal posture |
 | `_system/views/CURRENT_CONTEXT.md` | `/ztn:bootstrap`, `/ztn:maintain` | Auto-generated focus snapshot |
 | `_system/views/HUB_INDEX.md` | `/ztn:maintain` (rebuild) + `/ztn:process` (additive on hub create) | Hub registry (auto-generated) |
 | `_system/views/INDEX.md` | `/ztn:maintain` (via `render_index.py`) | Surface-line catalog of knowledge + archive + constitution + hubs (auto-generated, faceted by PARA / domains / cross-domain). Records and posts intentionally out of scope — own pipelines |

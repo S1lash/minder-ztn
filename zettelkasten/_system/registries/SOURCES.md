@@ -105,6 +105,7 @@ For metric-day family the filename is canonical `YYYY-MM-DD.md` — one file per
 | notes | `_sources/inbox/notes/` | transcript | flat-md | auto | — | Plain Markdown notes dropped manually into the folder. | active |
 | crafted | `_sources/inbox/crafted/` | transcript | flat-md | auto | — | Hand-written long-form documents processed through the same pipeline; also the target for verbatim artifacts saved by `/ztn-recap --crafted`. | active |
 | describe-me | `_sources/inbox/describe-me/` | transcript | flat-md | identity | — | Owner self-descriptions and identity reference material. Primary seed for `/ztn:bootstrap` SOUL.md draft; files added after bootstrap flow through `/ztn:process` as regular content. `PROFILE.template.md` is excluded by the engine-wide `*.template.md` rule. | active |
+| roles | `_sources/inbox/roles/` | transcript | flat-md | auto | — | The inbox door for the owner's ZTN roles (CONTRACT §4.2) — an engine-level source registered ONCE for all roles. A role with `emit_inbox: true` drops one human-phrased note per emission (`{role-id}--{date}-{hash}.md`, carrying `source: role:{id}`); `/ztn:process` folds it in like any source. Dormant until a role enables emission. | active |
 | garmin | `_sources/inbox/garmin/` | metric-day | flat-md | health | raw | Garmin daily biometric snapshots. One file per calendar day; `raw/` holds full minute-level JSON payloads (skipped by /ztn:process; available as escape hatch for biometric lenses). Inactive until owner wires a Garmin collector — pipeline lies dormant otherwise. | active |
 
 ---

@@ -10,8 +10,10 @@ description: >
   the answer. Triggers: "спроси у Kitchen Reno про…", "узнай у роли …", "ask my PM role
   about…", "что роль знает про…", "role, what's the status of…", "спроси kitchen-reno".
   For a generic reference ("узнай у роли") it enumerates the owner's roles and asks
-  which. It NEVER edits a role — improvements go to `ztn:role:edit`, creation to
-  `ztn:role:add`, listing to `ztn:role:list`.
+  which. An ACTIVITY question («что ты делал», «what did you do / touch», «anything
+  waiting on me») is answered from the role's plain-language activity digest, distinct
+  from the knowledge ladder. It NEVER edits a role — improvements go to `ztn:role:edit`,
+  creation to `ztn:role:add`, listing to `ztn:role:list`.
 disable-model-invocation: false
 ---
 
@@ -65,6 +67,34 @@ conservatively:
 
 Resolve the reference in the owner's language; the answer follows the role's
 persona / remit language (its `config.yml` establishes it).
+
+## Step 2.5 — Route: an activity question vs a knowledge question
+
+Two KINDS of question land here, with different homes. Decide which before the
+knowledge ladder:
+
+- **Activity question** — «что ты делал», «what did you do / what have you been up to /
+  what did you touch / what's pending / anything need me». The owner wants to know what
+  the role DID and what awaits them — not what it KNOWS. Answer from the role's
+  plain-language activity digest, which is already owner-friendly (deterministic,
+  read-only, secret-safe):
+
+  ```bash
+  python3 _system/scripts/roles_activity.py --role {id}
+  ```
+  Add `--days N` when the owner names a window (default 7). Present the output as-is — it
+  is written in plain words already («ran N times, read from <tools>, made K changes on
+  your board — <effects>, N act(s) staged — run `/ztn:roles --approve-acts {id}`, Needs
+  you: …»). Do NOT reshape it into jargon or a status ladder; it IS the answer. A role
+  should be able to tell the owner, in plain words, what it did and what needs them.
+
+- **Knowledge question** — «what's the status of X / why / history / what's blocked /
+  what should I focus on». Answer via the 3-tier ladder below (Step 3).
+
+A question can be both — lead with the activity digest, then answer the knowledge part
+from the ladder. This routing stays read-only, remit-bounded, and STT-tolerant like the
+rest of the skill: the digest reads only THIS role's own audit trail, never another
+role's state and never outside the addressed role.
 
 ## Step 3 — Answer via the 3-tier ladder (escalate only as needed)
 
@@ -166,7 +196,10 @@ healthy answer.
 
 Read: `_system/roles/{id}/{config.yml, brief.md, state.md, hooks/ask.md}`;
 `_system/roles/` (to enumerate roles on a generic / unresolved reference); the
-remit corpus via `minder_query --role {id}` (read-only). Reads no other role's
+remit corpus via `minder_query --role {id}` (read-only); on an activity question,
+the role's own audit trail via `roles_activity.py --role {id}` (which reads
+`roles-runs.jsonl` + `roles-tool-audit.jsonl` + the role's `pending_acts.json` +
+CLARIFICATIONS — deterministic, read-only, secret-safe). Reads no other role's
 state — the answer is bounded to the addressed role.
 
 **Written: nothing.** This skill is read-only by contract.

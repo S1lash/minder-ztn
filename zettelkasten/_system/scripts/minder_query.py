@@ -57,15 +57,14 @@ Scope source — engine-owned (`--role`) vs dev/preview (`--remit-json` /
 `--config`):
   `--role <id>` is the ENGINE-OWNED scope path: it resolves the remit from
   `_system/roles/<id>/config.yml → remit`, which is the ONLY scope source for
-  a tick body. `--remit-json` and `--config` are DEV/PREVIEW surfaces only —
-  the concierge uses them to preview a drafted remit BEFORE a `config.yml`
-  exists. They are NOT for the tick body. In P1 they add no capability (reading
-  is honor-system; the body already has raw filesystem access). But once an
-  enforced-read mode arrives (the P3 runner-lock that removes the body's raw FS
-  access and forces every read through this tool), `--role` MUST be the only
-  scope source and the `--remit-json` / `--config` overrides MUST be gated
-  behind an explicit dev/test flag — otherwise `--remit-json '{"all":true}'`
-  would defeat, through this very tool, the lock it is meant to enforce.
+  a tick body. `--remit-json` and `--config` are DEV surfaces only — the
+  concierge uses them to preview a drafted remit BEFORE a `config.yml` exists.
+  They are NOT for the tick body and are GATED behind `ZTN_DEV=1` (refused
+  otherwise), so `--remit-json '{"all":true}'` cannot defeat, through this very
+  tool, the hard read-lock (INV-15). The tool-restricted subagent runtime reads
+  via `--enforced --role <id>`, which REQUIRES `--role` and refuses both
+  overrides UNCONDITIONALLY (even under `ZTN_DEV`) — so the body cannot read
+  around its remit by construction. (`_load_remit_source` enforces this.)
 
 Deterministic, no LLM. `pathlib`; base resolved via `_common.repo_root`
 (honours `ZTN_BASE`); symlinked / out-of-tree files skipped (read-around
@@ -76,6 +75,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -666,8 +666,30 @@ def _load_remit_source(args: argparse.Namespace) -> tuple[RemitSpec, RoleConfig 
 
     Config errors surface via `die` (surface, don't guess). A malformed
     `--remit-json` degrades to an empty remit (fail-closed).
+
+    HARD READ-LOCK (INV-15 / CONTRACT §6.1). `--config` / `--remit-json` are
+    dev/preview scope OVERRIDES the tick body must never reach: they are gated
+    behind `ZTN_DEV=1` (the explicit dev flag). An `--enforced` (role-bound)
+    invocation — how the tool-restricted subagent runtime reads — refuses BOTH
+    overrides UNCONDITIONALLY (even under `ZTN_DEV`) and REQUIRES `--role`, so the
+    body cannot read around its remit by construction, not by honour.
     """
     base = Path(args.base).resolve() if args.base else None
+    enforced = bool(getattr(args, "enforced", False))
+    using_dev_scope = bool(args.config) or (args.remit_json is not None)
+    if enforced:
+        if using_dev_scope:
+            die(
+                "--config/--remit-json are refused in --enforced mode: the tick body "
+                "reads role-bound only (--role). This is the hard read-lock (INV-15)."
+            )
+        if not args.role:
+            die("--enforced requires --role (the body's only scope source)")
+    elif using_dev_scope and os.environ.get("ZTN_DEV") != "1":
+        die(
+            "--config/--remit-json are dev-only scope overrides — set ZTN_DEV=1 to "
+            "use them. The tick body must scope via --role (hard read-lock, INV-15)."
+        )
     sources = [bool(args.role), bool(args.config), args.remit_json is not None]
     if sum(sources) != 1:
         die(
@@ -705,13 +727,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--config", default=None,
-        help="DEV/PREVIEW surface (NOT for the tick body): explicit path to a "
-             "role config.yml — see module docstring 'Scope source'",
+        help="DEV surface, GATED behind ZTN_DEV=1 (refused otherwise, and always in "
+             "--enforced mode): explicit path to a role config.yml. NOT for the tick "
+             "body — see module docstring 'Scope source' + the hard read-lock",
     )
     parser.add_argument(
         "--remit-json", default=None,
-        help="DEV/PREVIEW surface (NOT for the tick body): inline remit JSON, "
-             "fail-closed to empty on parse error — see 'Scope source'",
+        help="DEV surface, GATED behind ZTN_DEV=1 (refused otherwise, and always in "
+             "--enforced mode): inline remit JSON, fail-closed to empty. NOT for the "
+             "tick body — see 'Scope source' + the hard read-lock",
+    )
+    parser.add_argument(
+        "--enforced", action="store_true",
+        help="ROLE-BOUND read (the tool-restricted subagent runtime, INV-15): require "
+             "--role and refuse --config/--remit-json unconditionally, so the body "
+             "cannot read around its remit by construction",
     )
     parser.add_argument(
         "--base", default=None,
