@@ -215,7 +215,6 @@ Runs only when Early Exit Check found files to process.
 - `_sources/.agent-lens.lock` — exists → abort «`/ztn:agent-lens` running, try again later»
 - `_sources/.content.lock` — exists → abort «`/ztn:content` running, try again later»
 - `_sources/.resolve.lock` — exists → abort «`/ztn:resolve-clarifications` running, try again later»
-- `_sources/.roles.lock` — exists → abort «`/ztn:roles` running, try again later»
 - `_sources/.processing.lock` — exists → abort «another `/ztn:process` run in progress»
 
 All seven skills mutually exclusive.

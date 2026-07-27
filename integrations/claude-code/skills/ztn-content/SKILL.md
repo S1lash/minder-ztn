@@ -40,7 +40,7 @@ publishes manually (Telegram / LinkedIn — a separate vector, out of scope).
 `CONTENT_MAP.md` while `/ztn:maintain` Step 7.8 may be rewriting it. So at the
 start of a writing run, read the pipeline locks under `_sources/`
 (`.processing.lock`, `.maintain.lock`, `.lint.lock`, `.agent-lens.lock`,
-`.resolve.lock`, `.roles.lock`) — abort if any is recent (<2h) — then acquire `.content.lock`
+`.resolve.lock`) — abort if any is recent (<2h) — then acquire `.content.lock`
 (touch it), and remove it when done. The default **status** mode is read-only and
 takes no lock. (Scheduler ticks run `lock-check.sh` before invoking the skill;
 this guard also covers interactive runs.)

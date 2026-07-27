@@ -31,7 +31,6 @@ LOCKS=(
   "$LOCK_DIR/.agent-lens.lock"
   "$LOCK_DIR/.content.lock"
   "$LOCK_DIR/.resolve.lock"
-  "$LOCK_DIR/.roles.lock"
 )
 
 BLOCKED=()

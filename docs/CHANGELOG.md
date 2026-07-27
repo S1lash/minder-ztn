@@ -2,6 +2,28 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.52.0 — Roles removed, to be rebuilt simpler
+
+The roles subsystem is gone from the engine. The tick runner, the five `/ztn:role:*`
+skills, the tools registry and everything around them have been removed.
+
+**Why.** What was built asked you to fit a standing task into a fixed vocabulary — five
+kinds of memory a role could keep, a closed list of shapes an action could take, a board
+that could be written but not read. Real standing tasks do not fit a list. The design was
+buying safety it did not deliver and charging complexity for it.
+
+**What replaces it.** A role becomes what it should have been from the start: a standing
+job you describe in your own words, run by the same assistant you already talk to, with
+your Minder notes as its context. It decides how to do the job; the engine only bounds
+where it may write and what it may reach.
+
+**What this means for you now.** If you set up a role, its folder under
+`_system/roles/` is still on disk and untouched — but nothing runs it. Nothing of yours
+was deleted. A migration says so on update. When roles return you describe yours again;
+the old folder is a record of what you wanted, not something that carries over.
+
+Remove the `ztn-roles` job from your scheduler if you added one.
+
 ## 0.51.0 — Acting roles: real autonomy when you want it, honest setup
 
 Acting roles now run the way you choose, and the friend-facing setup for running one on a

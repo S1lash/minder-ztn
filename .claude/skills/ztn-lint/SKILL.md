@@ -93,8 +93,7 @@ Read all seven lock files в order:
 3. `_sources/.agent-lens.lock` — exists → abort с `"/ztn:agent-lens running, try again later"`
 4. `_sources/.content.lock` — exists → abort с `"/ztn:content running, try again later"`
 5. `_sources/.resolve.lock` — exists → abort с `"/ztn:resolve-clarifications running, try again later"` (owner is mid-interactive resolve; lint Pass 2 would stomp the resolve session lock at dispatch time)
-6. `_sources/.roles.lock` — exists → abort с `"/ztn:roles running, try again later"`
-7. `_sources/.lint.lock` — exists → abort с `"another /ztn:lint run in progress"` (unless `--force`)
+6. `_sources/.lint.lock` — exists → abort с `"another /ztn:lint run in progress"` (unless `--force`)
 
 Stale lock (>2 hours old, parse ISO timestamp from file content) → warn, report PID if present, **offer manual removal, do NOT auto-delete.**
 

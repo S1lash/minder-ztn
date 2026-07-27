@@ -1063,10 +1063,10 @@ def constitution_principle_ids(base: Path | None = None) -> set[str]:
     membership fails CLOSED on it (an id pointing at a broken file is treated as
     non-existent), never crashing the caller.
 
-    The existence half of the values-grounding oracle: `roles_persist` existence-filters
-    a stance part's injected oracle against this set, so a fabricated principle-id can
-    never survive to ground a position — deterministic at the writer, independent of the
-    prompt stage that authored the oracle. Pure filesystem: no LLM, no check-decision.
+    The existence half of a values-grounding oracle: a caller filters cited principle-ids
+    against this set, so a fabricated id can never survive to ground a claim —
+    deterministic, independent of the prompt stage that authored the citation. Pure
+    filesystem: no LLM, no check-decision.
     """
     root = constitution_root(base)
     ids: set[str] = set()

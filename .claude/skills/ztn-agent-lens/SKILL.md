@@ -214,10 +214,9 @@ Read all seven lock files in order:
 3. `_sources/.lint.lock` — exists → abort с `"/ztn:lint running, try again later"`
 4. `_sources/.content.lock` — exists → abort с `"/ztn:content running, try again later"`
 5. `_sources/.resolve.lock` — exists → abort с `"/ztn:resolve-clarifications running, try again later"`
-6. `_sources/.roles.lock` — exists → abort с `"/ztn:roles running, try again later"`
-7. `_sources/.agent-lens.lock` — exists → abort с `"another /ztn:agent-lens run in progress"`
+6. `_sources/.agent-lens.lock` — exists → abort с `"another /ztn:agent-lens run in progress"`
 
-All seven skills mutually exclusive (matches doctrine §3.4).
+All six skills mutually exclusive (matches doctrine §3.4).
 
 Stale lock (>2h old, parse ISO timestamp from file content) → warn,
 report PID if present, **offer manual removal, do NOT auto-delete.**

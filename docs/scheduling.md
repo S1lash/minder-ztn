@@ -13,7 +13,6 @@ Five scheduled jobs.
 | `ztn-process` | ≥ 3× per day | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `finalize-tick.sh scheduler/process` | `integrations/claude-code/scheduler-prompts/process-scheduled.md` |
 | `ztn-agent-lens` | 1× nightly (03:00) | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `finalize-tick.sh scheduler/agent-lens` | `integrations/claude-code/scheduler-prompts/agent-lens-nightly.md` |
 | `ztn-lint` | 1× nightly (05:00) | `/ztn:sync-data` → `/ztn:lint` (Step 7.5 dispatches `/ztn:resolve-clarifications --auto-mode` inline) → `finalize-tick.sh scheduler/lint` | `integrations/claude-code/scheduler-prompts/lint-nightly.md` |
-| `ztn-roles` | 1× daily (06:30) | `/ztn:sync-data` → `/ztn:roles --all-due` → `finalize-tick.sh scheduler/roles` | `integrations/claude-code/scheduler-prompts/roles-nightly.md` |
 | `ztn-content` | 1× weekly (Tue 06:00) | `/ztn:sync-data` → `/ztn:content --maintain` → `finalize-tick.sh scheduler/content` | `integrations/claude-code/scheduler-prompts/content-tick.md` |
 
 The content pipeline runs across two ticks a day apart: the `content-synthesis`
@@ -31,17 +30,6 @@ its invariant scans, then Step 7.5 dispatches resolve --auto-mode
 inline so the same tick consumes fresh lens hints + CLARIFICATIONS
 that lint just emitted. The agent-lens skill filters lenses by per-
 lens cadence — nightly fire ≠ nightly lens runs.
-
-Roles run after the nightly work, at 06:30 (after process / maintain /
-agent-lens / lint have settled the day's state). The `ztn-roles` tick
-fires daily but the skill filters roles by per-role cadence — daily fire
-≠ every role runs (a `weekly` role only ticks on its cadence anchor).
-Only `--all-due` (tick) acquires `.roles.lock`; the read-only role
-skills (`/ztn:role:ask`, `/ztn:role:list`) take none. The 06:30 slot is
-deliberately OFFSET from content's Tuesday 06:00 window: content is
-weekly, so losing a lock race would cost it a whole week — the offset
-removes the contention entirely rather than relying on a race the
-less-frequent tick could lose.
 
 There is no `ztn-maintain` schedule — maintain runs inline as the tail
 of `/ztn:process`. There is no `ztn-resolve-clarifications` schedule —
@@ -252,13 +240,6 @@ The recommended path. Five routines — one per row of the canonical table above
 
 ```
 /schedule
-  name: ztn-roles
-  cron: 30 6 * * *
-  prompt: <paste body of integrations/claude-code/scheduler-prompts/roles-nightly.md>
-```
-
-```
-/schedule
   name: ztn-content
   cron: 0 6 * * 2
   prompt: <paste body of integrations/claude-code/scheduler-prompts/content-tick.md>
@@ -266,15 +247,6 @@ The recommended path. Five routines — one per row of the canonical table above
 
 Each routine runs in a fresh agent — the prompt body is fully
 self-contained, no extra context required.
-
-> **`ztn-roles` + a secret-bearing role.** A role that reads/acts on an
-> authenticated system needs the master key `ZTN_SECRET_MASTER_KEY` in the
-> `ztn-roles` routine's **environment**, not its prompt (see `## Roles that act
-> or use secrets`). If your `/schedule` mechanism cannot attach a persistent env
-> secret to a routine, run `ztn-roles` on a scheduler that can — a local cron or a
-> GitHub-Actions job with `env:` (next section) — so the nightly tick can decrypt.
-> Read-only, no-secret roles have no such need and run fine on the `/schedule`
-> path.
 
 After a `/ztn:update` that changed any prompt body in
 `integrations/claude-code/scheduler-prompts/`, re-paste the updated
@@ -297,41 +269,6 @@ same prompt bodies. Ensure:
 Local cron starts on the `main` branch by default, so LOCAL mode in
 `finalize-tick.sh` applies — no PR ceremony, just direct push.
 
-## Roles that act or use secrets — the autonomous reality
-
-Most roles are read-only stewards: the nightly `ztn-roles` tick discovers every
-role dir under `_system/roles/{id}/` and runs those whose cadence is due — a NEW
-role is picked up automatically, no per-role scheduling. A role that uses a secret
-or acts on a board has a little setup — all of it in the routine's env, done once:
-
-- **A role with a SECRET (reads/acts on an authenticated system).** The nightly
-  tick can only decrypt its credential if the master key is in the routine's
-  environment as **`ZTN_SECRET_MASTER_KEY`**. Put it in your `ztn-roles` routine's
-  own **env / secret config** (a Cloud Routine's env field; or the `env:` of a
-  local cron / GitHub-Actions job — see `## Plug-in` below and
-  `scheduler-prompts/roles-nightly.md → §Secrets`). An in-prompt `export` does NOT
-  work (it doesn't survive into the skill's Python subprocesses). Without it the
-  tick runs, logs `success`, and silently skips the tool (honest-degrade) — the
-  board never changes and nothing tells you why. **If your scheduler cannot carry
-  an env secret, an acting role must run on a scheduler that can (local cron /
-  GitHub-Actions), not the cloud-routine path.**
-- **A role that ACTS on a board (create / update / close) — you choose the mode at
-  creation:**
-  - **Autonomous** (you told the concierge «let it act on its own»): the tick makes
-    the board changes itself, no approval. This needs your explicit consent marker
-    **`ZTN_ROLES_AUTONOMOUS_ACK=1`** in the same routine env as the master key
-    (`scheduler-prompts/roles-nightly.md → §Secrets`). It's OFF until you set it, so
-    nothing acts hands-free by accident, and only a role you dialed `autonomous` is
-    affected. Honest caveat: the runtime is not a verified sandbox, so an autonomous
-    role acts on YOUR say-so — a prompt-injection in content it reads could steer an
-    act, bounded to the mandate's surface(s). That's the trade for hands-free.
-  - **Manual** (you told it «I'll drive it»): the tick STAGES the edits and raises a
-    `role-act-confirm`, writing nothing; you execute with `/ztn:roles --approve-acts
-    <role>` (see the morning routine below).
-- **A brand-new role's first-ever tick** stages a frozen **cold-start** draft
-  (`role-cold-start`); adopt it once with `/ztn:roles --approve-coldstart <role>` (or
-  let the concierge do it at creation via the «just get it running» path).
-
 ## Owner morning routine
 
 The other half of the loop. Whatever happened overnight + during the
@@ -341,17 +278,11 @@ day lands in CLARIFICATIONS by morning.
    you through the queue one theme at a time, refreshes derived views
    (`/ztn:regen-constitution`, `/ztn:maintain`) when your resolutions
    touched constitution / registries, and reminds you to save.
-2. **Approve any staged role work.** A `role-act-confirm` in the queue means a role
-   staged board edits overnight — review them and run `/ztn:roles --approve-acts
-   <role>` to execute (idempotent + drift-checked), or discard. A `role-cold-start`
-   means a new role's first draft is waiting — adopt it with `/ztn:roles
-   --approve-coldstart <role>`. resolve-clarifications SHOWS these items but does not
-   run the approval command for you — that stays an explicit act.
-3. `/ztn:save` (interactive, not `--auto`) — commit + push your
+2. `/ztn:save` (interactive, not `--auto`) — commit + push your
    resolutions when the skill prompts you.
 
 That's it. The scheduler covers ingestion + slop-catching; you cover
-judgement + resolution — including approving what your acting roles staged.
+judgement + resolution.
 
 ## Why this shape (instead of N tiny jobs or one big one)
 
@@ -359,10 +290,10 @@ judgement + resolution — including approving what your acting roles staged.
   dropped at 10am don't surface until 03:00 the next day. ZTN is a
   thinking aid; latency >12h kills the feedback loop.
 - **Per-skill schedules (process, maintain, lint, resolve, agent-lens,
-  agent-lens-add, roles, content).** Tried mentally: maintain has no
+  agent-lens-add, content).** Tried mentally: maintain has no
   independent cadence (it tails process); resolve and agent-lens-add
-  must not be autonomous (owner judgement / wizard interview). The five
-  scheduled jobs (process / agent-lens / lint / roles / content) cover
+  must not be autonomous (owner judgement / wizard interview). The four
+  scheduled jobs (process / agent-lens / lint / content) cover
   the autonomous surface area; every other skill is either owner-gated
   or tails another tick, so it earns no standalone schedule.
 - **Process every hour.** Wasteful for typical input rates and burns
