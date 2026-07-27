@@ -215,7 +215,6 @@ New CLARIFICATION types and action types added by biometric pipeline:
 
 | Type | Class | Apply mechanism |
 |---|---|---|
-| `metric-record-rerender` | C (proposal) | `metric_record_rerender_apply` action — owner picks `skip` / `append-update` / `recompute-baselines-forward` |
 | `biometric-baseline-cold-start` | informational | One-time per source on its first metric-day run; resolution = dismiss with «expected cold-start» note |
 | `biometric-threshold-drift` | C (proposal) | `threshold_tune_proposal` action — writes proposed σ to `biometric_thresholds.yaml` |
 | `biometric-affect-lexicon-empty` | review | Owner audits lexicon; may add `affect_lexicon.local.yaml` overlay entries |
@@ -223,7 +222,12 @@ New CLARIFICATION types and action types added by biometric pipeline:
 Action handlers `threshold_tune_proposal` and
 `metric_record_rerender_apply` live in
 `_system/scripts/lens_action_handlers.py` and follow the existing
-two-phase contract (validate → apply with TOCTOU defence). Per
+two-phase contract (validate → apply with TOCTOU defence). The
+`/ztn:process` metric-day branch resolves re-render drift autonomously by
+richness (it does not emit `metric-record-rerender`); the
+`metric_record_rerender_apply` handler is retained to resolve any
+`metric-record-rerender` items present in the queue — owner picks
+`skip` / `append-update` / `recompute-baselines-forward`. Per
 ENGINE_DOCTRINE §3.6 spirit: no silent magic — every apply leaves an
 inline `<!-- from_lens: ... -->` comment + session log entry; owner
 sees the trail on the next interactive resolve session.

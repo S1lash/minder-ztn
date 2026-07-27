@@ -213,13 +213,30 @@ Layers currently qualifying:
   Stage 3 validator; `/ztn:lint` A.2 is the backstop. This is the first
   qualifying layer that repairs structural note anatomy rather than
   normalising a metadata field — hence the explicit property write-up.
+- **Metric-day re-render resolution** — `process_metric_day.run` on a
+  re-collected metric-day source whose content-hash drifted from the
+  existing record. Three-property check: (1) deterministic — the choice is
+  a pure comparison of real-metric counts (richer-or-equal → absorb +
+  `recompute_baselines_forward`; poorer/empty → keep existing); (2)
+  conservative-safe — good data is never overwritten by a degraded
+  re-collect, and the absorbed alternative is the device's own
+  authoritative refresh, so both branches are no-loss; (3)
+  low-per-decision-value — a metric-day record is a deterministic
+  projection of device data with no owner edits to protect, so surfacing
+  "should your recovered biometric data count?" gives the owner nothing to
+  decide. This is why metric-day re-render qualifies where general content
+  drift does not (below): the resolution needs no judgment about meaning,
+  only a count. Backstop: none needed — a poorer re-collect is simply kept,
+  never lost.
 
 Any new layer added to the engine MUST be tested against the three
 properties before claiming the exception. If even one property fails,
 the universal «surface, don't decide silently» rule applies.
-**Threading, dedup, drift detection, principle promotion, people
-identity, content classification** — all of these involve judgment
-and are explicitly NOT covered by the exception.
+**Threading, dedup, general content-drift detection, principle promotion,
+people identity, content classification** — all of these involve judgment
+and are explicitly NOT covered by the exception. (Metric-day re-render is
+the narrow, deterministic exception carved out above — it turns on a pure
+metric count, not on judging whether a change is meaningful.)
 
 Per-layer rule sets: `_system/registries/CONCEPT_NAMING.md`,
 `_system/registries/AUDIENCES.md`, `_system/docs/batch-format.md`

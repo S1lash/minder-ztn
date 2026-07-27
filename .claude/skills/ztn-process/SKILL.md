@@ -588,12 +588,16 @@ For each file in the metric-day partition, in chronological order
    - `no-op-same-content` — record already exists with matching
      `source_hash` frontmatter field. Source moved to processed; no
      record write.
-   - `rerender-clarification` — record exists with different content
-     hash. Conservative default: skip overwrite. CLARIFICATION
-     `metric-record-rerender` raised with three options (skip /
-     append-update / recompute-baselines-forward). Source moved to
-     processed; no record write until owner approves alternative via
-     `/ztn:resolve-clarifications`.
+   - `rerender-auto-absorbed` — record exists but the re-collected
+     source is richer-or-equal (more/equal real metrics). Authoritative
+     refresh (a healed device→cloud sync gap, a provider backfill): the
+     healed source is absorbed and records + baselines are recomputed
+     forward from this date. No CLARIFICATION — metric-day records are
+     deterministic device projections with no owner edits to protect.
+   - `rerender-kept-existing` — record exists and the re-collected
+     source is poorer/empty (fewer real metrics). The good record is
+     kept, never clobbered by a degraded re-collect. Source moved to
+     processed; no record write.
 3. Concepts that surface on the emitted record's frontmatter are
    **profile-specific** (from the profile's streak concept map):
    - biometric: `low_hrv_streak`, `sleep_debt`, `rhr_elevation_streak`,

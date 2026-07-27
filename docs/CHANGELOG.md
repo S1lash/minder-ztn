@@ -2,6 +2,25 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.53.0 — Recovered health data counts itself
+
+When a wearable stops syncing for a while — the watch was off your wrist, the phone
+app fell behind, a ring didn't upload — the collector records those days as empty. That
+part hasn't changed. What changed is what happens **after** you fix the sync and the
+days come back with real data.
+
+Before, each recovered day landed as a question in your review queue («this day was
+re-collected with different content — keep, update, or recompute?») — dozens of them
+after a multi-week gap, all asking the same thing. Now the engine just does the obvious
+right thing on its own: a re-collected day that carries **more** data than the empty
+placeholder is absorbed automatically — the record and your baselines rebuild from the
+real data, no questions asked. A re-collect that somehow came back **emptier** never
+overwrites a good day. Your recovered health history simply counts, the way it should.
+
+There is nothing to do and nothing to clean up. Health records are the machine's own
+read of your device — there was never a judgment call there for you to make, so the
+engine no longer pretends there is one.
+
 ## 0.52.0 — Roles removed, to be rebuilt simpler
 
 The roles subsystem is gone from the engine. The tick runner, the five `/ztn:role:*`

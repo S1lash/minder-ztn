@@ -73,7 +73,6 @@ migrating existing open items.
 | `lens-action-proposed` | `/ztn:resolve-clarifications` (`--auto-mode` Step A.3) | Smart-resolve sweep judged a lens-emitted Action Hint as `queue` (not safe to auto-apply, not constitution-vetoed); the row carries `**Smart_resolve reasoning:**` + `**Action type:**` + `**Action params:**` for owner Class C review (apply / reject / modify / defer) | Queue stays as-is; auto-apply requires owner click |
 | `lens-action-veto` | `/ztn:resolve-clarifications` (`--auto-mode` Step A.3) | Smart-resolve judged a lens-emitted Action Hint as `block-veto` against constitution / SOUL focus; row carries `**Smart_resolve reasoning:**` + `**Veto reason:**` naming the principle / SOUL element triggered. Step A.3.5 also routes here when an escalation `/ztn:check-decision` call returned `violated` at confidence ≥ 0.7 on a `queue` candidate; the row additionally carries `**Escalation-resolved by check-decision:**` annotation with the cited principle id | Owner reviews; can override per-class via `_system/state/insights-config.yaml::classes` |
 | `lens-action-apply-failed` | `/ztn:resolve-clarifications` (`--auto-mode` Step A.3) | Handler validation failed inside apply (TOCTOU drift between Step A.1 stale-check and apply — e.g. another process created the hub target, or a cited note was renamed mid-tick) | Action is queued instead; owner reviews proposal + handler error reason |
-| `metric-record-rerender` | `/ztn:process` metric-day branch | Existing `_records/biometric/<source>/<date>.md` + new content-hash differs (re-collected source) | Skip re-write; offer 3 alternatives via resolve (skip / append-update / recompute-baselines-forward). Apply via `metric_record_rerender_apply` action handler |
 | `biometric-baseline-cold-start` | `/ztn:process` metric-day branch | First metric-day file for a source processed AND `_system/state/biometric/<source>/baselines.json` does not exist | Initialize empty baselines for that source; emit informational CLARIFICATION (one-time per source, expected). Resolution: dismiss as resolved with note "expected cold-start". No further action needed |
 | `biometric-threshold-drift` | `/ztn:maintain` Tier II calibration check | ≥3 consecutive weeks observed/expected fire-rate ratio outside [0.5, 2.0] for a metric × severity pair | Skip auto-tune; surface proposal with current vs proposed σ; owner approves via resolve action `threshold_tune_proposal` (Class C) |
 | `biometric-affect-lexicon-empty` | `/ztn:maintain` Tier II Phase 2 | Lexicon overlay loaded successfully but produces zero affect tags across the entire 56-day window | Skip Phase 2; surface so owner can audit lexicon entries (may indicate non-RU/EN owner needs lexicon localisation via `affect_lexicon.local.yaml`) |
@@ -229,7 +228,7 @@ restating it.
 | Write `_system/state/batches/{id}.md` + `BATCH_LOG.md` row | `/ztn:process` only | One run = one batch; maintain reads, doesn't write |
 | Hub linkage back-write (`hub:` field on thread, bullet in hub Open Questions) | `/ztn:maintain` only | Both sides updated atomically; lint verifies |
 | Regenerate views (CONSTITUTION_INDEX, constitution-core, INDEX, HUB_INDEX, CURRENT_CONTEXT) | Scripts via `regen_all.py` / relevant skill | Views are derived — source is `0_constitution/` / knowledge notes / hubs |
-| Create `_records/<family>/<source>/<date>.md` + update `_system/state/<family>/<source>/{baselines,streaks}.json` | `/ztn:process` metric-day branch only | Per-day deterministic emission from `_sources/inbox/<source>/<date>.md`, profile-driven (`<family>` = `biometric` for garmin/oura, `activity` for activitywatch). One source file → one record; records + baselines namespaced per source. Idempotent on re-run; CLARIFICATION on content-hash drift (`metric-record-rerender`). |
+| Create `_records/<family>/<source>/<date>.md` + update `_system/state/<family>/<source>/{baselines,streaks}.json` | `/ztn:process` metric-day branch only | Per-day deterministic emission from `_sources/inbox/<source>/<date>.md`, profile-driven (`<family>` = `biometric` for garmin/oura, `activity` for activitywatch). One source file → one record; records + baselines namespaced per source. Idempotent on re-run; content-hash drift auto-resolves by richness (richer-or-equal re-collect absorbed + baselines recomputed forward; poorer/empty keeps the existing record — no CLARIFICATION). |
 | Write `_system/state/biometric/<source>/{correlations-{week}.json, calibration-history.json, last_weekly_run.txt}` + `_system/views/biometric/<source>/weekly-{week}.md` | `/ztn:maintain` only (biometric Tier II weekly worker, after-batch with weekly idempotency gate, run once per active biometric source) | Derived state — recomputable from `_records/biometric/<source>/`. Weekly-gated per source by `<source>/last_weekly_run.txt` ISO-week comparison; runs at most once per ISO week per source per first /ztn:maintain invocation. |
 | Write `_system/state/activity/<source>/{weekly-{week}.json, last_weekly_run.txt}` + `_system/views/activity/<source>/weekly-{week}.md` | `/ztn:maintain` only (activity weekly worker, Step 6.8 — symmetric to biometric, after-batch with weekly idempotency gate) | Derived state — recomputable from `_records/activity/<source>/`. Activity has no σ-correlations/calibration layer (the heavy aggregation is upstream in the collector); the worker produces a weekly Focus-Engineering rollup (median scores, category/rhythm/switching trend, top death loops). Weekly-gated per source by `<source>/last_weekly_run.txt`. |
 | Write `## Health Snapshot` block in CURRENT_CONTEXT.md | `/ztn:maintain` only (via `render_health_snapshot.py`, integrated into CURRENT_CONTEXT regen chain) | Extension of existing CURRENT_CONTEXT regen — derived view, not new content. ≤15 lines, life-connection focused. |
@@ -563,7 +562,7 @@ concepts:                  # streak / event concepts emitted by Tier I
 metric_failures: [...]     # only present when the source carried metric_failures
 source: <source>/<date>.md
 created: '<YYYY-MM-DDTHH:MM:SSZ>'
-source_hash: <16-hex>      # hash of source content; drives metric-record-rerender drift detection
+source_hash: <16-hex>      # hash of source content; drives re-render drift detection (richer-wins auto-absorb)
 ---
 ```
 
@@ -586,9 +585,12 @@ Body sections (only emit when non-empty):
 override is NOT a normal path — biometric data is owner-only by design.
 
 **Idempotency.** Re-running `/ztn:process` on an already-processed source
-is a no-op log line. Content-hash drift between source and existing
-record raises `metric-record-rerender` CLARIFICATION (default: skip;
-owner picks alternative via resolve).
+is a no-op log line. Content-hash drift between source and existing record
+is resolved autonomously by richness — a richer-or-equal re-collect (a
+healed device→cloud sync gap, a provider backfill) is absorbed and baselines
+are recomputed forward; a poorer/empty re-collect keeps the existing record.
+No owner CLARIFICATION — metric-day records are deterministic device
+projections with no owner edits to protect (doctrine §3.1).
 
 ### Activity Record (kind: activity)
 

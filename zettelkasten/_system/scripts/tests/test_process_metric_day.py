@@ -86,17 +86,104 @@ def test_idempotent_re_run_same_content_noop(tmp_path):
     assert text_before == text_after
 
 
-def test_rerender_clarification_on_hash_drift(tmp_path):
+def _make_empty_ok_source(rich_text: str) -> str:
+    """Strip the `## Detailed data` section → a status-ok source that
+    aggregates to zero metrics (the device→cloud sync-gap shape)."""
+    i = rich_text.find("\n## Detailed data")
+    body = rich_text if i < 0 else rich_text[:i] + "\n"
+    return body.replace(
+        "## Summary\n", "## Summary\n_(no summary metrics aggregated)_\n", 1
+    )
+
+
+def test_rerender_auto_absorb_on_richer_or_equal(tmp_path):
+    """A re-collected day with equal-or-greater richness is absorbed
+    automatically (no CLARIFICATION); the record updates to the new data."""
     base = _setup_base(tmp_path)
     src = _stage_source(base, "2024-01-01.md")
     pmd.run(src, base_dir=base)
-    # Re-stage with modified content
+    rec = base / "_records" / "biometric" / "garmin" / "2024-01-01.md"
+    assert "sleep_score: 82" in rec.read_text(encoding="utf-8")
+    # Re-collect with a changed value (same richness) — latest device data wins.
     src = _stage_source(base, "2024-01-01.md")
     text = src.read_text(encoding="utf-8")
-    src.write_text(text.replace("score 82", "score 71"), encoding="utf-8")
+    src.write_text(text.replace("value: 82", "value: 71"), encoding="utf-8")
     res = pmd.run(src, base_dir=base)
-    assert res.outcome == "rerender-clarification"
-    assert any(c["type"] == "metric-record-rerender" for c in res.clarifications)
+    assert res.outcome == "rerender-auto-absorbed"
+    assert not res.clarifications
+    assert "sleep_score: 71" in rec.read_text(encoding="utf-8")
+
+
+def test_rerender_empty_to_rich_auto_absorbs(tmp_path):
+    """The incident shape: an empty (device→cloud gap) day was recorded, then
+    the sync heals and the day re-collects rich → absorbed automatically."""
+    base = _setup_base(tmp_path)
+    rich = (FIXTURES / "2024-01-01.md").read_text(encoding="utf-8")
+    empty_path = base / "_sources" / "inbox" / "garmin" / "2024-01-01.md"
+    empty_path.write_text(_make_empty_ok_source(rich), encoding="utf-8")
+    pmd.run(empty_path, base_dir=base)
+    rec = base / "_records" / "biometric" / "garmin" / "2024-01-01.md"
+    assert "no summary metrics aggregated" in rec.read_text(encoding="utf-8")
+    # Sync heals — re-collect the rich source.
+    src = _stage_source(base, "2024-01-01.md")
+    res = pmd.run(src, base_dir=base)
+    assert res.outcome == "rerender-auto-absorbed"
+    text = rec.read_text(encoding="utf-8")
+    assert "no summary metrics aggregated" not in text
+    assert "sleep_h: 7.05" in text
+
+
+def test_rerender_keeps_existing_on_poorer_recollect(tmp_path):
+    """A re-collect that came back poorer/empty must NOT clobber a good record."""
+    base = _setup_base(tmp_path)
+    src = _stage_source(base, "2024-01-01.md")
+    pmd.run(src, base_dir=base)
+    rec = base / "_records" / "biometric" / "garmin" / "2024-01-01.md"
+    good = rec.read_text(encoding="utf-8")
+    assert "sleep_h: 7.05" in good
+    # Re-collect empty (device stopped syncing again) — must not overwrite.
+    empty_path = base / "_sources" / "inbox" / "garmin" / "2024-01-01.md"
+    empty_path.write_text(
+        _make_empty_ok_source((FIXTURES / "2024-01-01.md").read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    res = pmd.run(empty_path, base_dir=base)
+    assert res.outcome == "rerender-kept-existing"
+    assert not res.clarifications
+    assert rec.read_text(encoding="utf-8") == good  # unchanged
+
+
+def test_bulk_rerender_auto_absorb_no_inbox_collision(tmp_path):
+    """A multi-day bulk re-collect in ONE batch — the real healed-sync-gap
+    scenario. Auto-absorb replays baselines forward from inside run(); that
+    replay must NOT round-trip through the shared inbox, or it clobbers the
+    still-pending days (silent data loss) and crashes the batch. Every day's
+    record must reflect its OWN re-collected value, with no duplicate baseline
+    entries."""
+    base = _setup_base(tmp_path)
+    days = {"2024-01-01": "11", "2024-01-02": "22", "2024-01-03": "33"}
+    # First pass: three ordinary rich days.
+    for iso in days:
+        src = _stage_source(base, "2024-01-01.md", target_name=f"{iso}.md")
+        src.write_text(src.read_text(encoding="utf-8").replace("'2024-01-01'", f"'{iso}'"), encoding="utf-8")
+        pmd.run(src, base_dir=base)
+    # Second pass: re-collect all three with a changed score, in one batch.
+    staged = []
+    for iso, val in days.items():
+        src = _stage_source(base, "2024-01-01.md", target_name=f"{iso}.md")
+        text = src.read_text(encoding="utf-8").replace("'2024-01-01'", f"'{iso}'").replace("value: 82", f"value: {val}")
+        src.write_text(text, encoding="utf-8")
+        staged.append(src)
+    results = pmd.run_batch(sorted(staged), base_dir=base)  # must not raise
+    assert all(r.outcome == "rerender-auto-absorbed" for r in results)
+    for iso, val in days.items():
+        rec = (base / "_records" / "biometric" / "garmin" / f"{iso}.md").read_text(encoding="utf-8")
+        assert f"sleep_score: {val}" in rec, f"{iso} did not absorb its own re-collected value"
+    import json
+    bl = json.loads((base / "_system" / "state" / "biometric" / "garmin" / "baselines.json").read_text(encoding="utf-8"))
+    dates = [v["date"] for v in bl["metrics"]["sleep_score"]["values"]]
+    assert len(dates) == len(set(dates)), "duplicate baseline dates after bulk re-collect"
+    assert set(dates) == set(days), dates
 
 
 def test_categorical_event_detection(tmp_path):
@@ -179,6 +266,30 @@ def test_batch_manifest_emission(tmp_path):
     assert entry["origin"] == "personal"
     assert "checksum_sha256" in entry
     assert entry["section_extras"]["date"] == "2024-01-01"
+
+
+def test_batch_manifest_auto_absorb_goes_to_updated(tmp_path):
+    """An auto-absorbed re-render heals an existing record → it must land in the
+    manifest's `records.updated` (not `created`), so a downstream consumer keyed
+    on the manifest sees the heal (ENGINE_DOCTRINE §3.8)."""
+    base = _setup_base(tmp_path)
+    src = _stage_source(base, "2024-01-01.md")
+    pmd.run_batch([src], base_dir=base, batch_id="20240101-120000")
+    # Re-collect the same day with a changed value in a second batch.
+    src = _stage_source(base, "2024-01-01.md")
+    src.write_text(src.read_text(encoding="utf-8").replace("value: 82", "value: 71"), encoding="utf-8")
+    results = pmd.run_batch([src], base_dir=base, batch_id="20240101-130000")
+    assert results[0].outcome == "rerender-auto-absorbed"
+    import json
+    m = json.loads((base / "_system" / "state" / "batches" / "20240101-130000.json").read_text(encoding="utf-8"))
+    assert len(m["records"]["created"]) == 0, "a heal is an update, not a creation"
+    updated = m["records"]["updated"]
+    assert len(updated) == 1
+    assert updated[0]["id"] == "2024-01-01"
+    assert updated[0]["primary_type"] == "biometric"
+    assert "checksum_sha256" in updated[0]
+    # The processed source is tracked too.
+    assert any(s["source_id"] == "2024-01-01" for s in m["sources_processed"])
 
 
 def test_append_update_to_record(tmp_path):

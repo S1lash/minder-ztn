@@ -30,6 +30,7 @@ import datetime as dt
 import hashlib
 import json
 import shutil
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Optional
@@ -47,8 +48,8 @@ from metric_day_profiles import MetricDayProfile
 class ProcessResult:
     source_path: str
     outcome: str            # 'emitted' | 'skipped-failure-stub' | 'skipped-no-data' |
-                            # 'rerender-clarification' | 'no-op-already-processed' |
-                            # 'no-op-same-content'
+                            # 'rerender-auto-absorbed' | 'rerender-kept-existing' |
+                            # 'no-op-already-processed' | 'no-op-same-content'
     record_path: Optional[str] = None
     deviations: list[Deviation] = field(default_factory=list)
     streak_events: list[StreakEvent] = field(default_factory=list)
@@ -335,8 +336,12 @@ def run(
     """Process one metric-day source file.
 
     Idempotent on source already in processed/ AND record content
-    matching. Re-collected sources with hash drift surface a
-    `metric-record-rerender` CLARIFICATION (default: skip).
+    matching. A re-collected source whose content drifted from the
+    existing record is resolved autonomously by richness: richer-or-equal
+    data is absorbed (record + baselines recomputed forward); a poorer/
+    empty re-collect keeps the existing record. No owner CLARIFICATION —
+    metric-day records are deterministic device projections with no owner
+    edits to protect (doctrine §3.1 autonomous-resolution).
     """
     src = Path(source_path).resolve()
     profile = profiles.for_source(source_id)
@@ -366,7 +371,6 @@ def run(
 
     # Pre-check 2: existing record content-hash drift
     record_path = paths.records_dir / f"{date}.md"
-    rerender_clarification: Optional[dict[str, Any]] = None
     if record_path.exists():
         existing = record_path.read_text(encoding="utf-8")
         # Compare against a hash of the source-derived content rather
@@ -382,32 +386,72 @@ def run(
                 fm = yaml.safe_load(existing[4:end]) or {}
                 prior_hash = fm.get("source_hash")
         if prior_hash and prior_hash != src_hash:
-            rerender_clarification = {
-                "type": "metric-record-rerender",
-                "subject": f"{profile.family_dir}/{source_id}/{date}",
-                "source": source_id,
-                "context": (
-                    f"Source {source_id}/{src.name} re-collected with different "
-                    f"content; existing record hash {prior_hash[:8]}… new {src_hash[:8]}…. "
-                    "Conservative default: skip overwrite. Resolve options: "
-                    "skip / append-update / recompute-baselines-forward."
-                ),
-                "default": "skip",
-            }
+            # A re-collected metric-day source differs from the record we built
+            # before. Metric-day records are deterministic projections of device
+            # data — there are no owner edits to protect — so the resolution is
+            # not the owner's to make: it is a pure function of which version
+            # carries more data. RICHER-OR-EQUAL new data is an authoritative
+            # refresh (a device→cloud sync gap healed, a provider backfill) and
+            # is absorbed automatically; POORER new data (an empty re-collect)
+            # must never clobber a good record, so the existing record is kept.
+            # This makes a manually-fixed data sync count on the very next
+            # process tick with no owner CLARIFICATION — qualifying for the
+            # doctrine §3.1 autonomous-resolution exception: deterministic
+            # (richness is a pure count), conservative-safe (either a richer
+            # refresh or a no-loss keep — good data is never overwritten by
+            # poorer), and low per-decision value (the owner cannot meaningfully
+            # choose against counting their own recovered data).
+            new_richness = len(parsed["metrics"])
+            existing_kn = _parse_record(existing).get("key_numbers") or {}
+            existing_richness = sum(1 for v in existing_kn.values() if v is not None)
+            if new_richness == 0 or new_richness < existing_richness:
+                # Poorer/empty re-collect — keep the existing record; only move
+                # the source to processed so the inbox stays clean.
+                log = (
+                    f"{created_iso} metric-day rerender-kept-existing "
+                    f"source={source_id}/{src.name} "
+                    f"new_richness={new_richness} existing_richness={existing_richness} "
+                    f"prior_hash={prior_hash[:8]} new_hash={src_hash[:8]}"
+                )
+                if not dry_run:
+                    _append_log(paths.log_path, log)
+                    _move_to_processed(src, paths.processed_dir)
+                return ProcessResult(
+                    source_path=str(src),
+                    outcome="rerender-kept-existing",
+                    record_path=str(record_path),
+                    log_lines=[log],
+                )
+            # Richer-or-equal (and non-empty): absorb automatically. Move the
+            # healed source into processed, then recompute baselines/streaks +
+            # re-emit records from this date forward off the healed source
+            # (recompute deletes each record before replay, so no drift recursion).
             log = (
-                f"{created_iso} metric-day rerender-clarification "
-                f"source={source_id}/{src.name} prior_hash={prior_hash[:8]} "
-                f"new_hash={src_hash[:8]}"
+                f"{created_iso} metric-day rerender-auto-absorbed "
+                f"source={source_id}/{src.name} "
+                f"new_richness={new_richness} existing_richness={existing_richness} "
+                f"prior_hash={prior_hash[:8]} new_hash={src_hash[:8]}"
             )
+            absorbed_entry: Optional[dict[str, Any]] = None
             if not dry_run:
                 _append_log(paths.log_path, log)
-                _append_clarification(paths.clarifications_path, rerender_clarification)
                 _move_to_processed(src, paths.processed_dir)
+                summary = recompute_baselines_forward(
+                    paths.base, from_date=date, source_id=source_id
+                )
+                # Lift this day's rebuilt record into the batch manifest as an
+                # UPDATE (ENGINE_DOCTRINE §3.8) — the replay of later days is
+                # ignored here; each drifted day carries its own entry.
+                for r in summary.get("results", []):
+                    if r.manifest_entry and r.manifest_entry.get("id") == date:
+                        absorbed_entry = r.manifest_entry
+                        break
             return ProcessResult(
                 source_path=str(src),
-                outcome="rerender-clarification",
-                clarifications=[rerender_clarification],
+                outcome="rerender-auto-absorbed",
+                record_path=str(record_path),
                 log_lines=[log],
+                manifest_entry=absorbed_entry,
             )
         elif prior_hash == src_hash:
             log = f"{created_iso} metric-day no-op-same-content source={source_id}/{src.name}"
@@ -683,7 +727,17 @@ def write_batch_manifest(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    biometric_entries = [r.manifest_entry for r in results if r.manifest_entry]
+    # A fresh emit is a `created` record; an auto-absorbed re-render heals a
+    # record that already existed → `updated` (ENGINE_DOCTRINE §3.8). Both
+    # outcomes moved a source to processed, so both count as processed sources.
+    created_entries = [
+        r.manifest_entry for r in results
+        if r.manifest_entry and r.outcome == "emitted"
+    ]
+    updated_entries = [
+        r.manifest_entry for r in results
+        if r.manifest_entry and r.outcome == "rerender-auto-absorbed"
+    ]
     sources_processed_entries = [
         {
             "path": f"_sources/processed/{source_id}/{Path(r.source_path).name}",
@@ -691,13 +745,17 @@ def write_batch_manifest(
             "source_id": Path(r.source_path).stem,
         }
         for r in results
-        if r.outcome in {"emitted", "skipped-failure-stub", "no-op-same-content"}
+        if r.outcome in {
+            "emitted", "skipped-failure-stub", "no-op-same-content",
+            "rerender-auto-absorbed", "rerender-kept-existing",
+        }
     ]
 
     if output_path.exists():
         manifest = json.loads(output_path.read_text(encoding="utf-8"))
         manifest.setdefault("records", {"created": [], "updated": []})
-        manifest["records"].setdefault("created", []).extend(biometric_entries)
+        manifest["records"].setdefault("created", []).extend(created_entries)
+        manifest["records"].setdefault("updated", []).extend(updated_entries)
         manifest.setdefault("sources_processed", []).extend(sources_processed_entries)
     else:
         manifest = {
@@ -706,7 +764,7 @@ def write_batch_manifest(
             "format_version": "2.0",
             "processor": "ztn:process",
             "sources_processed": sources_processed_entries,
-            "records": {"created": biometric_entries, "updated": []},
+            "records": {"created": created_entries, "updated": updated_entries},
             "knowledge_notes": {"created": [], "updated": []},
             "hubs": {"created": [], "updated": []},
             "concepts": {"upserts": []},
@@ -718,7 +776,7 @@ def write_batch_manifest(
             "threads_resolved": [],
             "stats": {
                 "files_processed": len(results),
-                f"{profile.name}_records_emitted": len(biometric_entries),
+                f"{profile.name}_records_emitted": len(created_entries) + len(updated_entries),
             },
             "section_extras": {
                 f"{profile.name}_pipeline": {
@@ -869,36 +927,47 @@ def recompute_baselines_forward(
     if lwr.exists():
         lwr.unlink()
 
-    # 4) Re-process existing records from from_date forward by reading
-    #    the upstream processed source files.
+    # 4) Re-process existing records from from_date forward by replaying the
+    #    upstream processed source files through run(). Each source is staged in
+    #    an ISOLATED temp dir — never the live inbox. This replay can run from
+    #    inside run()'s auto-absorb branch while a batch still has other days
+    #    pending in the inbox; routing it through the shared inbox would
+    #    overwrite those pending files (silent data loss) and then crash the
+    #    batch with FileNotFoundError. run() consumes the staged source and
+    #    moves it (+ its raw sibling, which `_move_to_processed` finds under
+    #    `<src.parent>/raw`) back to processed.
     records_replayed = 0
+    replay_results: list[ProcessResult] = []
     sources_dir = paths.processed_dir
-    for src in sorted(sources_dir.glob("*.md")):
-        if src.stem < from_date:
-            continue
-        # Move source temporarily back to inbox to let run() process it
-        inbox_target = paths.inbox_dir / src.name
-        paths.inbox_dir.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(src), str(inbox_target))
-        # Move the raw payload sibling back too — match any extension
-        # (garmin/oura ship `.json`, activitywatch `.json.gz`), mirroring
-        # `_move_to_processed`.
-        raw_dir = sources_dir / "raw"
-        if raw_dir.is_dir():
-            for raw_src in sorted(raw_dir.glob(f"{src.stem}.json*")):
-                (paths.inbox_dir / "raw").mkdir(parents=True, exist_ok=True)
-                shutil.move(str(raw_src), str(paths.inbox_dir / "raw" / raw_src.name))
-        # Delete existing record so run() does not detect content drift
-        rec = paths.records_dir / f"{src.stem}.md"
-        if rec.exists():
-            rec.unlink()
-        run(inbox_target, base_dir=base_dir, source_id=source_id)
-        records_replayed += 1
+    staging = Path(tempfile.mkdtemp(prefix=f"ztn-recompute-{source_id}-"))
+    try:
+        for src in sorted(sources_dir.glob("*.md")):
+            if src.stem < from_date:
+                continue
+            staged = staging / src.name
+            shutil.move(str(src), str(staged))
+            raw_dir = sources_dir / "raw"
+            if raw_dir.is_dir():
+                for raw_src in sorted(raw_dir.glob(f"{src.stem}.json*")):
+                    (staging / "raw").mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(raw_src), str(staging / "raw" / raw_src.name))
+            # Delete existing record so run() does not detect content drift.
+            rec = paths.records_dir / f"{src.stem}.md"
+            if rec.exists():
+                rec.unlink()
+            replay_results.append(run(staged, base_dir=base_dir, source_id=source_id))
+            records_replayed += 1
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
     return {
         "from_date": from_date,
         "metrics_truncated": truncated_metrics,
         "records_replayed": records_replayed,
+        # Per-day ProcessResults of the replay — the auto-absorb caller lifts the
+        # manifest_entry for the day it is absorbing so the heal reaches the
+        # batch manifest (ENGINE_DOCTRINE §3.8). Other callers ignore this key.
+        "results": replay_results,
     }
 
 
