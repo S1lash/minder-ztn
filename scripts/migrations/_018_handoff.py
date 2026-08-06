@@ -122,11 +122,20 @@ def handoff_text(roles: list, base_name: str, tools_md: bool) -> str:
         "прежней ей соответствия не было. Угадывать, куда роли можно писать, — ровно та\n"
         "догадка, которую нельзя делать за тебя.\n")
     out.append(
-        "**Что делать.** Открой `/ztn:role:add` и расскажи своими словами, что должна\n"
-        "делать роль — можно прямо процитировать блок ниже. Консьерж сам покопается в\n"
-        "твоих настоящих заметках, покажет, что роль нашла бы на прошлой неделе,\n"
-        "поспорит за более сильную версию и настроит границу записи вместе с тобой.\n"
-        "Это одна беседа на роль, и она даёт лучший результат, чем механический перенос.\n")
+        "**Что делать — одна команда на роль:**\n\n"
+        "```\n/ztn:role:add --from-previous {id}\n```\n\n"
+        "Рядом с каждой ролью лежит план переноса. Расписание, имя и статус переезжают\n"
+        "как есть. Куда роль может писать и какими секретами пользуется — предложено с\n"
+        "обоснованием, тебе остаётся подтвердить или поправить. Твой текст задания\n"
+        "консьерж **перепишет** в текущий вид, а не скопирует: он написан в словаре,\n"
+        "которого больше нет, и дословный перенос заставил бы роль импровизировать.\n"
+        "Спросит он только то, чего не может решить сам.\n")
+    out.append(
+        "**Секреты переносить не надо — они уже перенеслись.** Хранилище то же самое,\n"
+        "шифрование то же; переименовалась только переменная с ключом. Перенеси её\n"
+        "ЗНАЧЕНИЕ в настройках своей рутины: `ZTN_SECRET_MASTER_KEY` → `ZTN_ROLES_KEY`.\n"
+        "Если этого не сделать, роль упадёт в 07:00 с ошибкой доступа, похожей на\n"
+        "испорченный токен.\n")
     out.append("---\n")
 
     for r in roles:
@@ -224,11 +233,16 @@ def main(argv: list) -> int:
         "  Finish the update first, then, in the same conversation:",
         "",
         f"    1. Read {rel} and say back, in one line per role, what each was for.",
-        "    2. Offer to re-create them now — one at a time, /ztn:role:add per role,",
-        "       seeding the conversation with that role's quoted text. The owner",
-        "       answers as they would for a new role; nothing is auto-filled, and",
-        "       `writes:` in particular is decided with them, never inferred from",
-        "       the parked config.",
+        "    2. Offer to carry them across NOW, one at a time:",
+        "",
+        "           /ztn:role:add --from-previous {id}",
+        "",
+        "       Each has a plan beside it — `{id}.plan.json` — with what carries",
+        "       over untouched, what is proposed with its reasoning, the old",
+        "       assignment as raw material to REWRITE rather than paste, and the",
+        "       short list only the owner can settle. The concierge closes what it",
+        "       honestly can and asks about the rest. Its three gates still apply:",
+        "       a carried-across role earns no shortcut past any of them.",
         "    3. The owner may decline, or take one and leave the rest. That is a",
         "       complete outcome — the parked files are not going anywhere.",
         "    4. After each one, and once at the end, run:",

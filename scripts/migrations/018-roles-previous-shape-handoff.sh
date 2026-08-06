@@ -79,6 +79,13 @@ fi
 
 python3 "$SCRIPT_DIR/_018_handoff.py" "$BASE"
 
+# The credential store is the SAME file, shape and primitive in both shapes —
+# only the environment variable holding the key was renamed. So the names are
+# readable here without any key at all, and they go into each conversion plan.
+STORE="$BASE/_system/state/secrets.enc.json"
+NAMES="$(python3 -c 'import sys,json,pathlib; p=pathlib.Path(sys.argv[1]); print(json.dumps(sorted(json.loads(p.read_text(encoding="utf-8"))) if p.is_file() else []))' "$STORE" 2>/dev/null || echo "[]")"
+python3 "$SCRIPT_DIR/_018_plan.py" "$BASE/_system/roles/_previous" "$NAMES"
+
 # The migration verifies its OWN work rather than reporting intent. A run that
 # half-succeeded and said nothing is the failure mode this whole migration
 # exists to prevent — repeating it here would be its own joke.

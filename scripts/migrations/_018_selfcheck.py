@@ -127,6 +127,19 @@ def main(argv: list) -> int:
         if handoff.is_file():
             r.check(d.name in text or f"/{d.name}/" in text,
                     f"{d.name}: named in the hand-off")
+        # The plan is what makes `--from-previous` possible. Without it the
+        # concierge has nothing to pre-fill from and the owner is back to
+        # re-interviewing themselves about a role they already designed.
+        plan = parked_root / f"{d.name}.plan.json"
+        if r.check(plan.is_file(), f"{d.name}: has a conversion plan"):
+            try:
+                payload = json.loads(plan.read_text(encoding="utf-8"))
+                r.check(bool(payload.get("certain", {}).get("cadence")),
+                        f"{d.name}: the plan carries a schedule")
+                r.check(bool(payload.get("proposed", {}).get("writes")),
+                        f"{d.name}: the plan proposes where it may write")
+            except ValueError:
+                r.check(False, f"{d.name}: the plan is valid JSON")
 
     # --- 3. nothing previous-shape was left behind in the live path ----------
     live = [d for d in roles_root.iterdir()
@@ -177,9 +190,20 @@ def main(argv: list) -> int:
             payload = json.loads(proc.stdout or "{}")
         except ValueError:
             payload = {}
-        r.check(payload.get("ok") is True,
-                "every re-created role validates",
-                "; ".join(str(f) for f in (payload.get("findings") or []))[:200])
+        findings = payload.get("findings") or []
+        # A missing key is not a migration defect: it lives in the scheduler's
+        # environment, so it is absent from any ordinary shell — including this
+        # one. Failing on it would report the expected state as broken and bury
+        # the findings that do matter underneath.
+        real = [f for f in findings
+                if "ZTN_ROLES_KEY is not set" not in str(f.get("issue", f))]
+        skipped = len(findings) - len(real)
+        r.check(not real, "every re-created role validates",
+                "; ".join(str(f) for f in real)[:200])
+        if skipped:
+            r.note("credential VALUES were not checked — ZTN_ROLES_KEY is not in "
+                   "this shell, which is normal outside the scheduler. Names were "
+                   "still verified against the store.")
         for name in recreated:
             if name in {d.name for d in parked}:
                 r.note(f"{name}: re-created — its previous-shape original is parked "

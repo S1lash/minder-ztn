@@ -132,12 +132,19 @@ Then exit `partial` immediately.
    make the tree current. Checking earlier would miss the store on the first
    tick after a credentialed role is created — the one tick where getting it
    right matters most.
-   - **Any exit code is fine — do NOT run failure-handling on this step.** It
-     is advisory. Exit 3 means the store still cannot be opened, and the tick
+   - **Exit 0 and exit 3 are both fine — do NOT run failure-handling for
+     either.** Exit 3 means the store still cannot be opened, and the tick
      already has a path for that: `/ztn:roles` reports
      `role-secrets-unavailable`, skips only the roles that declare a
-     credential, and runs the rest. Aborting here would turn a partial
+     credential, and runs the rest. Aborting there would turn a partial
      degradation into a total one.
+   - **Any OTHER exit code is a real problem and is reported.** Exit 2 is «more
+     than one ZTN base in this repository»; a missing script exits 127 and means
+     the clone is short a file — a half-applied update. Neither is advisory, and
+     neither produces a signal anywhere else, so run failure-handling with the
+     step's own stderr as the cause and exit `partial`. A blanket amnesty here
+     was the only one in the whole prompt family, and it swallowed exactly the
+     two conditions nothing downstream would catch.
 
 4. `/ztn:roles` — exactly ONE invocation. Runs every due role sequentially:
    checks each one's diff, logs its run, and commits that role's own paths
@@ -154,7 +161,11 @@ Then exit `partial` immediately.
      and exit `partial`. Do not substitute a general-purpose agent: a foreign
      system prompt wrapped around the run frame is a different creature with the
      same shell.
-   - **If the skill reports `foreign-commit`, STOP — do not run step 5.** It
+   - **If the skill reports `foreign-commit`, do not run step 5 yourself.**
+    Failure-handling below still runs, and it calls `finalize-tick.sh` on your
+    behalf — that is expected, not a contradiction of this line. It will refuse
+    to deliver and fall back to a local-only note, which is the correct outcome:
+    the refusal is the protection working. It
      found a commit ahead of `origin/main` that it did not author, which is
      either the owner's own manual work or a role forging the `[scheduled]`
      marker to smuggle its own commit into the delivered one. The tick cannot
@@ -249,8 +260,16 @@ Then exit `partial` immediately.
 
 ## Output
 
-Single-line status: `success` / `partial` / `sync-blocked`. If a commit
-landed, append the SHA. No prose.
+Single-line status. If a commit landed, append the SHA. No prose.
+
+`success` · `partial` · `sync-blocked` — plus, passed through verbatim when the
+skill returns one, `no-roles-due`, `no-roles-configured` and `role-paused`.
+
+**Those last three are NOT failures and must not ship a failure note.** A friend
+with a fresh install and no roles yet gets `no-roles-configured` every single
+night; treating it as an error would mean a nightly failure note forever, about
+nothing. Report the status and stop. `install-broken` IS a failure — it exits
+non-zero and the generic rule below already covers it.
 
 A `foreign-commit` finding from step 4 exits `partial` — the repository is left
 untouched for the owner, and the next tick runs fresh once they have resolved

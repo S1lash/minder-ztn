@@ -88,7 +88,12 @@ SPEC="$(python3 "$SCRIPT_DIR/_pick_crypto_spec.py" "$BASE/_system/scripts/requir
 
 echo "ensure-roles-deps: a credential store exists and cryptography is missing; installing $SPEC"
 PIP_RC=0
-PIP_OUT="$(python3 -m pip install --disable-pip-version-check "$SPEC" 2>&1)" || PIP_RC=$?
+# Bounded, because this is the one place the tick reaches the network with
+# nobody watching. Without a timeout a slow or hanging index stalls the whole
+# 07:00 run; `--only-binary` keeps it from compiling a C extension on a machine
+# that may have no toolchain, which would hang far longer than any download.
+PIP_OUT="$(python3 -m pip install --disable-pip-version-check \
+    --timeout 30 --retries 2 --only-binary :all: "$SPEC" 2>&1)" || PIP_RC=$?
 
 if [ "$PIP_RC" -ne 0 ]; then
     case "$PIP_OUT" in

@@ -190,11 +190,59 @@ module rather than a copy of it:
 
 ## Arguments
 
-`$ARGUMENTS` supports one flag:
+`$ARGUMENTS` supports two flags:
 
 - `--dry-run` — the full conversation, probe, preview and generation, with no
   writes and no trial run. Prints the role that would be created. Use it to
   show the owner a shape they can react to before anything lands on disk.
+- `--from-previous {id}` — carry a role built on the previous shape across.
+  Same conversation, same gates, but most of it is already answered. See below.
+
+---
+
+## `--from-previous` — carrying a previous-shape role across
+
+Migration 018 parked the owner's previous-shape roles and wrote one plan per
+role at `_system/roles/_previous/{id}.plan.json`. Read that plan and let it do
+the work it can, so the owner is asked about what genuinely needs them and
+nothing else.
+
+**Read the plan first.** It has four parts and they are not interchangeable:
+
+| | What to do with it |
+|---|---|
+| `certain` | Take it. `name`, `cadence`, `status` mean the same in both shapes — confirm in one sentence, do not re-interview |
+| `proposed` | **Show it and get a yes.** `writes` and `secrets` are proposals with reasoning attached; say the reasoning out loud, in their words, and let them correct it. A `writes:` the owner never looked at is the failure this whole design guards against |
+| `seed` | **Raw material to REWRITE, never text to paste.** It is written in a vocabulary that no longer exists — parts, ledger ops, staged acts. Read what they WANTED and write that in the current shape, in their register. A sentence that only makes sense under the old machinery gets dropped, and you say which |
+| `must_ask` | Ask each one. It is short on purpose — a long interview is one the owner stops reading, which is exactly how an unexamined `writes:` gets accepted |
+
+**Credentials carry across untouched.** The store is the same file, the same
+shape and the same encryption in both; only the environment variable holding
+the key was renamed. So the owner re-enters nothing — but they must move the
+key's VALUE in their scheduler routine's env config from `ZTN_SECRET_MASTER_KEY`
+to `ZTN_ROLES_KEY`. Say that plainly and early: if they miss it, the role fails
+at 07:00 with a credential error that looks like a broken token.
+
+**Steps that change:**
+
+- **Step 1** is «here is what you had, in your own words» rather than «what do
+  you want». Read them the assignment from the plan's seed and ask what should
+  change. Most owners will say «ничего» — take that answer.
+- **Step 2's probe still runs.** Do not skip it because the role existed
+  before: the previous role may have been designed against a base that has since
+  changed, and the probe is what shows them what it would find *now*.
+- **Step 3's preview still runs**, for the same reason. This is the step that
+  catches «this ran weekly and found nothing for two months».
+- **Steps 4–8 collapse** into confirming the plan's `proposed` and asking the
+  `must_ask` items.
+- **Steps 9, 10 and the three gates are UNCHANGED.** A carried-across role is
+  written, validated, credential-proven and trial-run exactly like a new one.
+  Nothing about its origin earns it a shortcut past a gate.
+
+**Do not delete the parked original**, whatever happens. It is the owner's
+record and the migration's self-check counts on it being there. When the new
+role passes its gates, say the original is still parked and theirs to remove
+whenever they like.
 
 ---
 

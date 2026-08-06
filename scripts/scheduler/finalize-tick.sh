@@ -100,8 +100,12 @@ if [ -f "$DISOWNED_SHAS_FILE" ]; then
   if [ -n "$DISOWNED_HIT" ]; then
     echo "finalize-tick: refusing to deliver — commit $DISOWNED_HIT was disowned by an earlier tick" >&2
     echo "  It is ahead of origin/main and no tick claims authorship of it." >&2
-    echo "  Nothing is rewritten here. Inspect it, then remove it from" >&2
-    echo "  $DISOWNED_SHAS_FILE once resolved." >&2
+    echo "  Nothing is rewritten here, and NO pipeline can deliver while this" >&2
+    echo "  line stands — every tick reads this list, not just roles." >&2
+    echo "  Inspect the commit, then clear it:" >&2
+    echo "" >&2
+    echo "      git show $DISOWNED_HIT" >&2
+    echo "      grep -v $DISOWNED_HIT $DISOWNED_SHAS_FILE > /tmp/ds && mv /tmp/ds $DISOWNED_SHAS_FILE" >&2
     exit 2
   fi
 fi
