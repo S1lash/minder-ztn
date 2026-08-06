@@ -239,10 +239,22 @@ at 07:00 with a credential error that looks like a broken token.
   written, validated, credential-proven and trial-run exactly like a new one.
   Nothing about its origin earns it a shortcut past a gate.
 
-**Do not delete the parked original**, whatever happens. It is the owner's
-record and the migration's self-check counts on it being there. When the new
-role passes its gates, say the original is still parked and theirs to remove
-whenever they like.
+**Do not delete the parked original mid-flight**, whatever happens. It is the
+owner's record and the self-check counts on it being there.
+
+**When the LAST one is carried across, offer to clear the residue.** Run the
+self-check; if it reports every parked role live again, say so and offer the one
+command it prints:
+
+```bash
+python3 scripts/migrations/_018_selfcheck.py
+git rm -r --quiet zettelkasten/_system/roles/_previous
+```
+
+Offer it, do not do it silently — it is their data. But do offer it plainly:
+a directory nobody reads and nobody remembers the purpose of is exactly what
+a base accumulates when every step is individually reasonable. If they would
+rather keep it, that is a complete answer and you say nothing more about it.
 
 ---
 

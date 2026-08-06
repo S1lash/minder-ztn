@@ -210,7 +210,30 @@ def main(argv: list) -> int:
                        f"under {PARKED}/, so nothing was overwritten")
     else:
         r.note("No role has been re-created yet. Nothing is wrong: open "
-               "/ztn:role:add and use the hand-off. Re-run this check afterwards.")
+               "/ztn:role:add --from-previous <id> and re-run this check after.")
+
+    # --- 7. is anything still owed, or is the parked tree now pure residue? ---
+    parked_ids = {d.name for d in parked}
+    carried = parked_ids & set(recreated)
+    outstanding = sorted(parked_ids - carried)
+    if outstanding:
+        r.note(f"still to carry across: {', '.join(outstanding)} — "
+               f"/ztn:role:add --from-previous <id>")
+    elif parked_ids:
+        # Everything the owner had is live again. What is left under `_previous/`
+        # is a copy of superseded files, and leaving it is how a base silently
+        # accumulates directories nobody dares touch because nobody remembers
+        # what they were. Say plainly that it is finished with, and how to say
+        # goodbye to it — but never do it here: it is the owner's data, and a
+        # migration deleting it on their behalf is exactly the move that makes
+        # a person stop trusting migrations.
+        r.lines.append("")
+        r.lines.append(f"  Every parked role is live again ({', '.join(sorted(carried))}).")
+        r.lines.append(f"  `{parked_root.relative_to(repo)}/` is now residue — nothing reads it.")
+        r.lines.append("  Remove it whenever you like:")
+        r.lines.append("")
+        r.lines.append(f"      git rm -r --quiet {parked_root.relative_to(repo)}")
+        r.lines.append("")
 
     return r.emit()
 
