@@ -263,10 +263,23 @@ re-open or re-mutate.
 
 ### 3.4 Locks and exclusivity
 
-`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens` and
-`/ztn:content` (when writing — `--maintain` / `--draft`) are mutually
+`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`,
+`/ztn:content` (when writing — `--maintain` / `--draft`) and `/ztn:roles`
+are mutually
 exclusive (cross-skill lock matrix in their SKILL.md); `/ztn:content` matters
 because its maintainer reads `CONTENT_MAP.md` while `/ztn:maintain` rewrites it.
+`/ztn:roles` holds `.roles.lock` across its whole tick because roles write into
+the base like any pipeline — without it a concurrent lint autofix is attributed
+to the running role and reverted by the guard. The reverse duty falls on the
+role: it must not invoke a pipeline skill mid-run, since each aborts on the lock
+its own runner holds. The owner-driven role skills stay out of the matrix:
+`/ztn:role:list` and `/ztn:role:ask` are read-only and take no lock;
+`/ztn:role:add` and `/ztn:role:edit` take `.roles.lock` narrowly and release it
+in a `finally`, each around its own write to `role.md` — so an owner
+conversation never holds it and never lands inside a tick. Neither wraps a
+trial run: `add`'s trial is `/ztn:roles --role {id}`, which takes the lock
+itself, and a caller still holding it would deadlock the skill against its own
+gate.
 `/ztn:bootstrap` is not in the matrix — owner ensures system idle before
 invoking it. `/ztn:capture-candidate` is fire-and-forget, no lock.
 `/ztn:agent-lens-add` does not acquire its own lock but respects
@@ -277,7 +290,8 @@ parallel owner-driven invocations of itself.
 interactive and `--auto-mode` dispatched by `/ztn:lint` Step 7.5
 inline (the lint nightly tick at 05:00 is the timer; resolve is the
 engine). Both modes take `.resolve.lock`. Interactive mode reads all
-five pipeline locks (process / maintain / lint / agent-lens / content)
+six pipeline locks (process / maintain / lint / agent-lens / content /
+roles)
 at start
 and pre-syncs via `/ztn:sync-data` (Step 0) so multi-device queues
 stay current. **`--auto-mode` exception for `.lint.lock`:** lint holds
@@ -294,7 +308,7 @@ not inside the lint tick — agent-lens production and resolve
 consumption stay in different scheduler-agent contexts on purpose,
 so the agent judging proposals in Step A.2/A.3 has not just produced
 lens body output (would be confirmation bias on its own emissions).
-All five pipeline skills read `.resolve.lock` at start and abort on
+All six pipeline skills read `.resolve.lock` at start and abort on
 it. `/ztn:sync-data` and `/ztn:save` read `.resolve.lock` and refuse
 while a resolve session is in progress; the resolve skill's Step 9.1
 releases the lock before reminding the owner to run save. Stale locks
@@ -312,6 +326,7 @@ releases the lock before reminding the owner to run save. Stale locks
 | `_system/state/PROCESSED.md` | `/ztn:process` | yes |
 | `_system/state/agent-lens-runs.jsonl` | `/ztn:agent-lens` | yes |
 | `_system/state/check-decision-runs.jsonl` | `/ztn:check-decision` (run + optional followup lines per invocation) | yes |
+| `_system/roles/{id}/log.jsonl` | `/ztn:roles` (one line per **executed** run — a role whose cadence has not elapsed writes nothing) | yes |
 | Knowledge note `## Evidence Trail` | every skill that touches the note | yes |
 
 Logs document WHAT happened and WHY. They are the engine's memory of
@@ -548,6 +563,9 @@ buffers) take the writer named here.
 | `_system/views/constitution-core.md` | `/ztn:regen-constitution` | Harness-loaded core principles |
 | `3_resources/people/PEOPLE.md` | `/ztn:bootstrap`, `/ztn:process`, `/ztn:lint` | People registry with tiers |
 | `1_projects/PROJECTS.md` | owner + `/ztn:bootstrap` (candidates) | Project registry |
+| `_system/roles/{id}/role.md` | `/ztn:role:add` (create), `/ztn:role:edit` (change) | One standing role, whole: frontmatter the engine owns, prose body in the owner's own language that the engine never parses |
+| `_system/roles/{id}/state/` | the role itself, inside a `/ztn:roles` tick | The role's memory between runs — arbitrary files it defines and maintains. Read at the start of every run, so a run that leaves them untrue corrupts the next one |
+| `_system/roles/{id}/log.jsonl` | `/ztn:roles` | One line per executed run: outcome, write count, reverted and reported-only paths, duration |
 
 Skills writing to these files do so per the schema; deviations surface
 as `process-compatibility` CLARIFICATIONS rather than silent format

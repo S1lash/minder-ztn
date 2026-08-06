@@ -41,6 +41,7 @@ CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 TARGET_RULES="$CLAUDE_HOME/rules"
 TARGET_COMMANDS="$CLAUDE_HOME/commands"
 TARGET_SKILLS="$CLAUDE_HOME/skills"
+TARGET_AGENTS="$CLAUDE_HOME/agents"
 
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_DIR="$CLAUDE_HOME/.minder-ztn-backup-$TIMESTAMP"
@@ -102,7 +103,7 @@ done
 
 # --- Symlinks ~/.claude/ -> rendered files ---
 log "creating symlinks under $CLAUDE_HOME"
-mkdir -p "$TARGET_RULES" "$TARGET_COMMANDS" "$TARGET_SKILLS"
+mkdir -p "$TARGET_RULES" "$TARGET_COMMANDS" "$TARGET_SKILLS" "$TARGET_AGENTS"
 
 # Rules: integration-managed (templated) + zettelkasten-internal (auto-loaded)
 for f in "$BUILT_RULES"/*.md; do
@@ -136,6 +137,15 @@ for skill_dir in "$SRC_SKILLS"/*/; do
   skill_name="$(basename "$skill_dir")"
   link "${skill_dir%/}" "$TARGET_SKILLS/$skill_name"
 done
+
+# Agent definitions the engine owns, by NAME — never a directory sweep, because
+# `.claude/agents/` is also where the owner drops their own agents and those are
+# not ours to link into a global home. Without this, `ztn-role` resolves only
+# when the session's CWD is inside the repo, so /ztn:role:add completes its
+# whole interview and then fails its mandatory trial run with `agent-missing`.
+if [ -f "$REPO_ROOT/.claude/agents/ztn-role.md" ]; then
+  link "$REPO_ROOT/.claude/agents/ztn-role.md" "$TARGET_AGENTS/ztn-role.md"
+fi
 
 # Repair project-level `.claude/skills/` at the repo root. Cloud Routines and
 # project-CWD sessions load skills from there, not from the user-level links

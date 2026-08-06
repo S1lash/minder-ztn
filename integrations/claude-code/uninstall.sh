@@ -2,7 +2,7 @@
 # minder-ztn — remove Claude Code integration symlinks.
 #
 # Removes only symlinks pointing into THIS repo. Untouched: any
-# unrelated entries in ~/.claude/{rules,commands,skills}, including
+# unrelated entries in ~/.claude/{rules,commands,skills,agents}, including
 # files backed up by install.sh (those live under ~/.claude/.minder-ztn-backup-*).
 
 set -euo pipefail
@@ -25,7 +25,7 @@ remove_if_points_into_repo() {
   fi
 }
 
-for d in "$CLAUDE_HOME/rules" "$CLAUDE_HOME/commands" "$CLAUDE_HOME/skills"; do
+for d in "$CLAUDE_HOME/rules" "$CLAUDE_HOME/commands" "$CLAUDE_HOME/skills" "$CLAUDE_HOME/agents"; do
   [ -d "$d" ] || continue
   for entry in "$d"/*; do
     remove_if_points_into_repo "$entry"

@@ -93,13 +93,15 @@ Daily use manual (hotkeys, graph presets, recipes):
 
 ## Run it on a schedule
 
-Three engine-shipped scheduler prompts make ZTN largely autonomous:
+Five engine-shipped scheduler prompts make ZTN largely autonomous:
 
 | Prompt | Cadence | What it does |
 |---|---|---|
 | `process-scheduled.md` | ≥ 3× per day | Ingest new transcripts |
 | `agent-lens-nightly.md` | 03:00 daily | Run due outside-view lenses |
 | `lint-nightly.md` | 05:00 daily | Invariant scans + auto-resolve safe clarifications |
+| `content-tick.md` | 06:00 Tuesdays | Keep living post drafts alive |
+| `roles-nightly.md` | 07:00 daily | Run due standing roles |
 
 You show up for the human-judgment work; the engine handles the rest.
 Setup: `docs/scheduling.md`.

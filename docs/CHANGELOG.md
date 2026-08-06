@@ -2,6 +2,93 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.54.0 — Roles are back, as standing jobs you describe in your own words
+
+A role is a job you would otherwise do by hand every week: check whether the
+board moved, see whether a topic has gone quiet in your notes, keep a document
+you actually read up to date. You describe it in plain language; it runs on a
+schedule without you, with your notes as its context and a memory of its own
+between runs.
+
+**Start one with `/ztn:role:add`.** The concierge asks what you would want to
+know without having to ask, probes your real notes to show you what the role
+would have found last week, and pushes for a stronger version when your data
+supports one. It writes the role itself — you never see a path, a schedule
+grammar or a config field. Before calling it done it validates the setup, makes
+a real call against any service the role needs, and does a trial run, so a role
+that cannot work is fixed with you in that conversation instead of failing
+silently at dawn. `/ztn:role:list` shows what you have and when each last ran,
+`/ztn:role:ask` asks a role what it knows, `/ztn:role:edit` changes or pauses
+one.
+
+**What bounds it.** A role gets the ordinary assistant toolset, so it can read
+your base, run a script, or call an API — and every run is checked afterwards
+against the paths its definition allows. Anything it touched outside them is put
+back and shown to you in the morning, with one deliberate exception: a file that
+was **already changed before that role started** is reported, never restored,
+because putting it back would erase work the role did not write. The report says
+whose it was — yours, or an earlier role's in the same run.
+
+A role also cannot be given write access to the machinery that runs it — the
+engine's own scripts, the skills, the scheduler helpers, `.gitignore` — because
+a role that can rewrite the check is not checked. And the check reads git's own
+configuration too: an ignore rule, a remote's URL, a commit hook, so a role
+cannot quietly edit what the check is allowed to see.
+
+Files it wrote inside its allowed paths are also scanned — contents and
+filenames — for every credential on your base, not only the ones that role
+declared, in raw, base64, hex and percent-encoded form, and the run line is
+redacted the same way. A match is pulled out of the
+commit, so a slip does not reach your history. Two limits stated plainly: a
+credential shorter than 12 characters is never scanned, because a short value
+would match your own prose and destroy it; and encodings are unbounded, so the
+scan raises the cost of a leak rather than making one impossible.
+
+**Notes back into your base.** A role that finds something worth remembering
+drops one plainly-written note into your inbox, and the next processing run
+folds it in like any other source — it does not edit your records or notes
+directly.
+
+**Credentials, and the one key that opens them.** A role that reaches an outside
+service reads its credential from an encrypted store that travels with your repo
+— each value encrypted on its own, none readable without a single key. That key
+lives in the environment config of your `ztn-roles` schedule and nowhere else:
+not in the repo, not in a prompt, and the credential value never enters the
+assistant's context either. `/ztn:role:add` generates the key the first time you
+need one and shows it once — keep it where you keep passwords, because a lost key
+cannot be recovered and those credentials are simply entered again. The store is
+committed deliberately: a file git ignores does not exist in a fresh cloud clone,
+so without it a role could only reach outside while your own machine happened to
+be awake. The cost, plainly — if your repo is ever exposed an attacker holds the
+ciphertext; not the key, but not nothing. `docs/scheduling.md` has the setup,
+including the one Python package a base with credentials needs;
+`docs/privacy.md` carries the whole trade.
+
+**One new schedule.** Add the `ztn-roles` tick — `roles-nightly.md`, daily at
+07:00 (`0 7 * * *`). It runs last of the overnight ticks and ahead of the
+morning processing run, so a note a role leaves is folded in the same morning.
+Worth knowing: the tick time is the floor for a role's own timing — a role set
+to fire at 14:00 never comes due at a 07:00 tick. Without this schedule your
+roles exist but never run.
+
+**If you built roles on the previous shape, this update finds them.** They were
+never deleted — but the current engine locates a role by its `role.md`, which the
+old shape never wrote, so they would simply have gone invisible: absent from
+`/ztn:role:list`, absent from every nightly run, with nothing to tell you why.
+
+The update moves each one to `_system/roles/_previous/` and writes a hand-off
+beside them that quotes back, **in your own words**, what each role was for —
+when it woke, what you told it to do, whether it ever ran. Re-create it with
+`/ztn:role:add` in one conversation.
+
+They are not converted for you, and that is deliberate. The old text speaks a
+vocabulary that no longer exists, so carried across verbatim it would tell a
+role to do things nothing implements — it would not fail, it would improvise,
+which is worse. And `writes:` — where a role may write — is the boundary the
+whole design rests on; the old shape had no equivalent to derive it from, so
+guessing it for you is the one guess that must not be made. Your old
+`TOOLS.md` is still there too, and named in the hand-off.
+
 ## 0.53.0 — Recovered health data counts itself
 
 When a wearable stops syncing for a while — the watch was off your wrist, the phone

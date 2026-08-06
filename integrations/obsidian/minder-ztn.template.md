@@ -27,6 +27,7 @@ title: minder-ztn
 > - Registries (`PEOPLE.md`, `PROJECTS.md`, `TAGS.md`, `CONCEPTS.md`, `AUDIENCES.md`, `DOMAINS.md`) — `/ztn:maintain` and `/ztn:lint` maintain them
 > - Auto-generated views ([[INDEX]], [[HUB_INDEX]], [[CONSTITUTION_INDEX]], [[CURRENT_CONTEXT]], [[constitution-core]])
 > - Runtime state (`_system/state/` logs, queues, batches)
+> - Roles (`_system/roles/`) — `role.md` belongs to `/ztn:role:edit` (a hand edit skips validation), `state/` is the role's own memory, `log.jsonl` is the tick's
 >
 > **Don't bulk-edit frontmatter via Properties UI** on engine-managed files — Obsidian normalises keys/quotes and surfaces as `process-compatibility` clarifications. Use Source mode (`Cmd+E`) for hand edits.
 >

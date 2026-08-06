@@ -40,7 +40,17 @@ fi
 
 CAUSE="$1"
 TICK="$2"
-CLAR="zettelkasten/_system/state/CLARIFICATIONS.md"
+# The base name is the owner's choice, not a constant — `roles_config`
+# discovers it precisely because of that. Deriving it here too is what keeps
+# this script from reporting "clear" while a lock sits in a renamed base.
+BASE_NAME=""
+for d in */; do
+    [ -f "$d/_system/scripts/roles_run.py" ] || continue
+    [ -n "$BASE_NAME" ] && BASE_NAME="" && break
+    BASE_NAME="${d%/}"
+done
+[ -z "$BASE_NAME" ] && BASE_NAME="zettelkasten"
+CLAR="$BASE_NAME/_system/state/CLARIFICATIONS.md"
 TS="$(date -u +%Y-%m-%dT%H:%MZ)"
 
 mkdir -p "$(dirname "$CLAR")"

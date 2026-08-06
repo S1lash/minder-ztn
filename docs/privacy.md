@@ -10,7 +10,10 @@ before deciding to put anything sensitive into ZTN.
   plus the local `.git/` history, plus wherever you push the repo —
   typically a private GitHub repo you control. The engine itself
   never pushes; you do (via `/ztn:save` with your confirmation, or
-  manually). Nothing else exfiltrates them.
+  manually). Nothing else exfiltrates them — with one exception you
+  create deliberately: a **role** you set up to reach an outside
+  service will send it what its assignment says to send. See «Roles»
+  below before you create one.
 - **Your transcripts** — local files in `_sources/inbox/` after you
   drop them in. **The source you used to record** (Plaud, voice memos,
   etc.) had its own data path before the file got to your inbox; ZTN
@@ -35,8 +38,10 @@ quiescent — markdown files on disk, nothing else.
 | Transcripts (text) | `_sources/inbox/<source>/` and after processing `_sources/processed/<source>/` | Local. Read by `/ztn:process`, sent to Anthropic API as part of the prompt during processing. |
 | Records | `_records/meetings/`, `_records/observations/` | Local. Sent to Anthropic API when skills read them (every `/ztn:*` call loads relevant records into context). |
 | Knowledge notes | `0_constitution/`, `1_projects/`, `2_areas/`, `3_resources/`, `5_meta/mocs/` | Same — local, sent to Anthropic API when skills read them. |
-| Registries | `_system/registries/PEOPLE.md`, `PROJECTS.md`, etc. | Same. |
+| Registries | `3_resources/people/PEOPLE.md`, `1_projects/PROJECTS.md`, `_system/registries/` (tags, sources, concepts, domains, audiences) | Same. |
 | Runtime state | `_system/state/` (logs, queues, candidate buffers, batches) | Same. |
+| Role definitions, state and logs | `_system/roles/<id>/` | Same — local, sent to Anthropic API when the role runs. |
+| Role credentials | `_system/state/secrets.enc.json` (encrypted) | **To your own git remote, encrypted.** The store is committed so a cloud scheduler can reach it; the key that opens it is never in git. Never in a prompt — a role loads the decrypted values in its own shell. See «Roles» below. |
 | `audience_tags` and `is_sensitive` flags | Frontmatter on each note | Today: advisory. Engine respects them in views and lints. The slot exists; full automation around audience-aware redaction is on the roadmap, not active. |
 
 ## What "Anthropic API" means in practice
@@ -93,7 +98,7 @@ Every note's frontmatter carries a privacy trio:
 Today these are **advisory metadata**:
 
 - `/ztn:lint` audits for missing or inconsistent values.
-- Graph and search presets (`docs/obsidian.md` / `views.md`) include
+- Graph and search presets (`docs/obsidian.md` / `integrations/obsidian/views.md`) include
   filters like "show only `is_sensitive: true`" for self-review.
 - Hub views can be filtered by audience.
 
@@ -108,6 +113,64 @@ without overstating what the engine guarantees. If you want
 encryption-at-rest for sensitive notes, use a tool outside ZTN
 (e.g. git-crypt, age, or filesystem-level encryption) — they
 compose cleanly with the markdown layout.
+
+## Roles — the one path that can send your notes to a third party
+
+Every other part of ZTN talks to exactly two places: Anthropic's API and your
+own git remote. A **role** can talk to a third — but only one you set up
+yourself, in the conversation where you created it. Worth knowing before you
+create one:
+
+- **You authorize the destination once, at creation.** `/ztn:role:add` captures
+  the credential and proves the call works. After that the role runs unattended
+  and does not ask again — that is the point of a standing job, and it is why
+  the concierge makes you look at what the role will send.
+- **A role reads your whole base.** Not a scoped slice: it can search records,
+  notes, hubs and registries, including anything flagged `is_sensitive: true`.
+  The flag is advisory here as everywhere else (see above) — it is instruction,
+  not enforcement, and the role is told not to carry such content outward.
+- **The credential is encrypted, and the encrypted form does travel.** It lives
+  in `_system/state/secrets.enc.json`, which **is committed to your own remote** —
+  each value encrypted separately, none of them readable without the key. The key
+  is a single value you paste into your scheduler's environment config; it is
+  never in git, never in a prompt body, and the engine never writes it anywhere.
+  At run time the tick decrypts into a file **outside the repository**, the role
+  reads it in its own shell, and it is deleted when the tick ends.
+
+  **This is a deliberate step down from «the secret never leaves your machine»,
+  and here is what you are trading for.** A gitignored file does not exist in a
+  cloud clone, so with one a scheduled role could never reach an authenticated
+  service unless your own computer was awake at the time. Committing the
+  ciphertext is what makes an unattended outward role possible at all.
+
+  What that costs you: if your private repository is ever exposed, the attacker
+  holds the ciphertext. Not the key — but ciphertext plus time is not nothing.
+  Lose the key and nothing is recoverable; you re-enter the credentials.
+
+  This is an interim mechanism, chosen because the alternative was «this does not
+  work at all», and it is replaced by a real secret manager when the platform
+  becomes a service.
+- **What a role writes inside its allowed paths is scanned** before that role's
+  work is committed — file contents and filenames, plus the run line itself —
+  for each credential in raw, base64, hex and percent-encoded form. A match is
+  pulled out of the commit and you get a CLARIFICATION telling you to rotate.
+  **Two limits, stated rather than glossed:** a credential shorter than 12
+  characters is never scanned at all, because a short value would also match
+  your own prose and the scan would destroy it; and encodings are unbounded
+  (gzip, a value split across two files, spelled out in words), so the scan
+  raises the cost of a leak — it does not make one impossible.
+- **What the check does and does not hold against.** It holds against a role
+  that makes a mistake, and against an injection in something the role read
+  steering the role's work. It does **not** hold against a role attacking the
+  check itself: a role has a shell, and a shell controls what `git status`
+  prints and when. Three gaps are known and only partly closed — a write
+  delayed until after the check, the unbounded encodings above, and changes to
+  git's own configuration, which are reported rather than repaired.
+- **What nothing can undo: an outward call already made.** A sent email is sent.
+  The diff check protects your repository, not the outside world; a role that
+  reaches outward is trusted at the moment you grant it.
+- **To stop one:** `/ztn:role:edit` and pause it, or remove the `ztn-roles`
+  schedule to stop all of them. Its accumulated state stays on disk either way.
 
 ## Multi-device
 

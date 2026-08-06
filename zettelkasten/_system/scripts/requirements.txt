@@ -1,7 +1,6 @@
 PyYAML>=6.0
 jsonschema>=4.0
 pytest>=8.0
-# Encrypts the roles/tools secrets blob (secret://…) — Fernet. Required only for a role
-# that reaches an authenticated external system (the act path / a secret-bearing tool);
-# lazy-imported, so a base install without acting roles never needs it at runtime.
+# Encrypted credential store (CORE-SPEC §6). Imported LAZILY, so a base
+# with no credentials neither needs it nor breaks without it.
 cryptography>=41.0

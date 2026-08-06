@@ -180,6 +180,17 @@ Step 8. `011`–`014` are exactly this kind: un-aggregated tasks (`011`) / event
 surfaced, the owner never runs the backfill and the recovered data stays hidden —
 so surfacing them is load-bearing, not optional.
 
+**`018` is the same kind and needs one thing more.** It carries roles built on
+the previous shape out of the live path and writes the owner a hand-off — the
+mechanical half is done when it exits. What it cannot do is re-create the roles,
+because that is a conversation: the assignment is written in the owner's words
+and `writes:` is a boundary decided with them, never inferred. Its message
+therefore addresses YOU directly and asks you to read the hand-off, offer
+`/ztn:role:add` per parked role, and run its self-check afterwards. Surface it
+and **do the steps it names**, in this same session, after the update finishes.
+An owner who is only shown the text will not know their roles are recoverable —
+which is the exact failure the migration exists to prevent.
+
 If a migration fails (`rc != 0`):
 - Stop the chain.
 - Print: «migration `<name>` failed. Engine files already overwritten;

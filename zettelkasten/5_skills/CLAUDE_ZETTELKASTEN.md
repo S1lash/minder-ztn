@@ -126,6 +126,11 @@ modified: '2026-04-26'
 | `/ztn:save` | Категоризованный commit + push в `origin`. Owner-friendly обёртка над git, без auto-chain из других скиллов |
 | `/ztn:sync-data` | Pull данных из `origin` с rebase (мульти-девайс). Refuses auto-merge на конфликтах прозы — escalates owner |
 | `/ztn:update` | Pull engine updates из `upstream` (skeleton). Detects local divergence на engine paths, asks per-file, runs migrations. Никогда не трогает data |
+| `/ztn:roles` | Scheduled tick: прогоняет каждую due-роль последовательно, проверяет её дифф против `writes:`, пишет строку в `_system/roles/{id}/log.jsonl` |
+| `/ztn:role:add` | Консьерж создания роли: развивает пожелание, зондирует реальные заметки, пишет `role.md`, проверяет предполётом (validate + живой вызов сервиса + пробный прогон) |
+| `/ztn:role:edit` | Открыть роль, поменять что/когда/куда, провалидировать перед записью. Пауза и возобновление — тот же путь |
+| `/ztn:role:list` | Что есть, за чем следит, когда последний раз отработала. Read-only |
+| `/ztn:role:ask` | Спросить роль; отвечает из своих state-файлов и лога, роль не запускает |
 
 ---
 

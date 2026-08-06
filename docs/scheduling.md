@@ -14,6 +14,7 @@ Five scheduled jobs.
 | `ztn-agent-lens` | 1× nightly (03:00) | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `finalize-tick.sh scheduler/agent-lens` | `integrations/claude-code/scheduler-prompts/agent-lens-nightly.md` |
 | `ztn-lint` | 1× nightly (05:00) | `/ztn:sync-data` → `/ztn:lint` (Step 7.5 dispatches `/ztn:resolve-clarifications --auto-mode` inline) → `finalize-tick.sh scheduler/lint` | `integrations/claude-code/scheduler-prompts/lint-nightly.md` |
 | `ztn-content` | 1× weekly (Tue 06:00) | `/ztn:sync-data` → `/ztn:content --maintain` → `finalize-tick.sh scheduler/content` | `integrations/claude-code/scheduler-prompts/content-tick.md` |
+| `ztn-roles` | 1× daily (07:00) | `/ztn:sync-data` → `/ztn:roles` → `finalize-tick.sh scheduler/roles` | `integrations/claude-code/scheduler-prompts/roles-nightly.md` |
 
 The content pipeline runs across two ticks a day apart: the `content-synthesis`
 lens (the classifier) is a registered agent-lens (`weekly mon`), so the existing
@@ -30,6 +31,26 @@ its invariant scans, then Step 7.5 dispatches resolve --auto-mode
 inline so the same tick consumes fresh lens hints + CLARIFICATIONS
 that lint just emitted. The agent-lens skill filters lenses by per-
 lens cadence — nightly fire ≠ nightly lens runs.
+
+The roles tick closes the overnight sequence at 07:00. Three reasons for that
+slot, in order of weight:
+
+1. **After lint, before process.** A role that leaves a note in
+   `_sources/inbox/roles/` needs `/ztn:process` to fold it in; landing two hours
+   before the 09:00 process tick means the note is knowledge the same morning
+   rather than the next day. Running it before lint would instead have roles read
+   a base lint has not yet cleaned.
+2. **The tick time is the floor for every role's cadence anchor.** A role
+   declaring `daily 07:00` fires at this tick; one declaring `daily 14:00` is
+   never due, because the anchor is not reached at tick time and the grammar
+   does not catch up. The concierge that writes a role sizes its cadence to the
+   tick, and an owner who moves the tick moves that floor with it.
+3. **No overlap.** Roles hold `.roles.lock` for the whole tick and every
+   pipeline aborts on it; 07:00 is clear of 03:00 / 05:00 / 06:00-Tuesday and of
+   the 09:00 process tick.
+
+Like agent-lens, one fire ≠ one run per role: the tick runs only the roles whose
+own cadence has elapsed, sequentially, never two at once.
 
 There is no `ztn-maintain` schedule — maintain runs inline as the tail
 of `/ztn:process`. There is no `ztn-resolve-clarifications` schedule —
@@ -57,6 +78,16 @@ into it:
 `/ztn:save` is owner-interactive only. Scheduler prompts never invoke
 it and never call `git commit` / `git push` / `git add` outside the
 helper scripts (with one narrow exception below for the MCP fallback).
+
+**One skill commits inside its own tick: `/ztn:roles`.** Its write guard
+compares the repository before and after each role, so whatever a role leaves
+uncommitted is still dirty when the next one starts — and a path already dirty
+when a role starts is one the guard may not revert, because restoring it would
+destroy content that role did not write. The tick therefore commits each role's
+own paths before dispatching the next, every commit marked `[scheduled]`, and
+`finalize-tick.sh` folds them all into the one delivered commit like any
+partial-tick leftover. The guarantee is unchanged: one commit reaches
+`origin/main` per tick.
 
 ## Skill discovery — the Step 0 preflight
 
@@ -133,6 +164,79 @@ explicitly. Verify it is on before relying on cloud scheduling.
 
 For LOCAL mode the setting is not required (no PR involved), but
 enabling it does no harm.
+
+## Credentials for the roles tick — ZTN_ROLES_KEY
+
+Skip this until you have a role that reaches an outside service — a task
+board, a mail API, anything authenticated. Roles that only read and write
+your own notes need none of it.
+
+Such a role reads its credential from an encrypted store committed to your
+repo, `zettelkasten/_system/state/secrets.enc.json`. Every value in it is
+encrypted on its own, and none is readable without a single key:
+`ZTN_ROLES_KEY`, one 44-character value, one per base.
+
+**The key goes in the environment config of your `ztn-roles` routine and
+nowhere else.** Not in the prompt body — that is text you paste, re-paste
+and share around. Not in the repo — the engine writes it to no file, and
+nothing in the tick prints it.
+
+- **Claude Code `/schedule`** — set it in the routine's environment /
+  secrets configuration, next to the cron line and the prompt body.
+- **cron, launchd, GitHub Actions** — set it in whatever launches
+  `claude`: a wrapper script that exports it, a launchd
+  `EnvironmentVariables` entry, a systemd `Environment=` line, or an
+  Actions secret exposed through `env:`. Not in a shell profile you also
+  use interactively.
+
+**You never invent the key yourself.** `/ztn:role:add` generates it the
+first time a role on this base needs a credential, shows it once, and says
+where it goes. Once, because the engine keeps no copy. **A lost key cannot
+be recovered** — everything encrypted with it is gone and you enter those
+credentials again against a new key. Keep it wherever you keep passwords,
+not only in the routine config.
+
+**If the key is missing the tick degrades; it does not die.** Roles that
+declare no credential run exactly as usual. Every due role that declares one
+is skipped, with an error line in its own log naming the cause, and the tick
+raises a single clarification for your morning review. It never generates a
+key to get past this — a new key does not open what the old one wrote, so it
+would silently orphan every credential already stored. The tick's output
+carries:
+
+```
+error: ZTN_ROLES_KEY is not set: the credential store is encrypted and the key arrives from the environment. Set ZTN_ROLES_KEY in the scheduler routine's env config — never in the prompt body and never in git.
+```
+
+**A base that has credentials also needs the `cryptography` package** in the
+environment the tick runs in:
+
+```bash
+python3 -m pip install "cryptography>=41.0"
+```
+
+It is imported only when a store exists, so a base without credentials
+neither needs it nor breaks without it.
+
+**The scheduled tick installs it for you when it has to.** A cloud sandbox
+starts from a fresh clone every run, so anything you install there is gone by
+the next one — which would make «install it where the tick runs» advice you
+cannot act on. The tick therefore checks at startup and installs the one
+declared package itself, but only when a credential store exists and only
+when the import fails; a base without credentials never installs anything.
+Run the command above yourself only for the machine where you use
+`/ztn:role:add`, since role creation needs the package too.
+
+If the install cannot happen, nothing crashes: the tick degrades exactly as
+above and names the package instead of the key.
+
+**What committing the store trades away.** If your repo is ever exposed, an
+attacker holds the ciphertext — not the key, but ciphertext plus time is not
+nothing. It is committed deliberately: a file git ignores does not exist in
+a fresh cloud clone, so with one a scheduled role could only reach an
+authenticated service while your own machine happened to be awake.
+Committing it is what makes an unattended outward role possible at all.
+`docs/privacy.md` carries the same trade in full.
 
 ## Opinionated assumptions
 
@@ -245,6 +349,17 @@ The recommended path. Five routines — one per row of the canonical table above
   prompt: <paste body of integrations/claude-code/scheduler-prompts/content-tick.md>
 ```
 
+```
+/schedule
+  name: ztn-roles
+  cron: 0 7 * * *
+  prompt: <paste body of integrations/claude-code/scheduler-prompts/roles-nightly.md>
+```
+
+If any of your roles reaches an outside service, the `ztn-roles` routine
+also needs `ZTN_ROLES_KEY` in its environment config — see «Credentials for
+the roles tick — ZTN_ROLES_KEY» above.
+
 Each routine runs in a fresh agent — the prompt body is fully
 self-contained, no extra context required.
 
@@ -265,6 +380,10 @@ same prompt bodies. Ensure:
   platform-managed credentials) — see `docs/onboarding.md` §9.
 - A way to surface non-zero exit (logs, email, pager) — the prompt
   bodies exit non-zero on sync-blocked / partial.
+- For the roles job only, and only if one of your roles reaches an outside
+  service: `ZTN_ROLES_KEY` in that job's environment and the `cryptography`
+  package installed for that runner's `python3` — see «Credentials for the
+  roles tick — ZTN_ROLES_KEY» above.
 
 Local cron starts on the `main` branch by default, so LOCAL mode in
 `finalize-tick.sh` applies — no PR ceremony, just direct push.
@@ -290,12 +409,12 @@ judgement + resolution.
   dropped at 10am don't surface until 03:00 the next day. ZTN is a
   thinking aid; latency >12h kills the feedback loop.
 - **Per-skill schedules (process, maintain, lint, resolve, agent-lens,
-  agent-lens-add, content).** Tried mentally: maintain has no
-  independent cadence (it tails process); resolve and agent-lens-add
-  must not be autonomous (owner judgement / wizard interview). The four
-  scheduled jobs (process / agent-lens / lint / content) cover
-  the autonomous surface area; every other skill is either owner-gated
-  or tails another tick, so it earns no standalone schedule.
+  agent-lens-add, content, roles, role-add).** Tried mentally: maintain has no
+  independent cadence (it tails process); resolve, agent-lens-add and
+  `/ztn:role:{add,edit,list,ask}` must not be autonomous (owner judgement /
+  concierge interview). The five scheduled jobs (process / agent-lens / lint /
+  content / roles) cover the autonomous surface area; every other skill is
+  either owner-gated or tails another tick, so it earns no standalone schedule.
 - **Process every hour.** Wasteful for typical input rates and burns
   Claude Code budget; revisit only if you start dropping transcripts
   faster than the recommended 3× cadence drains them.

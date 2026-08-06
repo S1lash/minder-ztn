@@ -79,7 +79,7 @@ by guessing — they surface as `portable-name-collision` CLARIFICATIONs.
 
 ### Naming tolerance (universal across all source-types)
 
-Folder names and contained filenames may be created by the owner manually (drag-drop, ad-hoc capture) or by a variety of producer tools (Claude Code `/ztn-recap`, voice recorders exporting under different versions, `kebab-case` renames, etc.). The engine treats both as **best-effort hints**, never as contracts:
+Folder names and contained filenames may be created by the owner manually (drag-drop, ad-hoc capture) or by a variety of producer tools (Claude Code `/ztn:recap`, voice recorders exporting under different versions, `kebab-case` renames, etc.). The engine treats both as **best-effort hints**, never as contracts:
 
 1. **Folder naming** — if a folder name doesn't match any pattern above, fall back to file mtime silently. No CLARIFICATION on pure naming non-canonicity.
 2. **File naming inside a subfolder** — if `transcript.md` (and `transcript_with_summary.md` for `dir-with-summary`) is absent but a single `*.md` exists, take it. No CLARIFICATION.
@@ -101,11 +101,11 @@ For metric-day family the filename is canonical `YYYY-MM-DD.md` — one file per
 |---|---|---|---|---|---|---|---|
 | plaud | `_sources/inbox/plaud/` | transcript | dir-with-summary | auto | — | Plaud voice-recorder transcripts (popular AI-summarising hardware recorder). | active |
 | voice-notes | `_sources/inbox/voice-notes/` | transcript | dir-per-item | auto | — | Generic voice-note transcripts from any recorder/app. Catch-all for users without a brand-specific source. | active |
-| claude-sessions | `_sources/inbox/claude-sessions/` | transcript | dir-per-item | work | — | Claude Code session recaps captured via `/ztn-recap`. Almost always work-context. | active |
+| claude-sessions | `_sources/inbox/claude-sessions/` | transcript | dir-per-item | work | — | Claude Code session recaps captured via `/ztn:recap`. Almost always work-context. | active |
 | notes | `_sources/inbox/notes/` | transcript | flat-md | auto | — | Plain Markdown notes dropped manually into the folder. | active |
-| crafted | `_sources/inbox/crafted/` | transcript | flat-md | auto | — | Hand-written long-form documents processed through the same pipeline; also the target for verbatim artifacts saved by `/ztn-recap --crafted`. | active |
+| crafted | `_sources/inbox/crafted/` | transcript | flat-md | auto | — | Hand-written long-form documents processed through the same pipeline; also the target for verbatim artifacts saved by `/ztn:recap --crafted`. | active |
 | describe-me | `_sources/inbox/describe-me/` | transcript | flat-md | identity | — | Owner self-descriptions and identity reference material. Primary seed for `/ztn:bootstrap` SOUL.md draft; files added after bootstrap flow through `/ztn:process` as regular content. `PROFILE.template.md` is excluded by the engine-wide `*.template.md` rule. | active |
-| roles | `_sources/inbox/roles/` | transcript | flat-md | auto | — | The inbox door for the owner's ZTN roles — an engine-level source registered ONCE for all roles. A role that reflects a fact worth the base's attention drops one human-phrased note here; `/ztn:process` folds it in like any source. No producer at present: the roles subsystem is being rebuilt. | active |
+| roles | `_sources/inbox/roles/` | transcript | flat-md | auto | — | The inbox door for the owner's ZTN roles — an engine-level source registered ONCE for all roles, never per role. A role that finds a fact worth the base's attention drops one human-phrased note here, flat, named `YYYY-MM-DD-{role-id}-{slug}.md` with `source: role:{role-id}` frontmatter; `/ztn:process` folds it in like any source. Producer: a role with `inbox` in its `writes:`, run by the `/ztn:roles` tick. Shape spec: `_system/roles/_minder.md`. | active |
 | garmin | `_sources/inbox/garmin/` | metric-day | flat-md | health | raw | Garmin daily biometric snapshots. One file per calendar day; `raw/` holds full minute-level JSON payloads (skipped by /ztn:process; available as escape hatch for biometric lenses). Inactive until owner wires a Garmin collector — pipeline lies dormant otherwise. | active |
 
 ---

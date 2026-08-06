@@ -70,7 +70,9 @@
 **Skills:** `ztn:agent-lens-add`, `ztn:agent-lens`, `ztn:bootstrap`,
 `ztn:capture-candidate`, `ztn:content`, `ztn:check-decision`,
 `ztn:lint`, `ztn:maintain`, `ztn:process`, `ztn:regen-constitution`,
-`ztn:resolve-clarifications`, `ztn:save`, `ztn:sync-data`, `ztn:update`
+`ztn:resolve-clarifications`, `ztn:role:add`, `ztn:role:ask`,
+`ztn:role:edit`, `ztn:role:list`, `ztn:roles`, `ztn:save`,
+`ztn:source-add`, `ztn:sync-data`, `ztn:update`
 
 ---
 

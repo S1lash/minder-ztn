@@ -92,6 +92,15 @@ engine:
   - zettelkasten/_system/registries/AGENT_LENSES.md
   - zettelkasten/_system/registries/lenses/
 
+  # Roles — the two engine files every role's prompt is built from: the run
+  # frame (how the run works) and the Minder preamble (how the base works).
+  # Pure engine, never owner-edited. `_system/roles/` is NOT an engine PREFIX:
+  # the instance dirs under it are owner data and are excluded below, so these
+  # files MUST be listed explicitly or they never reach a friend — a missing
+  # run frame kills their first tick outright.
+  - zettelkasten/_system/roles/_run-frame.md
+  - zettelkasten/_system/roles/_minder.md
+
   # Engine philosophy + processing principles + note templates
   - zettelkasten/5_meta/CONCEPT.md
   - zettelkasten/5_meta/PROCESSING_PRINCIPLES.md
@@ -133,10 +142,18 @@ engine:
   # Project-local skill discoverability for Claude Code Routines (cloud
   # cron). Routines clone the repo fresh and discover skills only at the
   # canonical `.claude/skills/<name>/SKILL.md` path. Each entry under here
-  # is a relative symlink into `integrations/claude-code/skills/<name>/` —
-  # release_engine.py preserves symlinks; resolved path exists in the
-  # skeleton because the target is also engine-shipped.
+  # is a relative symlink into `integrations/claude-code/skills/<name>/`, and
+  # release_engine.py DEREFERENCES these into real files on release: a git
+  # symlink does not survive a Windows clone (`core.symlinks=false` writes the
+  # link blob out as a text file), which would leave a friend with no skills at
+  # all. The symlinks exist for the dev loop here; the skeleton gets files.
   - .claude/skills/
+
+  # Subagent definition spawned by the `/ztn:roles` tick for each due role.
+  # Listed as a single file, not a directory: `.claude/agents/` is also where
+  # an owner drops their own personal agents, and a directory entry would ship
+  # those upstream. A second engine agent gains a line here.
+  - .claude/agents/ztn-role.md
 
   # Public-facing docs (friend onboarding + upstream sync)
   - CONTRIBUTING.md
@@ -271,6 +288,11 @@ exclude:
   - zettelkasten/4_archive/
   - zettelkasten/5_meta/mocs/
   - zettelkasten/6_posts/
+
+  # Roles — a role instance dir is owner data: their assignment, their tracked
+  # state, their run log. The `*/` matches instance subdirs ONLY and must not
+  # swallow the engine `_system/roles/_run-frame.md` listed above.
+  - zettelkasten/_system/roles/*/
 
   # Live system files (templates ship instead)
   - zettelkasten/_system/SOUL.md

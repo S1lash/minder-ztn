@@ -20,7 +20,17 @@
 
 set -euo pipefail
 
-LOCK_DIR="zettelkasten/_sources"
+# The base name is the owner's choice, not a constant — `roles_config`
+# discovers it precisely because of that. Deriving it here too is what keeps
+# this script from reporting "clear" while a lock sits in a renamed base.
+BASE_NAME=""
+for d in */; do
+    [ -f "$d/_system/scripts/roles_run.py" ] || continue
+    [ -n "$BASE_NAME" ] && BASE_NAME="" && break
+    BASE_NAME="${d%/}"
+done
+[ -z "$BASE_NAME" ] && BASE_NAME="zettelkasten"
+LOCK_DIR="$BASE_NAME/_sources"
 NOW_EPOCH="$(date +%s)"
 STALE_THRESHOLD_SECONDS=$((2 * 60 * 60))  # 2 hours
 
@@ -30,6 +40,7 @@ LOCKS=(
   "$LOCK_DIR/.lint.lock"
   "$LOCK_DIR/.agent-lens.lock"
   "$LOCK_DIR/.content.lock"
+  "$LOCK_DIR/.roles.lock"
   "$LOCK_DIR/.resolve.lock"
 )
 

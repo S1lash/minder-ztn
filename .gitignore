@@ -23,7 +23,16 @@ integrations/claude-code/built/
 .scheduler-state/
 
 # Advisory flock files for telemetry / append-only buffers
-zettelkasten/_system/state/.*.lock
+*/_system/state/.*.lock
+
+# The seven cross-skill pipeline locks. `_sources/` doubles as their home, and
+# it is owner data, so without this rule a crashed tick's lock is staged,
+# committed and pushed — and then every fresh clone materialises it with an
+# mtime of the checkout, so `lock-check.sh` never ages it past the 2h stale
+# threshold. One crashed roles tick would permanently block all five scheduled
+# ticks on any ephemeral-clone runner.
+*/_sources/.*.lock
+
 
 # ActivityWatch raw event dumps — kept LOCAL as the incident escape hatch,
 # never committed. ~180 KB/day gzipped (≈ hundreds of MB/year) AND the most

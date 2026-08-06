@@ -73,10 +73,10 @@ universal starter set of sources defined in
   fallback transcript layout)
 - `voice-notes/` — generic voice-note transcripts (any recorder)
 - `claude-sessions/` — Claude Code session recaps captured via
-  `/ztn-recap`
+  `/ztn:recap`
 - `notes/` — plain Markdown notes you drop in by hand
 - `crafted/` — hand-written long-form documents (also where
-  `/ztn-recap --crafted` saves verbatim artifacts like toasts, letters,
+  `/ztn:recap --crafted` saves verbatim artifacts like toasts, letters,
   posts)
 
 If your input does not match any of the starter sources, run
@@ -200,11 +200,16 @@ exact cron in `docs/scheduling.md`):
   agent-lens (e.g. cron `0 5 * * *`).
 - `content-tick.md` — pre-sync → `/ztn:content --maintain` →
   finalize. Recommended cadence: weekly (e.g. cron `0 6 * * 2`, Tuesday).
+- `roles-nightly.md` — pre-sync → `/ztn:roles` → finalize. Recommended
+  cadence: 1× per day (e.g. cron `0 7 * * *`). Only needed once you have
+  roles; the tick is a no-op with none. The skill runs only the roles whose
+  own cadence has elapsed.
 
 The daily ticks are offset from each other (lens production isolated from
-lint+resolve consumption) — see `docs/scheduling.md` for the offset
-rationale. To create new lenses use `/ztn:agent-lens-add` (owner-driven,
-not scheduled).
+lint+resolve consumption; roles last, so what a role writes is processed the
+same morning) — see `docs/scheduling.md` for the offset rationale. To create
+new lenses use `/ztn:agent-lens-add`, and new roles `/ztn:role:add` — both
+owner-driven, neither scheduled.
 
 Paste each body into your scheduler of choice (Claude Code `/schedule`,
 GitHub Actions cron, host crontab calling `claude` headless — any
@@ -274,6 +279,50 @@ once in the scheduler environment and confirm:
    tick — proves the auto-delete setting is on and working.
 
 Full design — `docs/scheduling.md`.
+
+## 11. (Optional) Stand up a role
+
+A **role** is a standing job you describe in your own words and the system runs
+on a schedule without you — «every Monday check whether anything on the board
+moved and tell me what did not», «watch my notes for the weeks I stop mentioning
+sleep». It reads your base as context, keeps its own notes between runs, and can
+reach an outside service if you give it a credential.
+
+```
+/ztn:role:add
+```
+
+Describe what you want in plain language. The concierge does the rest: it asks
+what you would want to know without having to ask, probes your actual notes to
+show you what the role would have found last week, argues for a stronger version
+when your data supports one, and writes the role file itself. You never see a
+path, a schedule grammar, or a config field.
+
+Before it declares the role done it validates the config, makes a real call
+against any service the role needs, and does a trial run — so a role that cannot
+work is fixed with you in that conversation, not at 07:00 in silence.
+
+The rest of the family:
+
+- `/ztn:role:list` — what you have, what each watches, when it last ran.
+- `/ztn:role:ask` — ask a role what it knows; it answers from its own notes.
+- `/ztn:role:edit` — change what it does or when, or pause it.
+
+Two things worth knowing up front. A role writes only where its definition says
+it may — everything else it touches is put back after the run and shown to you,
+with one exception: a file that was **already changed before that role started**
+is reported instead, because putting it back would erase work the role did not
+write. The report says whose it was, yours or an earlier role's in the same run.
+And a role that reaches an outside service needs a credential: the concierge
+captures it into an encrypted store and generates the one key that opens it.
+That key goes into the environment config of your `ztn-roles` schedule, never
+into the repo, and a lost key means entering those credentials again —
+`docs/scheduling.md` has the setup, including the one Python package a base with
+credentials needs. `docs/privacy.md` says what the encrypted store trades away,
+and what the write check does and does not hold against.
+
+Roles run from the `ztn-roles` tick in §9. Without that schedule they exist but
+never fire.
 
 
 ## Reference

@@ -70,16 +70,69 @@ OVERRIDE_MSG="${2:-}"
 
 git fetch origin main --quiet 2>/dev/null || true
 
+AUTHORED_SHAS_FILE=".scheduler-state/authored-shas"
+AUTHORED=""
+[ -f "$AUTHORED_SHAS_FILE" ] && AUTHORED="$(cat "$AUTHORED_SHAS_FILE")"
+
+# A commit an earlier tick explicitly DISOWNED is never folded, by any tick,
+# whatever its subject says. Without this the refusal was single-tick only:
+# `/ztn:roles` correctly refuses to deliver a commit it did not author and
+# exits partial, leaving it in the local repo — and the next tick in the
+# nightly chain (lint at 05:00) runs this script with no authored list of its
+# own, falls through to subject matching, sees `[scheduled]`, and folds the
+# forged commit into its own push. The identity check would then have moved
+# the laundering by one tick rather than preventing it.
+DISOWNED_SHAS_FILE=".scheduler-state/disowned-shas"
+if [ -f "$DISOWNED_SHAS_FILE" ]; then
+  DISOWNED_HIT=""
+  # `|| [ -n "$dsha" ]` is load-bearing, not defensive noise: `read` returns
+  # non-zero on the LAST line when the file has no trailing newline, so a
+  # plain `while read` silently drops it. This refusal must fail CLOSED, and a
+  # file written by hand — which is exactly what its own recovery instruction
+  # tells the owner to do — is the likeliest one to lack that newline.
+  while IFS= read -r dsha || [ -n "$dsha" ]; do
+    [ -z "$dsha" ] && continue
+    if git rev-list origin/main..HEAD 2>/dev/null | grep -qx "$dsha"; then
+      DISOWNED_HIT="$dsha"
+      break
+    fi
+  done < "$DISOWNED_SHAS_FILE"
+  if [ -n "$DISOWNED_HIT" ]; then
+    echo "finalize-tick: refusing to deliver — commit $DISOWNED_HIT was disowned by an earlier tick" >&2
+    echo "  It is ahead of origin/main and no tick claims authorship of it." >&2
+    echo "  Nothing is rewritten here. Inspect it, then remove it from" >&2
+    echo "  $DISOWNED_SHAS_FILE once resolved." >&2
+    exit 2
+  fi
+fi
+
 AHEAD_COUNT="$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)"
 if [ "$AHEAD_COUNT" -gt 0 ]; then
   NON_SCHEDULED=0
-  while IFS= read -r subject; do
-    [ -z "$subject" ] && continue
-    case "$subject" in
-      *"[scheduled]"*) ;;
-      *) NON_SCHEDULED=$((NON_SCHEDULED + 1)) ;;
-    esac
-  done < <(git log --format=%s origin/main..HEAD 2>/dev/null)
+  declare -a UNLISTED=()
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    sha="${line%% *}"
+    subject="${line#* }"
+    if [ -n "$AUTHORED" ]; then
+      # A tick declared authorship: identity decides, not wording. A role has
+      # a shell, so "[scheduled]" in a subject proves nothing.
+      printf '%s\n' "$AUTHORED" | grep -qx "$sha" && continue
+      UNLISTED+=("$sha ${subject}")
+    else
+      case "$subject" in
+        *"[scheduled]"*) ;;
+        *) NON_SCHEDULED=$((NON_SCHEDULED + 1)) ;;
+      esac
+    fi
+  done < <(git log --format='%H %s' origin/main..HEAD 2>/dev/null)
+
+  if [ ${#UNLISTED[@]} -gt 0 ]; then
+    echo "finalize-tick: refusing to reset — ${#UNLISTED[@]} commit(s) ahead of origin/main this tick did not author" >&2
+    printf '  %s\n' "${UNLISTED[@]}" >&2
+    echo "finalize-tick: a [scheduled] subject is not authorship; aborting to preserve history" >&2
+    exit 2
+  fi
 
   if [ "$NON_SCHEDULED" -gt 0 ]; then
     echo "finalize-tick: refusing to reset — $NON_SCHEDULED non-scheduled commit(s) ahead of origin/main" >&2
@@ -177,6 +230,13 @@ case "$BODY" in
 esac
 
 git commit -m "$MESSAGE" || exit 2
+
+# This commit is scheduler-authored too: record it, so a delivery failure
+# leaves it foldable by the next tick under the same identity rule.
+if [ -n "$AUTHORED" ]; then
+  mkdir -p "$(dirname "$AUTHORED_SHAS_FILE")"
+  git rev-parse HEAD >> "$AUTHORED_SHAS_FILE"
+fi
 LOCAL_SHA="$(git rev-parse --short HEAD)"
 echo "finalize-tick: committed $LOCAL_SHA — $MESSAGE"
 
@@ -188,6 +248,7 @@ fi
 if [ -z "$START_BRANCH" ] || [ "$START_BRANCH" = "main" ] || [ "$START_BRANCH" = "DETACHED" ]; then
   echo "finalize-tick: LOCAL mode (start branch '$START_BRANCH') — direct push to origin/main"
   git push origin main || exit 2
+  rm -f "$AUTHORED_SHAS_FILE"
   echo "finalize-tick: delivered to origin/main"
   exit 0
 fi
@@ -231,6 +292,7 @@ MERGE_OUT="$(gh pr merge "$PR_NUMBER" --squash --delete-branch --subject "$MESSA
 MERGE_RC=$?
 set -e
 if [ "$MERGE_RC" -eq 0 ]; then
+  rm -f "$AUTHORED_SHAS_FILE"
   echo "finalize-tick: PR #$PR_NUMBER squash-merged into main; sandbox branch deleted"
   exit 0
 fi
@@ -239,6 +301,7 @@ fi
 # Treat as soft success in that case.
 STATE="$(gh pr view "$PR_NUMBER" --json state --jq .state 2>/dev/null || echo UNKNOWN)"
 if [ "$STATE" = "MERGED" ]; then
+  rm -f "$AUTHORED_SHAS_FILE"
   echo "finalize-tick: PR #$PR_NUMBER merged but sandbox-branch delete failed; next-tick recovery will clean up"
   echo "$MERGE_OUT" >&2
   exit 0

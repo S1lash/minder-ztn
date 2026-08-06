@@ -50,9 +50,11 @@ cat >&2 <<EOF
   Nothing of yours was deleted. Your role directories, their tracked state and
   their decision logs are exactly as you left them.
 
-  Roles are being rebuilt on a much simpler shape. When that lands, you create
-  your role again by describing it — the old directories will not carry over,
-  so treat them as a record of what you wanted, not as something to migrate.
+  Roles are being rebuilt on a much simpler shape. When that lands, migration
+  018 turns each of these directories into a readable record of what you asked
+  for — quoted in your own words — so you can re-create the role in one
+  conversation. If you are updating past both in one go, you will see 018's
+  notice below this one; that is the one with the file to read.
 
   If you want them gone now, delete zettelkasten/_system/roles/ yourself and
   commit. Your data, your call.

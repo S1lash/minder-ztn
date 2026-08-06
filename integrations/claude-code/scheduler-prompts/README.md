@@ -15,6 +15,7 @@ For full design rationale, cadence, and plug-in instructions see
 | `agent-lens-nightly.md` | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `finalize-tick.sh scheduler/agent-lens` | 1× nightly, e.g. cron `0 3 * * *` |
 | `lint-nightly.md` | `/ztn:sync-data` → `/ztn:lint` (Step 7.5 dispatches `/ztn:resolve-clarifications --auto-mode` inline) → `finalize-tick.sh scheduler/lint` | 1× nightly, e.g. cron `0 5 * * *` |
 | `content-tick.md` | `/ztn:sync-data` → `/ztn:content --maintain` (draft-maintainer) → `finalize-tick.sh scheduler/content` | 1× weekly Tuesday, e.g. cron `0 6 * * 2` |
+| `roles-nightly.md` | `/ztn:sync-data` → `/ztn:roles` (every due role, sequentially) → `finalize-tick.sh scheduler/roles` | 1× daily, e.g. cron `0 7 * * *` |
 
 The `content-synthesis` lens (the content pipeline's classifier) is NOT a
 separate tick — it is a registered agent-lens (`weekly (mon)`), so the existing
@@ -105,7 +106,16 @@ invoke it (slash form or otherwise) and must never call `git commit` /
 There is no `maintain` prompt — maintain runs inline at the tail of
 `/ztn:process`. There is no separate `resolve-clarifications` prompt
 — `--auto-mode` is dispatched by lint Step 7.5 inline; interactive
-mode is owner-only by design.
+mode is owner-only by design. There is no prompt for
+`/ztn:role:{add,edit,list,ask}` — creating and changing a role is a
+conversation with the owner, never a scheduled act.
+
+`roles-nightly.md` is the one prompt whose skill commits inside its own
+tick: the roles write guard may not revert a path that was already dirty
+when a role started, so `/ztn:roles` commits each role's own paths —
+`[scheduled]` in every subject — before dispatching the next, and
+`finalize-tick.sh` folds them into the single delivered commit. One
+commit still reaches `origin/main` per tick.
 
 **Why two nightly entries (lens separate from lint+resolve).** The
 most quality-sensitive isolation is between agent-lens and resolve:
@@ -176,6 +186,13 @@ The path of least friction. Routines:
   prompt: <paste body of content-tick.md>
 ```
 
+```
+/schedule
+  name: ztn-roles
+  cron: 0 7 * * *
+  prompt: <paste body of roles-nightly.md>
+```
+
 Each routine runs in a fresh agent — the prompt body is fully
 self-contained, no extra context required.
 
@@ -239,3 +256,8 @@ Recommended:
   the same tick that cleans invariants also consumes fresh hints +
   CLARIFICATIONS. Owner wakes up to fully committed queue + lens
   outputs + resolve session log.
+- `ztn-roles` (07:00 local) — after lint, before the first process
+  tick, so an inbox note a role leaves is folded in the same morning.
+  The tick time is also the floor for every role's cadence anchor: a
+  role declaring `daily 14:00` is never due at a 07:00 tick, because
+  the grammar does not catch up on a missed anchor.
