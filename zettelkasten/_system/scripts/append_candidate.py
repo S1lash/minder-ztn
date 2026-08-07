@@ -51,6 +51,7 @@ from _common import (
     normalize_concept_list,
     state_dir,
     today_iso,
+    configure_std_streams,
 )
 
 
@@ -165,6 +166,8 @@ def _release_lock(fh) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--situation", required=True,
                         help="1-2 sentences — what was happening")

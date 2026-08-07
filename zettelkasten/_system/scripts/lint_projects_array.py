@@ -38,7 +38,7 @@ import re
 import sys
 from pathlib import Path
 
-from _common import read_frontmatter, repo_root
+from _common import configure_std_streams, read_frontmatter, repo_root
 
 
 # Folders in scope — same as Scan A.7 trio backfill.
@@ -344,6 +344,8 @@ def _iter_notes(root: Path):
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--root", type=Path, default=None,

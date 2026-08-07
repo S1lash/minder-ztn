@@ -580,7 +580,7 @@ class DomainNormalisationTests(unittest.TestCase):
             )
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 written["records"]["updated"][0]["domains"],
                 ["work", "career", "health"],
@@ -601,7 +601,7 @@ class DomainNormalisationTests(unittest.TestCase):
                 {"domains": ["work", "payments", "career"]},
             )
             _, _, err = _run(data, tmp / "out.json", audiences)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 written["records"]["updated"][0]["domains"],
                 ["work", "career"],
@@ -620,7 +620,7 @@ class DomainNormalisationTests(unittest.TestCase):
                 "domains": ["work/process", "personal/psychology"],
             })
             _, _, err = _run(data, tmp / "out.json", audiences)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 written["records"]["updated"][0]["domains"],
                 ["work", "personal"],
@@ -634,7 +634,7 @@ class DomainNormalisationTests(unittest.TestCase):
             data = _minimal_manifest()
             data["records"]["updated"].append({"domains": ["work/learning"]})
             _, _, _ = _run(data, tmp / "out.json", audiences)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 written["records"]["updated"][0]["domains"],
                 ["work", "learning"],
@@ -652,7 +652,7 @@ class DomainNormalisationTests(unittest.TestCase):
             _, _, err = _run(
                 data, tmp / "out.json", audiences, domains=domains,
             )
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 written["records"]["updated"][0]["domains"],
                 ["gardening", "work"],
@@ -667,7 +667,7 @@ class DomainNormalisationTests(unittest.TestCase):
                 "principles": [{"id": "axiom-x-001", "domain": "ai_interaction"}],
             }
             _, _, err = _run(data, tmp / "out.json", audiences)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 written["constitution"]["principles"][0]["domain"],
                 "ai-interaction",
@@ -682,7 +682,7 @@ class DomainNormalisationTests(unittest.TestCase):
                 "principles": [{"id": "axiom-x-001", "domain": "junk"}],
             }
             _, _, err = _run(data, tmp / "out.json", audiences)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertNotIn(
                 "domain", written["constitution"]["principles"][0],
             )
@@ -697,7 +697,7 @@ class DomainNormalisationTests(unittest.TestCase):
                 {"domains": ["Work", "work", "WORK"]},
             )
             _, _, _ = _run(data, tmp / "out.json", audiences)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 written["records"]["updated"][0]["domains"], ["work"],
             )
@@ -722,7 +722,7 @@ class AtomicWriteTests(unittest.TestCase):
             domains = _domains_file(tmp)
             output = tmp / "out.json"
             in_path = tmp / "in.json"
-            in_path.write_text(json.dumps(_minimal_manifest()))
+            in_path.write_text(json.dumps(_minimal_manifest()), encoding="utf-8")
             args = [
                 "--input", str(in_path), "--output", str(output),
                 "--audiences", str(audiences), "--domains", str(domains),
@@ -765,7 +765,7 @@ class SourcesProcessedCoercionTests(unittest.TestCase):
             ]
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             sources = written["sources_processed"]
             self.assertEqual(len(sources), 5)
             for entry in sources:
@@ -797,7 +797,7 @@ class Tier1NonEmptyArrayCoercionTests(unittest.TestCase):
             }
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 {k for k in written["tier1_objects"]["people"]},
                 {"upserts"},
@@ -819,7 +819,7 @@ class Tier1NonEmptyArrayCoercionTests(unittest.TestCase):
             }
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             upserts = written["tier1_objects"]["projects"]["upserts"]
             self.assertEqual(
                 [u["id"] for u in upserts],
@@ -843,7 +843,7 @@ class Tier1NonEmptyArrayCoercionTests(unittest.TestCase):
             ]
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 len(written["hubs"]["created"]), 1,
             )
@@ -868,7 +868,7 @@ class PrivacyTrioInjectionTests(unittest.TestCase):
             })
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             rec = written["records"]["created"][0]
             self.assertEqual(rec["origin"], "personal")
             self.assertEqual(rec["audience_tags"], [])
@@ -892,7 +892,7 @@ class PrivacyTrioInjectionTests(unittest.TestCase):
             })
             rc, _, _ = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             rec = written["records"]["created"][0]
             self.assertEqual(rec["origin"], "work")
             self.assertEqual(rec["audience_tags"], [])
@@ -906,7 +906,7 @@ class PrivacyTrioInjectionTests(unittest.TestCase):
             audiences = _audiences_file(tmp)
             data = _minimal_manifest()
             rc, _, _ = _run(data, tmp / "out.json", audiences)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertNotIn("origin", written)
             self.assertNotIn("audience_tags", written)
             self.assertNotIn("is_sensitive", written)
@@ -926,7 +926,7 @@ class RecordsKnowledgeNotesBareArrayTests(unittest.TestCase):
             ]
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertIsInstance(written["records"], dict)
             self.assertEqual(len(written["records"]["created"]), 1)
             self.assertEqual(len(written["records"]["updated"]), 1)
@@ -947,7 +947,7 @@ class RecordsKnowledgeNotesBareArrayTests(unittest.TestCase):
             ]
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertIsInstance(written["knowledge_notes"], dict)
             self.assertEqual(len(written["knowledge_notes"]["created"]), 1)
             self.assertEqual(len(written["knowledge_notes"]["updated"]), 1)
@@ -972,7 +972,7 @@ class Tier2SubsectionBareArrayTests(unittest.TestCase):
             }
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             upserts = written["tier2_objects"]["tasks"]["upserts"]
             self.assertEqual(len(upserts), 1)
             entry = upserts[0]
@@ -1010,7 +1010,7 @@ class Tier2SubsectionBareArrayTests(unittest.TestCase):
                 )
                 self.assertEqual(rc, 0)
                 written = json.loads(
-                    (tmp / f"out-{sub.replace('-', '_')}.json").read_text(),
+                    (tmp / f"out-{sub.replace('-', '_')}.json").read_text(encoding="utf-8"),
                 )
                 self.assertIn("upserts", written["tier2_objects"][sub])
                 self.assertEqual(
@@ -1044,7 +1044,7 @@ class LegacyConceptTypeAliasTests(unittest.TestCase):
                 )
                 self.assertEqual(rc, 0)
                 written = json.loads(
-                    (tmp / f"out-{legacy}.json").read_text(),
+                    (tmp / f"out-{legacy}.json").read_text(encoding="utf-8"),
                 )
                 entry = written["concepts"]["upserts"][0]
                 self.assertEqual(entry["type"], mapped)
@@ -1068,7 +1068,7 @@ class LegacyConceptTypeAliasTests(unittest.TestCase):
             # manifest is concept-type-valid by construction. Original
             # preserved under section_extras.legacy_type for audit.
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             entry = written["concepts"]["upserts"][0]
             self.assertEqual(entry["type"], "other")
             self.assertEqual(
@@ -1090,7 +1090,7 @@ class ConstitutionEmptyArrayCoercionTests(unittest.TestCase):
             data["constitution"] = []
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertEqual(written["constitution"], {})
             self.assertIn("constitution-empty-shape-autofix", err)
         clear_ztn_env()
@@ -1111,7 +1111,7 @@ class HubMissingPathDerivationTests(unittest.TestCase):
             })
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             entry = written["hubs"]["updated"][0]
             self.assertEqual(entry["path"], "5_meta/mocs/hub-example-topic.md")
             self.assertIn("hub-path-derive-autofix", err)
@@ -1129,7 +1129,7 @@ class SensitiveEntitiesCoercionTests(unittest.TestCase):
             ]
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             entry = written["sensitive_entities"][0]
             self.assertEqual(entry["id"], "20260506-therapy")
             self.assertEqual(entry["kind"], "note")
@@ -1156,11 +1156,11 @@ class SensitiveEntitiesCoercionTests(unittest.TestCase):
             out1 = tmp / "out1.json"
             rc1, _, _ = _run(data, out1, audiences)
             self.assertEqual(rc1, 0)
-            first_pass = json.loads(out1.read_text())
+            first_pass = json.loads(out1.read_text(encoding="utf-8"))
             out2 = tmp / "out2.json"
             rc2, _, err2 = _run(first_pass, out2, audiences)
             self.assertEqual(rc2, 0)
-            second_pass = json.loads(out2.read_text())
+            second_pass = json.loads(out2.read_text(encoding="utf-8"))
             self.assertEqual(first_pass, second_pass)
             self.assertNotIn(
                 "sensitive-entities-note-id-coerce-autofix", err2,
@@ -1183,7 +1183,7 @@ class SensitiveEntitiesCoercionTests(unittest.TestCase):
             self.assertIn(
                 "sensitive-entities-kind-inject-autofix", err,
             )
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             entry = written["sensitive_entities"][0]
             self.assertEqual(entry["weird_field"], "value")
             self.assertEqual(entry["kind"], "note")
@@ -1215,7 +1215,7 @@ class Tier2TasksRelocationTests(unittest.TestCase):
             }
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertNotIn(
                 "tasks", written.get("tier2_objects", {}) or {},
             )
@@ -1271,7 +1271,7 @@ class Tier2TasksRelocationTests(unittest.TestCase):
             }
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 written["tier2_objects"]["tasks"]["upserts"][0]["id"],
                 "task-genuine",
@@ -1300,7 +1300,7 @@ class Tier2TasksRelocationTests(unittest.TestCase):
             }
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertNotIn(
                 "events", written.get("tier2_objects", {}) or {},
             )
@@ -1324,7 +1324,7 @@ class Tier2TasksRelocationTests(unittest.TestCase):
             }
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertNotIn(
                 "people_candidates",
                 written.get("tier2_objects", {}) or {},
@@ -1361,11 +1361,11 @@ class Tier2TasksRelocationTests(unittest.TestCase):
             out1 = tmp / "out1.json"
             rc1, _, _ = _run(data, out1, audiences)
             self.assertEqual(rc1, 0)
-            first_pass = json.loads(out1.read_text())
+            first_pass = json.loads(out1.read_text(encoding="utf-8"))
             out2 = tmp / "out2.json"
             rc2, _, err2 = _run(first_pass, out2, audiences)
             self.assertEqual(rc2, 0)
-            second_pass = json.loads(out2.read_text())
+            second_pass = json.loads(out2.read_text(encoding="utf-8"))
             self.assertEqual(first_pass, second_pass)
             for fix_id in (
                 "tier2-tasks-relocated-to-tier1",
@@ -1432,11 +1432,11 @@ class Phase4LowFindingsTests(unittest.TestCase):
             out1 = tmp / "out1.json"
             rc1, _, _ = _run(data, out1, audiences)
             self.assertEqual(rc1, 0)
-            first = json.loads(out1.read_text())
+            first = json.loads(out1.read_text(encoding="utf-8"))
             out2 = tmp / "out2.json"
             rc2, _, err2 = _run(first, out2, audiences)
             self.assertEqual(rc2, 0)
-            second = json.loads(out2.read_text())
+            second = json.loads(out2.read_text(encoding="utf-8"))
             self.assertEqual(first, second)
             # No autofix / coerce / inject / drop events on second
             # pass. The only stderr lines acceptable are the AUDIENCES
@@ -1465,7 +1465,7 @@ class Phase4LowFindingsTests(unittest.TestCase):
             }
             rc, _, _ = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             upserts = written["tier1_objects"]["people"]["upserts"]
             self.assertEqual(len(upserts), 3)
             self.assertEqual(upserts[0]["id"], "alice")
@@ -1487,7 +1487,7 @@ class Phase4LowFindingsTests(unittest.TestCase):
             ]
             rc, _, _ = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 written["concept_hints"],
                 ["alpha_concept", "beta_concept"],
@@ -1531,7 +1531,7 @@ class Tier1NullShapeTests(unittest.TestCase):
             }
             rc, _, err = _run(data, tmp / "out.json", audiences)
             self.assertEqual(rc, 0)
-            written = json.loads((tmp / "out.json").read_text())
+            written = json.loads((tmp / "out.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 written["tier1_objects"]["tasks"],
                 {"created": [], "updated": []},
@@ -1781,7 +1781,7 @@ class DeepValidationGateTests(unittest.TestCase):
             out = tmp / "out.json"
             rc, _, err = _run(data, out, audiences, deep_validate=True)
             self.assertEqual(rc, 0, msg=err)
-            written = json.loads(out.read_text())
+            written = json.loads(out.read_text(encoding="utf-8"))
             entry = written["tier2_objects"]["inventory"]["upserts"][0]
             self.assertEqual(entry["origin"], "personal")
             self.assertIn("audience_tags", entry)

@@ -56,6 +56,7 @@ from _common import (
     normalize_domain,
     parse_extensions_table,
     repo_root,
+    configure_std_streams,
 )
 
 
@@ -2011,6 +2012,8 @@ def deep_validate_manifest(
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--input", type=Path, default=None,

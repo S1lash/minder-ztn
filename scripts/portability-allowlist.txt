@@ -1,0 +1,21 @@
+# Portability gate — the file-level escape hatch.
+#
+# Format, one finding per line, TAB-separated:
+#
+#     <repo-relative path><TAB><rule id><TAB><reason>
+#
+# The reason column is MANDATORY and the gate refuses to load a row without it.
+# A suppression whose reason nobody wrote is a suppression nobody can review,
+# and the point of an escape hatch is that it stays visible.
+#
+# Prefer the INLINE form where the exception is about one line rather than a
+# whole file — an `# portability-ok: <reason>` comment on the offending line (or
+# the line directly above it), which keeps the justification next to the code it
+# excuses. Use this file only when the exception is genuinely file-wide.
+#
+# `python3 scripts/check_portability.py --rules` prints every rule id with what
+# it forbids and what to write instead.
+#
+# Ships EMPTY on purpose. Every construct the gate forbids has a portable
+# replacement, so a row here is a claim that a specific case is the exception —
+# and that claim should be rare enough to argue about.

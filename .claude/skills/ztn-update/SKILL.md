@@ -65,6 +65,39 @@ no version / phase / rename-history narratives.
 git fetch <remote> <branch>
 ```
 
+### Step 1.5 — Repair the updater before trusting it
+
+**Runs on every update, before anything else is read.** Land `scripts/` from
+upstream first, then re-read the manifest, the migration list and the ledger
+helpers from the copy that just arrived.
+
+```bash
+git checkout <remote>/<branch> -- scripts/
+```
+
+Why this is unconditional and first. The engine's update machinery ships
+*through* the update. A clone carrying a broken copy of that machinery can
+never receive its own repair by the normal path — which is exactly what
+happened to a Windows clone whose `sync_engine.sh` silently applied nothing for
+weeks, including the fix for itself. Refreshing `scripts/` before reading it
+makes the updater self-repairing from **any** prior version, permanently. That
+property is the point; the specific bug that revealed it is not.
+
+This step is safe to do blind:
+
+- `scripts/` is engine surface end to end — it holds no owner data, so there is
+  nothing to lose by taking upstream's copy.
+- Step 4's divergence detection still runs over it afterwards. A friend who
+  deliberately customised something under `scripts/` sees the same
+  keep-or-overwrite prompt they would have seen anyway, one step later.
+- `git checkout <ref> -- <path>` takes no `<ref>:<path>` argument, so it is
+  immune to the MSYS path rewriting that breaks the bash script's own manifest
+  reader on Git Bash. This skill is therefore the recovery path for a clone
+  that the script cannot reach.
+
+If the checkout fails, say so plainly and stop: an updater that cannot update
+itself must not proceed to update everything else.
+
 ### Step 2 — VERSION diff
 
 Read `integrations/VERSION` from `HEAD` and from `<remote>/<branch>`.
@@ -77,13 +110,22 @@ Read `integrations/VERSION` from `HEAD` and from `<remote>/<branch>`.
 
 ### Step 3 — Migration inventory
 
-List `scripts/migrations/*.sh` (and `*.py`) on `<remote>/<branch>` not
+List `scripts/migrations/*.sh` on `<remote>/<branch>` not
 present locally — those between local VERSION and upstream VERSION are
 candidates. Read each migration's first 30 lines (header comment) to
 extract the human-readable summary.
 
-Filter against `.engine-migrations-applied` marker — already-applied
-migrations are skipped.
+Ask the runner what is pending rather than reading a marker file directly:
+
+```bash
+python3 scripts/run_migrations.py --dry-run --json
+```
+
+It returns `{"pending": N, "ran": [{"name", "kind", "outcome"}, ...]}`. The
+ledger (`.engine-migrations.jsonl`, with the legacy flat
+`.engine-migrations-applied` folded in) is its business, not this skill's — one
+owner of "what has run here". Each entry carries the migration's declared
+`kind`, which is what Step 6 acts on.
 
 Render:
 ```
@@ -162,13 +204,26 @@ appropriate».
 
 If `--no-migrations` — skip.
 
-Otherwise, run each pending migration in lexical order, **capturing its
-combined stdout+stderr**:
-```
-out="$(bash scripts/migrations/<name>.sh 2>&1)"; rc=$?   # or python3 for .py
+Otherwise, hand the whole chain to the runner and **capture its combined
+stdout+stderr**:
+
+```bash
+out="$(python3 scripts/run_migrations.py 2>&1)"; rc=$?
 ```
 
-Append name to `.engine-migrations-applied` on success (`rc == 0`).
+The runner applies each pending migration in order and records the outcome in
+the ledger. It acts on the migration's declared `kind`:
+
+| Kind | On failure |
+|---|---|
+| `structural` | abort the chain, record nothing, exit non-zero — the next update resumes at exactly that migration |
+| `heal` | record `partial`, print the failure, **keep going**; retried on the next update |
+
+The `heal` arm is not leniency, it is the fix for a real failure mode: a
+best-effort repair of historical data used to abort the whole update and stay
+unrecorded, so every future update re-ran it and re-aborted at the same point.
+A friend's clone sat unable to update for weeks because of one such repair. A
+repair of old data must never be able to block a future engine update.
 
 **Detection-only migrations (soft-nag) — MUST be surfaced, never let scroll past.**
 A migration that exits 0 but prints recovery instructions (a `/ztn:...` command) is
@@ -191,12 +246,17 @@ and **do the steps it names**, in this same session, after the update finishes.
 An owner who is only shown the text will not know their roles are recoverable —
 which is the exact failure the migration exists to prevent.
 
-If a migration fails (`rc != 0`):
-- Stop the chain.
-- Print: «migration `<name>` failed. Engine files already overwritten;
-  partial state. Inspect, fix, then re-run `/ztn:update --no-migrations`
-  for now and resolve manually.»
+If the runner exits non-zero, a **structural** migration failed:
+- The chain is already stopped and nothing after it ran.
+- Print: «migration `<name>` failed. Engine files are already overwritten, so
+  this clone is in a partial state. Inspect the output above, fix the cause,
+  then re-run `/ztn:update` — it resumes at that migration.»
 - Exit non-zero.
+
+If the runner exits 0 but reported `partial` outcomes, surface each one in the
+**Post-update recovery** list for Step 8, naming the migration and what it could
+not finish. The update itself succeeded; the owner should know what is still
+outstanding, and that it will be retried automatically.
 
 ### Step 7 — Follow-up detection
 
@@ -204,7 +264,7 @@ Inspect what changed:
 
 | Pattern in changed files | Recommendation |
 |---|---|
-| `integrations/claude-code/{rules,commands,skills}/**` changed | «Re-run `./integrations/claude-code/install.sh` to refresh `~/.claude/` symlinks.» |
+| `integrations/claude-code/{rules,commands,skills}/**` changed | «Re-run `bash integrations/claude-code/install.sh` to refresh `~/.claude/` symlinks.» |
 | Any file under `0_constitution/` engine paths or constitution tooling changed | «Run `/ztn:regen-constitution` to refresh views.» |
 | `_system/scripts/**` changed | «Run tests: `pytest zettelkasten/_system/scripts/tests/`.» |
 | A NEW file added under `integrations/claude-code/scheduler-prompts/**` (git status `A`) | «A new scheduled job shipped — set up a new `/schedule` routine for it (see `docs/scheduling.md` for the cron slot + prompt body). Nothing to re-paste; you don't have this routine yet.» |
@@ -212,9 +272,10 @@ Inspect what changed:
 
 ### Step 8 — Stage + propose commit
 
-`git add` all overwritten paths + `.engine-migrations-applied` +
-`integrations/VERSION` (if changed). Do NOT push — push is `/ztn:save`'s
-job.
+`git add` all overwritten paths + the migration ledger
+(`.engine-migrations.jsonl`, and the legacy `.engine-migrations-applied` if the
+clone still carries it) + `integrations/VERSION` (if changed). Do NOT push —
+push is `/ztn:save`'s job.
 
 Render:
 ```
@@ -232,7 +293,7 @@ Proposed commit:
   - kept local: integrations/claude-code/skills/ztn-process/SKILL.md
 
 Follow-ups:
-  • run ./integrations/claude-code/install.sh
+  • run bash integrations/claude-code/install.sh
   • run /ztn:regen-constitution
   • run pytest zettelkasten/_system/scripts/tests/
 
@@ -361,8 +422,11 @@ Ask for more detail on any point?
 - **Push.** Hands off to `/ztn:save`.
 - **Run install.sh / regen-constitution / tests automatically.**
   Suggests; owner runs explicitly.
-- **Reset migrations marker.** If owner needs to re-run a migration,
-  they edit `.engine-migrations-applied` manually — guarded territory.
+- **Rewrite the migration ledger.** If the owner needs to re-run a migration
+  that already succeeded, they remove its line from
+  `.engine-migrations.jsonl` themselves — guarded territory. A `heal` that
+  ended `partial` needs no intervention: it is retried on the next update by
+  design.
 
 ## Idempotency
 

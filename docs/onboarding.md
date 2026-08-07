@@ -48,7 +48,7 @@ See `docs/upstream-sync.md` for the full engine-update flow.
 ## 2. Install the Claude Code integration
 
 ```bash
-./integrations/claude-code/install.sh
+bash integrations/claude-code/install.sh
 ```
 
 Then add to `~/.claude/CLAUDE.md` if not already present:

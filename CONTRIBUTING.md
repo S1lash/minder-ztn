@@ -48,12 +48,26 @@ engine changes.
 1. Fork the upstream skeleton (the public `minder-ztn` repo).
 2. Branch off `main` (`feat/<short-slug>` or `fix/<short-slug>`).
 3. Make engine changes only — never touch a `template:` path or any
-   path outside the manifest. The personal-data linter guards this
-   (`scripts/check-no-personal-data.sh`).
-4. Bump `integrations/VERSION` (semver). Add a migration under
+   path outside the manifest.
+4. Run the three gates before opening a PR. CI runs all three, and
+   `release_engine.py` runs the first two again at release time:
+
+   ```bash
+   python3 scripts/check_portability.py      # ENGINE_DOCTRINE §3.9
+   python3 scripts/check_no_personal_data.py # no owner identity in engine code
+   python3 scripts/check_seed_contract.py    # template / seed declarations
+   ```
+
+   The portability gate is the one most likely to stop you, and it is the
+   one worth reading the output of: it names the construct, why it breaks,
+   and what to write instead. Every rule it enforces already existed in
+   `ENGINE_DOCTRINE §3.9` — the gate only makes it executable, because a
+   rule enforced by memory alone reaches a friend's Windows machine broken.
+5. Bump `integrations/VERSION` (semver). Add a migration under
    `scripts/migrations/NNN-short-slug.sh` if your change is
-   breaking — see `scripts/migrations/README.md`.
-5. Open a pull request describing the user-visible behaviour change
+   breaking — see `scripts/migrations/README.md`, and declare its
+   `# migration-kind:` (`structural` or `heal`) in the header.
+6. Open a pull request describing the user-visible behaviour change
    and the migration story.
 
 ## Style
@@ -72,7 +86,8 @@ engine changes.
 - Examples that name a real person. Use `john-doe` / `ivan-petrov`
   placeholders.
 - Personal `~/.claude/` rules or memory files.
-- Your `.engine-migrations-applied` marker file.
+- Your migration ledger (`.engine-migrations.jsonl`, and the older flat
+  `.engine-migrations-applied` if your clone still carries one).
 
 ## Release process (maintainer)
 

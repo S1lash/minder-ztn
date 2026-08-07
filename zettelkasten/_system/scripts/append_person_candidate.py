@@ -48,7 +48,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from _common import die, state_dir
+from _common import configure_std_streams, die, state_dir
 
 
 BUFFER_FILENAME = "people-candidates.jsonl"
@@ -102,6 +102,8 @@ def now_iso_utc() -> str:
 
 
 def main() -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--name", required=True, help="name as transcribed (bare)")
     parser.add_argument("--date", required=True, help="transcript date YYYY-MM-DD")

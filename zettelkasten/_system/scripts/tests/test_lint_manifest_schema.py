@@ -189,7 +189,7 @@ class ScanHTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             sdir = Path(tmp) / "schemas"
             sdir.mkdir()
-            (sdir / "v2.json").write_text(json.dumps(_MIN_SCHEMA))
+            (sdir / "v2.json").write_text(json.dumps(_MIN_SCHEMA), encoding="utf-8")
             with redirect_stderr(io.StringIO()):
                 rc = L.main([
                     "--batches-dir", "/tmp/no-such-batches-dir-12345",

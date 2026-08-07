@@ -462,7 +462,7 @@ class DomainAutofixTests(unittest.TestCase):
                 "origin: personal\naudience_tags: []\nis_sensitive: false\n",
             )
             _run(root, mode="fix")
-            content = (root / "1_projects" / "n.md").read_text()
+            content = (root / "1_projects" / "n.md").read_text(encoding="utf-8")
             self.assertIn("- work\n", content)
             self.assertIn("- learning\n", content)
         clear_ztn_env()
@@ -550,7 +550,7 @@ class DomainAutofixTests(unittest.TestCase):
                 "origin: personal\naudience_tags: []\nis_sensitive: false\n",
             )
             _run(root, mode="fix")
-            content = (root / "1_projects" / "n.md").read_text()
+            content = (root / "1_projects" / "n.md").read_text(encoding="utf-8")
             # Final list should contain a single 'work'.
             self.assertEqual(content.count("- work\n"), 1)
 
@@ -672,7 +672,7 @@ class ApplyAliasesIntegrationTests(unittest.TestCase):
             events = _run(root, mode="fix")
             rewrite = [e for e in events if e["fix_id"] == "concept-alias-rewrite-autofix"]
             self.assertEqual(len(rewrite), 2)
-            content = (root / "1_projects" / "n.md").read_text()
+            content = (root / "1_projects" / "n.md").read_text(encoding="utf-8")
             # api_v2 and api2 collapsed into single api_v2_design
             self.assertEqual(content.count("- api_v2_design\n"), 1)
             self.assertNotIn("api_v2\n", content.replace("api_v2_design", "X"))

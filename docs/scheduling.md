@@ -307,7 +307,7 @@ skills must be visible in the session's skill registry.
 - **Local cron / launchd / GitHub Actions** — same `.claude/skills/`
   symlinks load when the runner has the repo as CWD. If the runner
   invokes `claude` from a different CWD, also run
-  `./integrations/claude-code/install.sh` once on the runner so
+  `bash integrations/claude-code/install.sh` once on the runner so
   user-level `~/.claude/skills/` symlinks cover the case.
 
 The bash helpers under `scripts/scheduler/` (`pin-main.sh`,

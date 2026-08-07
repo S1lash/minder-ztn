@@ -36,6 +36,11 @@ import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from lib.portable import configure_std_streams  # noqa: E402
+
+
 CONFIG = "config.yml"
 # Old and new secret stores are the same path, shape and primitive (Fernet);
 # only the environment variable holding the key was renamed. Verified by
@@ -63,7 +68,31 @@ def flag(text: str, key: str) -> bool:
 
 
 def listed(text: str, key: str) -> list:
-    """Top-level `key:` followed by `- item` lines. Enough for the old shape."""
+    """Values of a top-level `key:`, in either YAML list form.
+
+    Both forms occur in real previous-shape configs, because they were written
+    by a concierge rather than by a schema:
+
+        tools:            tools: [notion, calendar]
+          - notion
+
+    Reading only the block form makes a tool-bearing role look like it used no
+    tools — and the role's conversion plan then tells the owner no credentials
+    carry across, when they do. Silence about a credential is exactly the class
+    of miss this whole migration exists to prevent.
+    """
+    for line in text.splitlines():
+        if not line.startswith(f"{key}:"):
+            continue
+        inline = line.split(":", 1)[1].strip()
+        if inline.startswith("[") and inline.endswith("]"):
+            return [
+                item.strip().strip("'\"")
+                for item in inline[1:-1].split(",")
+                if item.strip()
+            ]
+        break
+
     out, capturing = [], False
     for line in text.splitlines():
         if line.startswith(f"{key}:"):
@@ -167,6 +196,8 @@ def _must_ask(cfg: str, tick: str) -> list:
 
 
 def main(argv: list) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parked_root = Path(argv[1]).resolve()
     store_names = json.loads(argv[2]) if len(argv) > 2 else []
     if not parked_root.is_dir():

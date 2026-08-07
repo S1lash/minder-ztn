@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: heal
 # 017-roles-subsystem-returns — Bring an existing clone in line with the roles
 # subsystem being present again.
 #
@@ -27,6 +28,7 @@ SOURCES_LIVE="$REPO_ROOT/zettelkasten/_system/registries/SOURCES.md"
 if [ -f "$SOURCES_LIVE" ]; then
     python3 - "$SOURCES_LIVE" <<'PY'
 import sys
+sys.stdout.reconfigure(newline="\n", encoding="utf-8")  # LF on Git Bash
 from pathlib import Path
 
 STALE = (

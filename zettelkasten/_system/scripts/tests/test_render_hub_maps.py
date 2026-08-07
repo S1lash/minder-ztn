@@ -107,7 +107,7 @@ class TestRenderHubMaps(unittest.TestCase):
         self.assertTrue(rec["changed"])
 
         # Verify body contains all 5 in chronological order
-        body = (self.root / "5_meta" / "mocs" / "hub-foo.md").read_text()
+        body = (self.root / "5_meta" / "mocs" / "hub-foo.md").read_text(encoding="utf-8")
         for i in range(5):
             self.assertIn(f"note-{i}", body)
         # Markers present
@@ -125,7 +125,7 @@ class TestRenderHubMaps(unittest.TestCase):
 
         rc, _, _ = _run(self.root, hub="hub-foo", apply=True)
         self.assertEqual(rc, 0)
-        body = (self.root / "5_meta" / "mocs" / "hub-foo.md").read_text()
+        body = (self.root / "5_meta" / "mocs" / "hub-foo.md").read_text(encoding="utf-8")
         self.assertIn("note-0", body)
         self.assertIn("note-1", body)
         # note-2 should appear ONLY in excluded section, not the main table
@@ -146,7 +146,7 @@ class TestRenderHubMaps(unittest.TestCase):
         skipped = next(e for e in events if e.get("skipped"))
         self.assertIn("mode=curated", skipped["skipped"])
         # Body unchanged
-        body = (self.root / "5_meta" / "mocs" / "hub-foo.md").read_text()
+        body = (self.root / "5_meta" / "mocs" / "hub-foo.md").read_text(encoding="utf-8")
         self.assertIn("original text", body)
         self.assertNotIn("AUTO-GENERATED", body)
 
@@ -173,7 +173,7 @@ class TestRenderHubMaps(unittest.TestCase):
         # No records reference orphan
         rc, _, _ = _run(self.root, hub="hub-orphan", apply=True)
         self.assertEqual(rc, 0)
-        body = (self.root / "5_meta" / "mocs" / "hub-orphan.md").read_text()
+        body = (self.root / "5_meta" / "mocs" / "hub-orphan.md").read_text(encoding="utf-8")
         self.assertIn("AUTO-GENERATED", body)
         self.assertIn("no member records yet", body)
 
@@ -192,7 +192,7 @@ class TestRenderHubMaps(unittest.TestCase):
 
         rc, _, _ = _run(self.root, hub="hub-legacy", apply=True)
         self.assertEqual(rc, 0)
-        body = (self.root / "5_meta" / "mocs" / "hub-legacy.md").read_text()
+        body = (self.root / "5_meta" / "mocs" / "hub-legacy.md").read_text(encoding="utf-8")
         # Pre-section preserved
         self.assertIn("Текущее понимание", body)
         self.assertIn("some narrative here", body)
@@ -225,7 +225,7 @@ class TestRenderHubMaps(unittest.TestCase):
 
         rc, _, _ = _run(self.root, hub="hub-foo", apply=True)
         self.assertEqual(rc, 0)
-        body = (self.root / "5_meta" / "mocs" / "hub-foo.md").read_text()
+        body = (self.root / "5_meta" / "mocs" / "hub-foo.md").read_text(encoding="utf-8")
         self.assertIn("explicit summary", body)
         self.assertIn("title-only-fallback", body)
         self.assertIn("note-3", body)

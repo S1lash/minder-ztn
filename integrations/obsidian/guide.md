@@ -107,7 +107,7 @@ in the process), use the **🔄 Reset graph view to defaults** button at
 the bottom of `minder-ztn.md` (section ⚙️ Maintenance). One click
 restores the engine snapshot of `graph.json` and auto-backs up your
 current state. CLI alternative for power users:
-`./integrations/obsidian/seed.sh --reset-graph`.
+`bash integrations/obsidian/seed.sh --reset-graph`.
 
 ### Why graph isn't fully clickable yet
 
@@ -276,7 +276,7 @@ once installed.
 If your `.obsidian/` config gets weird:
 
 ```bash
-./integrations/obsidian/seed.sh --force
+bash integrations/obsidian/seed.sh --force
 ```
 
 Backs up the existing `.obsidian/` to `.obsidian.backup-{ts}/` and

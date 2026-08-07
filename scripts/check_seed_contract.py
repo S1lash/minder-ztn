@@ -34,6 +34,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+
+from lib.portable import configure_std_streams  # noqa: E402
+
+
 from release_engine import load_manifest, repo_root
 
 # Engine `.template.*` files that legitimately ship verbatim (not seeds — their
@@ -141,6 +146,8 @@ def find_strays(skeleton: Path, release: Path) -> list[str]:
 
 
 def main() -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     ap = argparse.ArgumentParser(description="Seed-contract gate.")
     ap.add_argument("--skeleton", help="also diff this existing skeleton clone against a fresh release")
     args = ap.parse_args()

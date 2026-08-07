@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: structural
 # 002-sources-family-column — Add `Family` column to SOURCES.md.
 #
 # Engine 0.22.0 introduces the `Family` column on SOURCES.md to drive
@@ -24,6 +25,7 @@ if grep -qE '^\|\s*ID\s*\|\s*Inbox Path\s*\|\s*Family\s*\|' "$SOURCES_LIVE"; the
 fi
 
 python3 - "$SOURCES_LIVE" <<'PY'
+import sys; sys.stdout.reconfigure(newline="\n", encoding="utf-8")  # LF on Git Bash
 import re
 import sys
 from pathlib import Path

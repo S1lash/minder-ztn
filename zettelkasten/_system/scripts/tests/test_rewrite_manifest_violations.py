@@ -371,3 +371,161 @@ class RetrofitFullPipelineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HistoricalRepairTests(unittest.TestCase):
+    """Corruption classes that predate producer conformance.
+
+    Every repair derives its value from the manifest or from disk. None is
+    invented — a manifest whose missing value cannot be derived is quarantined
+    honestly rather than filled with a plausible one.
+    """
+
+    def _base(self, tmp: str) -> Path:
+        base = Path(tmp)
+        (base / "_records" / "meetings").mkdir(parents=True)
+        (base / "2_areas").mkdir(parents=True)
+        return base
+
+    def test_truncated_timestamp_rebuilt_from_filename(self):
+        data = {"timestamp": "2026-07-20T23", "section_extras": {}}
+        events = r.repair_historical(
+            data, filename="/x/20260720-152238-maintain.json", base=None
+        )
+        self.assertEqual(data["timestamp"], "2026-07-20T15:22:38Z")
+        self.assertEqual(data["section_extras"]["legacy_timestamp"], "2026-07-20T23")
+        self.assertTrue(any(e["event"] == "timestamp_truncated" for e in events))
+
+    def test_null_section_extras_becomes_object(self):
+        data = {"section_extras": None}
+        r.repair_historical(data, filename="/x/20260720-152238-process.json", base=None)
+        self.assertEqual(data["section_extras"], {})
+
+    def test_batch_id_loses_the_skill_suffix(self):
+        data = {"batch_id": "20260801-230515-process"}
+        r.repair_historical(data, filename="/x/20260801-230515-process.json", base=None)
+        self.assertEqual(data["batch_id"], "20260801-230515")
+        self.assertEqual(
+            data["section_extras"]["legacy_batch_id"], "20260801-230515-process"
+        )
+
+    def test_null_id_and_title_recovered_from_path_and_note(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = self._base(tmp)
+            note = base / "_records" / "meetings" / "20260726-meeting-x.md"
+            note.write_text("# Встреча: тема\n\nbody\n", encoding="utf-8")
+            data = {
+                "records": {
+                    "created": [
+                        {
+                            "path": "_records/meetings/20260726-meeting-x.md",
+                            "id": None,
+                            "title": None,
+                        }
+                    ]
+                }
+            }
+            r.repair_historical(data, filename="/x/20260726-110000-process.json", base=base)
+            entry = data["records"]["created"][0]
+            self.assertEqual(entry["id"], "20260726-meeting-x")
+            self.assertEqual(entry["title"], "Встреча: тема")
+
+    def test_absent_title_is_left_alone(self):
+        """An absent optional field is an early dialect, not corruption."""
+        data = {"records": {"created": [{"path": "_records/meetings/a.md", "id": "a"}]}}
+        r.repair_historical(data, filename="/x/20260726-110000-process.json", base=None)
+        self.assertNotIn("title", data["records"]["created"][0])
+
+    def test_missing_path_located_by_unique_note_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = self._base(tmp)
+            (base / "2_areas" / "some-insight.md").write_text("# T\n", encoding="utf-8")
+            data = {"knowledge_notes": {"created": [{"id": "some-insight"}]}}
+            r.repair_historical(data, filename="/x/20260726-110000-process.json", base=base)
+            self.assertEqual(
+                data["knowledge_notes"]["created"][0]["path"], "2_areas/some-insight.md"
+            )
+
+    def test_missing_path_not_guessed_when_the_note_is_gone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = self._base(tmp)
+            data = {"knowledge_notes": {"created": [{"id": "vanished-note"}]}}
+            r.repair_historical(data, filename="/x/20260726-110000-process.json", base=base)
+            self.assertNotIn("path", data["knowledge_notes"]["created"][0])
+
+    def test_truncated_checksum_recomputed_never_padded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = self._base(tmp)
+            note = base / "_records" / "meetings" / "n.md"
+            note.write_text("content\n", encoding="utf-8")
+            import hashlib
+
+            expected = hashlib.sha256(note.read_bytes()).hexdigest()
+            data = {
+                "records": {
+                    "created": [
+                        {
+                            "path": "_records/meetings/n.md",
+                            "id": "n",
+                            "checksum_sha256": expected[:63],
+                        }
+                    ]
+                }
+            }
+            r.repair_historical(data, filename="/x/20260726-110000-process.json", base=base)
+            self.assertEqual(data["records"]["created"][0]["checksum_sha256"], expected)
+
+    def test_truncated_checksum_left_alone_when_file_is_gone(self):
+        data = {
+            "records": {
+                "created": [
+                    {"path": "_records/meetings/gone.md", "id": "gone",
+                     "checksum_sha256": "a" * 63}
+                ]
+            }
+        }
+        r.repair_historical(data, filename="/x/20260726-110000-process.json", base=None)
+        self.assertEqual(data["records"]["created"][0]["checksum_sha256"], "a" * 63)
+
+    def test_null_org_dropped(self):
+        data = {"records": {"created": [{"path": "p.md", "id": "p", "org": None}]}}
+        r.repair_historical(data, filename="/x/20260726-110000-process.json", base=None)
+        self.assertNotIn("org", data["records"]["created"][0])
+
+    def test_lens_observation_entries_are_not_given_a_type(self):
+        """`lens_observation` has its own entry shape — no `type`, no `name`."""
+        data = {
+            "tier2_objects": {
+                "lens_observation": {"upserts": [{"id": "lens-obs-1", "path": "p.md"}]},
+                "activity": {"upserts": [{"path": "_system/views/activity/w.md"}]},
+            }
+        }
+        r.repair_historical(data, filename="/x/20260726-110000-maintain.json", base=None)
+        lens = data["tier2_objects"]["lens_observation"]["upserts"][0]
+        self.assertNotIn("type", lens)
+        self.assertNotIn("name", lens)
+        activity = data["tier2_objects"]["activity"]["upserts"][0]
+        self.assertEqual(activity["type"], "activity")
+        self.assertEqual(activity["id"], "w")
+
+    def test_repair_is_idempotent(self):
+        data = {"timestamp": "2026-07-20T23", "batch_id": "20260720-152238-maintain"}
+        r.repair_historical(data, filename="/x/20260720-152238-maintain.json", base=None)
+        first = json.dumps(data, sort_keys=True)
+        r.repair_historical(data, filename="/x/20260720-152238-maintain.json", base=None)
+        self.assertEqual(json.dumps(data, sort_keys=True), first)
+
+
+class QuarantineTests(unittest.TestCase):
+    def test_marker_carries_the_reason_with_the_entity(self):
+        data = {"section_extras": {}}
+        r.quarantine(data, reason="unreachable", errors=["e1", "e2"], ts="2026-08-07T00:00:00Z")
+        q = data["section_extras"]["quarantine"]
+        self.assertEqual(q["reason"], "unreachable")
+        self.assertEqual(q["errors"], ["e1", "e2"])
+        self.assertEqual(q["marked"], "2026-08-07T00:00:00Z")
+
+    def test_marker_creates_section_extras_when_absent(self):
+        data = {}
+        r.quarantine(data, reason="x", errors=[], ts="2026-08-07T00:00:00Z")
+        self.assertIn("quarantine", data["section_extras"])

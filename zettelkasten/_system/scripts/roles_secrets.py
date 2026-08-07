@@ -90,7 +90,9 @@ def _fernet(key: str):
     except ImportError as exc:
         raise SecretError(
             "the 'cryptography' package is needed to read or write credentials "
-            "but is not installed — run: pip install 'cryptography>=41.0'"
+            "but is not installed. A clone that updated in place will not have "
+            "it yet — install every engine dependency at once with: "
+            "pip install -r _system/scripts/requirements.txt"
         ) from exc
     try:
         return Fernet(key.encode("utf-8"))

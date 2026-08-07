@@ -23,6 +23,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SCHEDULER_DIR = REPO_ROOT / "scripts" / "scheduler"
+LIB_DIR = REPO_ROOT / "scripts" / "lib"
 MANIFEST = REPO_ROOT / ".engine-manifest.yml"
 
 
@@ -41,7 +42,7 @@ def _git(cwd: Path, *args: str, check: bool = True, env: dict | None = None) -> 
         cwd=cwd,
         check=check,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         env=full_env,
     )
 
@@ -51,7 +52,7 @@ def _run_script(cwd: Path, script: str, *args: str) -> subprocess.CompletedProce
         ["bash", f"scripts/scheduler/{script}", *args],
         cwd=cwd,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         env={
             **os.environ,
             "GIT_AUTHOR_NAME": "test",
@@ -62,8 +63,24 @@ def _run_script(cwd: Path, script: str, *args: str) -> subprocess.CompletedProce
     )
 
 
-@pytest.fixture
-def repo(tmp_path: Path) -> Path:
+# Scheduler scripts a sandbox needs to be the shape production runs in. They
+# source `scripts/lib/git.sh` and the classifier imports `lib.manifest` /
+# `lib.portable`, so the lib tree is seeded alongside — in ONE place, because a
+# per-test copy of this list is how a new engine dependency ends up seeded in
+# some tests and not others.
+_SCHEDULER_SCRIPTS = (
+    "stage.sh",
+    "finalize-tick.sh",
+    "ship-failure-note.sh",
+    "_classify_paths.py",
+)
+
+
+def _seed_repo(tmp_path: Path) -> tuple[Path, Path]:
+    """Create `origin.git` + a `work` clone carrying the scheduler surface.
+
+    Returns `(work, origin)`. HEAD is `main`, pushed and tracking.
+    """
     origin = tmp_path / "origin.git"
     work = tmp_path / "work"
     subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
@@ -74,28 +91,30 @@ def repo(tmp_path: Path) -> Path:
 
     scheduler_dst = work / "scripts" / "scheduler"
     scheduler_dst.mkdir(parents=True)
-    for name in (
-        "stage.sh",
-        "finalize-tick.sh",
-        "ship-failure-note.sh",
-        "_classify_paths.py",
-    ):
+    for name in _SCHEDULER_SCRIPTS:
         shutil.copy(SCHEDULER_DIR / name, scheduler_dst / name)
+    shutil.copytree(LIB_DIR, work / "scripts" / "lib")
     shutil.copy(MANIFEST, work / ".engine-manifest.yml")
 
     (work / "zettelkasten" / "_records").mkdir(parents=True)
     (work / "zettelkasten" / "_system" / "state").mkdir(parents=True)
 
-    _git(work, "add", ".engine-manifest.yml", "scripts/scheduler/")
+    _git(work, "add", ".engine-manifest.yml", "scripts/scheduler/", "scripts/lib/")
     _git(work, "commit", "-q", "-m", "initial")
     _git(work, "push", "-q", "-u", "origin", "main")
+    return work, origin
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Path:
+    work, _ = _seed_repo(tmp_path)
     return work
 
 
 def test_single_commit_for_mixed_staging(repo: Path) -> None:
-    (repo / "zettelkasten/_records/r1.md").write_text("rec1\n")
-    (repo / "zettelkasten/_records/r2.md").write_text("rec2\n")
-    (repo / "zettelkasten/_system/state/s.md").write_text("state\n")
+    (repo / "zettelkasten/_records/r1.md").write_text("rec1\n", encoding="utf-8")
+    (repo / "zettelkasten/_records/r2.md").write_text("rec2\n", encoding="utf-8")
+    (repo / "zettelkasten/_system/state/s.md").write_text("state\n", encoding="utf-8")
 
     result = _run_script(repo, "finalize-tick.sh", "scheduler/process")
     assert result.returncode == 0, result.stderr
@@ -111,10 +130,10 @@ def test_single_commit_for_mixed_staging(repo: Path) -> None:
 
 
 def test_engine_paths_not_committed(repo: Path) -> None:
-    (repo / "zettelkasten/_records/r1.md").write_text("owner data\n")
-    (repo / "scripts" / "drift.sh").write_text("# engine drift\n")
+    (repo / "zettelkasten/_records/r1.md").write_text("owner data\n", encoding="utf-8")
+    (repo / "scripts" / "drift.sh").write_text("# engine drift\n", encoding="utf-8")
     (repo / "integrations").mkdir(exist_ok=True)
-    (repo / "integrations" / "drift.md").write_text("# more drift\n")
+    (repo / "integrations" / "drift.md").write_text("# more drift\n", encoding="utf-8")
 
     result = _run_script(repo, "finalize-tick.sh", "scheduler/process")
     assert result.returncode == 0, result.stderr
@@ -126,7 +145,7 @@ def test_engine_paths_not_committed(repo: Path) -> None:
 
     clar = repo / "zettelkasten/_system/state/CLARIFICATIONS.md"
     assert clar.exists()
-    assert "engine drift" in clar.read_text()
+    assert "engine drift" in clar.read_text(encoding="utf-8")
 
 
 def test_commits_non_ascii_filenames(repo: Path) -> None:
@@ -165,7 +184,7 @@ def test_commits_non_ascii_filenames(repo: Path) -> None:
 
 
 def test_stage_is_idempotent(repo: Path) -> None:
-    (repo / "zettelkasten/_records/r1.md").write_text("rec1\n")
+    (repo / "zettelkasten/_records/r1.md").write_text("rec1\n", encoding="utf-8")
 
     r1 = _run_script(repo, "stage.sh")
     r2 = _run_script(repo, "stage.sh")
@@ -180,17 +199,17 @@ def test_stage_is_idempotent(repo: Path) -> None:
 
 
 def test_fold_recovery_collapses_previous_scheduled_commits(repo: Path) -> None:
-    (repo / "zettelkasten/_records/x.md").write_text("x\n")
+    (repo / "zettelkasten/_records/x.md").write_text("x\n", encoding="utf-8")
     _git(repo, "add", "zettelkasten/_records/x.md")
     _git(repo, "commit", "-q", "-m", "scheduler/process: partial1 [scheduled]")
-    (repo / "zettelkasten/_records/y.md").write_text("y\n")
+    (repo / "zettelkasten/_records/y.md").write_text("y\n", encoding="utf-8")
     _git(repo, "add", "zettelkasten/_records/y.md")
     _git(repo, "commit", "-q", "-m", "scheduler/process: partial2 [scheduled]")
 
     ahead_before = _git(repo, "rev-list", "--count", "origin/main..HEAD")
     assert ahead_before.stdout.strip() == "2"
 
-    (repo / "zettelkasten/_records/z.md").write_text("z\n")
+    (repo / "zettelkasten/_records/z.md").write_text("z\n", encoding="utf-8")
     result = _run_script(repo, "finalize-tick.sh", "scheduler/lint")
     assert result.returncode == 0, result.stderr
     assert "folding 2 previous unpushed" in result.stdout
@@ -207,11 +226,11 @@ def test_fold_recovery_collapses_previous_scheduled_commits(repo: Path) -> None:
 
 
 def test_refuses_to_reset_over_owner_manual_commit(repo: Path) -> None:
-    (repo / "zettelkasten/_records/manual.md").write_text("owner work\n")
+    (repo / "zettelkasten/_records/manual.md").write_text("owner work\n", encoding="utf-8")
     _git(repo, "add", "zettelkasten/_records/manual.md")
     _git(repo, "commit", "-q", "-m", "owner manual edit")
 
-    (repo / "zettelkasten/_records/dirty.md").write_text("d\n")
+    (repo / "zettelkasten/_records/dirty.md").write_text("d\n", encoding="utf-8")
     result = _run_script(repo, "finalize-tick.sh", "scheduler/process")
     assert result.returncode == 2
     assert "refusing to reset" in result.stderr
@@ -228,7 +247,7 @@ def test_nothing_to_commit_is_noop(repo: Path) -> None:
 
 
 def test_ship_failure_note_falls_back_to_local_when_finalize_refuses(repo: Path) -> None:
-    (repo / "zettelkasten/_records/manual.md").write_text("owner work\n")
+    (repo / "zettelkasten/_records/manual.md").write_text("owner work\n", encoding="utf-8")
     _git(repo, "add", "zettelkasten/_records/manual.md")
     _git(repo, "commit", "-q", "-m", "owner manual edit")
 
@@ -242,7 +261,7 @@ def test_ship_failure_note_falls_back_to_local_when_finalize_refuses(repo: Path)
     assert "falling back to local-only commit" in result.stderr
     assert "committed locally" in result.stdout
 
-    clar_text = (repo / "zettelkasten/_system/state/CLARIFICATIONS.md").read_text()
+    clar_text = (repo / "zettelkasten/_system/state/CLARIFICATIONS.md").read_text(encoding="utf-8")
     assert "test cause" in clar_text
     assert "process-scheduled" in clar_text
 
@@ -255,7 +274,7 @@ def test_ship_failure_note_falls_back_to_local_when_finalize_refuses(repo: Path)
 
 def test_message_heuristic_records_only(repo: Path) -> None:
     for i in range(3):
-        (repo / f"zettelkasten/_records/r{i}.md").write_text(f"{i}\n")
+        (repo / f"zettelkasten/_records/r{i}.md").write_text(f"{i}\n", encoding="utf-8")
 
     result = _run_script(repo, "finalize-tick.sh", "scheduler/process")
     assert result.returncode == 0
@@ -383,7 +402,7 @@ def _install_fake_gh(tmp_path: Path, bare_origin: Path) -> tuple[Path, dict]:
     state_dir = tmp_path / "fake-gh-state"
     state_dir.mkdir(exist_ok=True)
     gh = bin_dir / "gh"
-    gh.write_text(FAKE_GH_SCRIPT)
+    gh.write_text(FAKE_GH_SCRIPT, encoding="utf-8")
     gh.chmod(0o755)
     env = {
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
@@ -394,37 +413,22 @@ def _install_fake_gh(tmp_path: Path, bare_origin: Path) -> tuple[Path, dict]:
 
 
 def test_routines_mode_push_to_sandbox_and_pr_merge(tmp_path: Path) -> None:
-    origin = tmp_path / "origin.git"
-    work = tmp_path / "work"
-    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
-    work.mkdir()
-
-    _git(work, "init", "-q", "-b", "main")
-    _git(work, "remote", "add", "origin", str(origin))
-    scheduler_dst = work / "scripts" / "scheduler"
-    scheduler_dst.mkdir(parents=True)
-    for name in ("stage.sh", "finalize-tick.sh", "_classify_paths.py"):
-        shutil.copy(SCHEDULER_DIR / name, scheduler_dst / name)
-    shutil.copy(MANIFEST, work / ".engine-manifest.yml")
-    (work / "zettelkasten/_records").mkdir(parents=True)
-    _git(work, "add", ".")
-    _git(work, "commit", "-q", "-m", "initial")
-    _git(work, "push", "-q", "-u", "origin", "main")
+    work, origin = _seed_repo(tmp_path)
 
     state_dir = work / ".scheduler-state"
     state_dir.mkdir()
-    (state_dir / "start-branch").write_text("claude/test-sandbox-XYZ\n")
+    (state_dir / "start-branch").write_text("claude/test-sandbox-XYZ\n", encoding="utf-8")
 
     _, gh_env = _install_fake_gh(tmp_path, origin)
 
-    (work / "zettelkasten/_records/r1.md").write_text("rec1\n")
-    (work / "zettelkasten/_records/r2.md").write_text("rec2\n")
+    (work / "zettelkasten/_records/r1.md").write_text("rec1\n", encoding="utf-8")
+    (work / "zettelkasten/_records/r2.md").write_text("rec2\n", encoding="utf-8")
 
     result = subprocess.run(
         ["bash", "scripts/scheduler/finalize-tick.sh", "scheduler/process"],
         cwd=work,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         env={
             **os.environ,
             **gh_env,
@@ -442,7 +446,7 @@ def test_routines_mode_push_to_sandbox_and_pr_merge(tmp_path: Path) -> None:
     refs = subprocess.run(
         ["git", "ls-remote", "--heads", str(origin)],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=True,
     )
     assert "claude/test-sandbox-XYZ" not in refs.stdout, "sandbox branch must be deleted"
@@ -452,7 +456,7 @@ def test_routines_mode_push_to_sandbox_and_pr_merge(tmp_path: Path) -> None:
         ["git", "log", "--format=%s", "-1", "main"],
         cwd=origin,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=True,
     )
     assert "scheduler/process:" in main_log.stdout
@@ -460,27 +464,13 @@ def test_routines_mode_push_to_sandbox_and_pr_merge(tmp_path: Path) -> None:
 
 
 def test_routines_mode_gh_missing_fails_gracefully(tmp_path: Path) -> None:
-    origin = tmp_path / "origin.git"
-    work = tmp_path / "work"
-    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
-    work.mkdir()
-    _git(work, "init", "-q", "-b", "main")
-    _git(work, "remote", "add", "origin", str(origin))
-    scheduler_dst = work / "scripts" / "scheduler"
-    scheduler_dst.mkdir(parents=True)
-    for name in ("stage.sh", "finalize-tick.sh", "_classify_paths.py"):
-        shutil.copy(SCHEDULER_DIR / name, scheduler_dst / name)
-    shutil.copy(MANIFEST, work / ".engine-manifest.yml")
-    (work / "zettelkasten/_records").mkdir(parents=True)
-    _git(work, "add", ".")
-    _git(work, "commit", "-q", "-m", "initial")
-    _git(work, "push", "-q", "-u", "origin", "main")
+    work, _origin = _seed_repo(tmp_path)
 
     state_dir = work / ".scheduler-state"
     state_dir.mkdir()
-    (state_dir / "start-branch").write_text("claude/no-gh-XYZ\n")
+    (state_dir / "start-branch").write_text("claude/no-gh-XYZ\n", encoding="utf-8")
 
-    (work / "zettelkasten/_records/r1.md").write_text("rec1\n")
+    (work / "zettelkasten/_records/r1.md").write_text("rec1\n", encoding="utf-8")
 
     # Build a PATH that genuinely lacks `gh`: on GitHub runners gh lives in
     # /usr/bin, so just dropping homebrew dirs is not enough. Symlink every
@@ -501,7 +491,7 @@ def test_routines_mode_gh_missing_fails_gracefully(tmp_path: Path) -> None:
         ["bash", "scripts/scheduler/finalize-tick.sh", "scheduler/process"],
         cwd=work,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         env={
             "PATH": minimal_path,
             "HOME": str(tmp_path),
@@ -531,7 +521,7 @@ def test_classifier_uses_manifest(tmp_path: Path) -> None:
         ["python3", str(SCHEDULER_DIR / "_classify_paths.py")],
         input=paths,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         cwd=REPO_ROOT,
     )
     assert result.returncode == 0
@@ -547,3 +537,88 @@ def test_classifier_uses_manifest(tmp_path: Path) -> None:
         "zettelkasten/_system/docs/SYSTEM_CONFIG.md": "ENGINE",
         "some/random/path/AUDIENCES.template.md": "ENGINE",
     }
+
+
+# ---------------------------------------------------------------------------
+# Branch identity — the detached-HEAD delivery bug
+# ---------------------------------------------------------------------------
+#
+# `git rev-parse --abbrev-ref HEAD` exits 0 and prints the literal string
+# `HEAD` on a detached checkout, so the old `|| echo DETACHED` fallback in
+# pin-main.sh never fired. That literal reached finalize-tick.sh, whose LOCAL
+# test matched only `main` / `DETACHED` / empty — so a detached tick fell
+# through to ROUTINES mode and tried to open a PR against a branch called
+# `HEAD`. These pin both halves.
+
+
+def _lib_git(work: Path, snippet: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", "-c", f'. scripts/lib/git.sh; {snippet}'],
+        cwd=work,
+        capture_output=True,
+        text=True, encoding="utf-8",
+    )
+
+
+def test_git_current_branch_is_empty_and_nonzero_when_detached(tmp_path: Path) -> None:
+    work, _ = _seed_repo(tmp_path)
+    _git(work, "checkout", "-q", "--detach", "HEAD")
+
+    result = _lib_git(work, "git_current_branch")
+    assert result.stdout.strip() == "", "detached HEAD must yield no branch name"
+    assert result.returncode != 0, "detached HEAD must be reported by exit status"
+
+    # The primitive it replaces does neither — this is the whole bug.
+    legacy = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],  # portability-ok: the assertion's subject
+        cwd=work, capture_output=True, text=True, encoding="utf-8",
+    )
+    assert legacy.stdout.strip() == "HEAD" and legacy.returncode == 0
+
+
+def test_git_current_branch_reports_the_branch_when_attached(tmp_path: Path) -> None:
+    work, _ = _seed_repo(tmp_path)
+    result = _lib_git(work, "git_current_branch")
+    assert result.stdout.strip() == "main"
+    assert result.returncode == 0
+
+
+def test_pin_main_records_detached_not_the_literal_head(tmp_path: Path) -> None:
+    work, _ = _seed_repo(tmp_path)
+    shutil.copy(SCHEDULER_DIR / "pin-main.sh", work / "scripts" / "scheduler" / "pin-main.sh")
+    _git(work, "checkout", "-q", "--detach", "HEAD")
+
+    result = _run_script(work, "pin-main.sh")
+    assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
+
+    recorded = (work / ".scheduler-state" / "start-branch").read_text(encoding="utf-8").strip()
+    assert recorded == "DETACHED", f"detached start recorded as {recorded!r}"
+
+
+def test_pin_main_records_the_sandbox_branch_name(tmp_path: Path) -> None:
+    work, _ = _seed_repo(tmp_path)
+    shutil.copy(SCHEDULER_DIR / "pin-main.sh", work / "scripts" / "scheduler" / "pin-main.sh")
+    _git(work, "checkout", "-q", "-b", "claude/admiring-shannon-ETCE3")
+
+    result = _run_script(work, "pin-main.sh")
+    assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
+
+    recorded = (work / ".scheduler-state" / "start-branch").read_text(encoding="utf-8").strip()
+    assert recorded == "claude/admiring-shannon-ETCE3"
+
+
+@pytest.mark.parametrize("recorded", ["HEAD", "DETACHED", "main", ""])
+def test_finalize_takes_local_mode_for_every_non_branch_value(
+    repo: Path, recorded: str
+) -> None:
+    """A stale `HEAD` must never route delivery through gh + `HEAD:HEAD`."""
+    state_dir = repo / ".scheduler-state"
+    state_dir.mkdir(exist_ok=True)
+    (state_dir / "start-branch").write_text(f"{recorded}\n", encoding="utf-8")
+
+    (repo / "zettelkasten" / "_records" / "r1.md").write_text("rec\n", encoding="utf-8")
+
+    result = _run_script(repo, "finalize-tick.sh", "scheduler/process")
+    assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
+    assert "LOCAL mode" in result.stdout
+    assert "ROUTINES mode" not in result.stdout

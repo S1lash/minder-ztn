@@ -7,30 +7,22 @@
 # place (the manifest) rather than being duplicated as a hardcoded case
 # statement.
 
-import re
 import sys
 from pathlib import Path
 
+# `scripts/` on the path so the shared primitives are importable. Both modules
+# used here are dependency-free on purpose: this helper runs inside the
+# scheduler sandbox, where PyYAML is not guaranteed to be installed.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from lib.manifest import read_section_lite  # noqa: E402
+from lib.portable import configure_stdin, emit_lines  # noqa: E402
+
 
 def load_engine_patterns(manifest_path: Path) -> tuple[list[str], list[str]]:
-    text = manifest_path.read_text(encoding="utf-8")
     dirs: list[str] = []
     files: list[str] = []
-    section: str | None = None
-    for raw in text.splitlines():
-        line = raw.rstrip()
-        if not line or line.lstrip().startswith("#"):
-            continue
-        if not line.startswith(" "):
-            head = line.split(":", 1)[0].strip()
-            section = head if head in {"engine", "template", "exclude"} else None
-            continue
-        if section != "engine":
-            continue
-        m = re.match(r"^\s*-\s+(.+?)\s*$", line)
-        if not m:
-            continue
-        path = m.group(1).strip().strip('"').strip("'")
+    for path in read_section_lite(manifest_path, "engine"):
         if path.endswith("/"):
             dirs.append(path)
         else:
@@ -81,12 +73,20 @@ def main() -> int:
         print("_classify_paths: no engine entries parsed from manifest", file=sys.stderr)
         return 2
 
-    for raw in sys.stdin:
-        path = raw.strip()
-        if not path:
-            continue
-        label = "ENGINE" if is_engine(path, dirs, files) else "OWNER"
-        print(f"{label}\t{path}")
+    # Stdin carries owner filenames, which are not ASCII. Without this it is
+    # decoded through the platform default and a Cyrillic path raises on
+    # Windows, killing the tick's staging outright.
+    configure_stdin()
+
+    # `emit_lines` rather than `print`: stage.sh reads this stdout with
+    # `while IFS=$'\t' read -r label path`, and python's text-mode stdout on Git
+    # Bash would append a `\r` to every path — which then reaches `git add` as
+    # part of the pathspec and fails, silently costing the tick its commit.
+    emit_lines(
+        f"{'ENGINE' if is_engine(path, dirs, files) else 'OWNER'}\t{path}"
+        for path in (raw.strip() for raw in sys.stdin)
+        if path
+    )
     return 0
 
 

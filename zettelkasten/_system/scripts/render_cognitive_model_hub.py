@@ -57,6 +57,7 @@ from _common import (
     repo_root,
     state_dir,
     system_dir,
+    configure_std_streams,
 )
 
 HUB_REL = "5_meta/mocs/hub-cognitive-model.md"
@@ -405,6 +406,8 @@ def render(hub_path: Path, prompt_path: Path, candidates_path: Path):
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hub", type=Path, default=None,
                         help=f"override hub path (default: {HUB_REL})")

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: heal
 # 003-lens-precedent-pre-biometric-mark — Tag pre-patch precedent rows.
 #
 # Engine 0.22.0 patched four lens prompts (stated-vs-lived,
@@ -30,6 +31,7 @@ if [[ ! -f "$HISTORY" ]]; then
 fi
 
 python3 - "$HISTORY" <<'PY'
+import sys; sys.stdout.reconfigure(newline="\n", encoding="utf-8")  # LF on Git Bash
 import json
 import sys
 from pathlib import Path

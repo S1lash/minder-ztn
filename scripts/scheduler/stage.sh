@@ -39,6 +39,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$SCRIPT_DIR/../lib/git.sh"
 # The base name is the owner's choice, not a constant — `roles_config`
 # discovers it precisely because of that. Deriving it here too is what keeps
 # this script from reporting "clear" while a lock sits in a renamed base.
@@ -53,37 +54,18 @@ CLAR="$BASE_NAME/_system/state/CLARIFICATIONS.md"
 HOLD_BACK_FILE=".scheduler-state/hold-back"
 TS="$(date -u +%Y-%m-%dT%H:%MZ)"
 
-extract_paths() {
-  local line path
-  while IFS= read -r line; do
-    [ -z "$line" ] && continue
-    path="${line:3}"
-    path="${path##* -> }"
-    path="${path#\"}"
-    path="${path%\"}"
-    printf '%s\n' "$path"
-  done
-}
-
-# `-c core.quotepath=false` is load-bearing: with the default (true), git
-# octal-escapes non-ASCII bytes in `git status --porcelain` output (e.g. a
-# Cyrillic filename becomes "…\320\222…"). extract_paths strips the wrapping
-# quotes but cannot decode those escapes, so the literal backslash-octal string
-# reaches `git add` and fails with "pathspec did not match". With quotepath
-# off, non-ASCII prints as raw UTF-8; spaces still wrap the path in quotes,
-# which extract_paths already handles.
+# `git_status_paths` (scripts/lib/git.sh) owns the two settings this script
+# cannot work without — `core.quotepath=false` so a Cyrillic filename is not
+# octal-escaped into a string `git add` rejects, and `-uall` so a wholly-new
+# directory is listed as its files rather than collapsed into one entry ending
+# in `/`. Under the collapsed form both filters below break silently: an engine
+# path inside a new directory would be classified by the directory's label, and
+# a held-back path inside one could not be excluded at all.
 #
-# `-uall` is equally load-bearing: without it git collapses a wholly-new
-# directory into ONE entry ending in `/`, and every filter downstream then
-# operates on a directory instead of on files. Both filters this script owns
-# break silently under that — an engine path inside a new directory is
-# classified by the directory's label, and a held-back path inside one cannot
-# be excluded at all because it never appears as its own entry. Staging
-# individual files is also strictly more precise than staging their parent.
 # `set -e` aborts on a failing pipeline before a following `$?` test can run, so
 # the check has to be part of the assignment itself or the diagnostic is lost and
 # the caller sees a bare non-zero exit the header does not document.
-if ! CLASSIFIED="$(git -c core.quotepath=false status --porcelain -uall | extract_paths | python3 "$SCRIPT_DIR/_classify_paths.py")"; then
+if ! CLASSIFIED="$(git_status_paths | python3 "$SCRIPT_DIR/_classify_paths.py")"; then
   echo "stage: path classifier failed" >&2
   exit 2
 fi
@@ -174,7 +156,7 @@ git add -- "${STAGEABLE[@]}" || exit 2
 # Defence-in-depth: re-classify what actually landed in the index. The
 # manifest is authoritative; this catches index races where a stat-only
 # refresh might let an engine path slip through.
-INDEX_CLASSIFIED="$(git -c core.quotepath=false diff --cached --name-only | python3 "$SCRIPT_DIR/_classify_paths.py")"
+INDEX_CLASSIFIED="$(git_staged_paths | python3 "$SCRIPT_DIR/_classify_paths.py")"
 STAGED_ENGINE=()
 while IFS=$'\t' read -r label path; do
   [ -z "${path:-}" ] && continue

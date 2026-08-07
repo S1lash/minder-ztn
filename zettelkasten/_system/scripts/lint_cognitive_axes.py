@@ -31,7 +31,7 @@ import json
 import sys
 from pathlib import Path
 
-from _common import constitution_root, iter_principles, read_frontmatter, repo_root
+from _common import configure_std_streams, constitution_root, iter_principles, read_frontmatter, repo_root
 from render_cognitive_model_hub import HubRenderError, load_axes
 
 HUB_REL = "5_meta/mocs/hub-cognitive-model.md"
@@ -114,6 +114,8 @@ def scan(root: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=None,
                         help="repo root (default: resolved from ZTN_BASE / file location)")

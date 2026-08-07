@@ -194,10 +194,23 @@ Layers currently qualifying:
   trio backfill in `lint_concept_audit.py`.
 - **Portable filename normalisation** — `normalize_portable_name` /
   `is_portable_name` (single SoT: `_common.py`). Applied to new
-  `_sources/inbox/` names by `/ztn:process` §0.0 pre-scan and
+  `_sources/inbox/` names by `/ztn:process` §0.0b pre-scan and
   `/ztn:save` Step 0.5 pre-pass; `/ztn:lint` A.10 is the backstop.
   Collisions are NOT covered by the exception — they surface as
   `portable-name-collision` CLARIFICATIONs.
+- **Split-name recovery** — `repair_split_names.py`. Rejoins an inbox item
+  whose name a producer's `/` turned into two nested directories, which
+  portable-name normalisation cannot reach (it works on a NAME, and both
+  resulting segments are legal names). Three-property check: (1)
+  deterministic — the join is a pure function of the two segment names,
+  using the same `-` the normaliser substitutes for `/`; (2)
+  conservative-safe — the join runs ONLY when the parent holds exactly one
+  child and that child is a complete item, and refuses on every other
+  shape, so the failure mode is "left in place, surfaced"; (3)
+  low-per-decision-value — for the unambiguous shape the rejoin is the only
+  correct reading, so asking the owner offers them nothing to decide.
+  Applied by `/ztn:process` §0.0a; `/ztn:lint` A.10 is the backstop.
+  Ambiguous shapes surface as `source-layout-split-name` CLARIFICATIONs.
 - **Frontmatter fence repair** — `frontmatter_closed_before_body` /
   `repair_misplaced_fence` (single SoT: `_common.py`). Relocates a `## `
   body heading (typically `## Evidence Trail`) that a producer captured

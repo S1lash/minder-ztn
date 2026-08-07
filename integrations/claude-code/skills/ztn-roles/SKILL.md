@@ -356,6 +356,7 @@ is not abandoning the tick.
 ```bash
 python3 "$RUN" role-begin --base "$BASE" --repo "$REPO" --role <id>
 python3 - "$BASE" "<id>" <<'PY'
+import sys; sys.stdout.reconfigure(newline="\n", encoding="utf-8")  # LF on Git Bash
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "_system" / "scripts"))
 import roles_config
@@ -645,6 +646,7 @@ Outcome `error` → check whether the previous line was also an error:
 
 ```bash
 python3 - "$BASE/_system/roles/<id>/log.jsonl" <<'PY'
+import sys; sys.stdout.reconfigure(newline="\n", encoding="utf-8")  # LF on Git Bash
 import json, pathlib, sys
 lines = [l for l in pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines() if l.strip()]
 tail = []

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: structural
 # 009-biometric-per-source-namespace — namespace the biometric layer per device.
 #
 # The metric-day pipeline now stores records + derived state per wearable

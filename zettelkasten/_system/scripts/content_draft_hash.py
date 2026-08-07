@@ -24,6 +24,8 @@ import re
 import sys
 from pathlib import Path
 
+from _common import configure_std_streams  # type: ignore
+
 _FM_SPLIT_RE = re.compile(r"^---\n.*?\n---\n(.*)$", re.DOTALL)
 
 
@@ -46,6 +48,8 @@ def hash_file(path: Path) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     args = argv if argv is not None else sys.argv[1:]
     if len(args) != 1:
         sys.stderr.write("usage: content_draft_hash.py <draft-path>\n")

@@ -26,6 +26,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from lib.portable import configure_std_streams  # noqa: E402
+
+
 PARKED = "_previous"
 HANDOFF = "HANDOFF.md"
 CONFIG = "config.yml"
@@ -77,6 +82,8 @@ def file_count(d: Path) -> int:
 
 
 def main(argv: list) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     repo = Path.cwd().resolve()
     base = Path(argv[1]).resolve() if len(argv) > 1 else discover_base(repo)
     if base is None or not base.is_dir():

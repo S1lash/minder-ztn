@@ -7,6 +7,11 @@ Runs the generators in dependency order:
     3. render_soul_values       → _system/SOUL.md auto-zone (between markers)
     4. render_index             → _system/views/INDEX.md (knowledge + archive + constitution + hubs surface catalog)
 
+Exit status: 0 when every applicable step succeeded — including the documented
+skip of the SOUL step on a base whose SOUL.md has no auto-zone markers yet
+(`--strict-soul` turns that skip into exit 2). Any other non-zero is a real
+failure of the step that printed it.
+
 Fail-fast: any step's non-zero exit propagates immediately — the remaining
 steps are not run. All writes are idempotent (same inputs → same outputs
 aside from the timestamp line).
@@ -29,6 +34,8 @@ import argparse
 import subprocess
 import sys
 from pathlib import Path
+
+from _common import configure_std_streams  # type: ignore
 
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -62,6 +69,8 @@ def _soul_has_markers(soul_path: Path) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--dry-run", action="store_true",
@@ -69,8 +78,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--strict-soul", action="store_true",
-        help="fail if SOUL.md is missing markers; default is to skip with "
-             "an info message (exit code 3)",
+        help="fail (exit 2) if SOUL.md is missing its auto-zone markers; "
+             "default is to skip that step with an info message and exit 0",
     )
     parser.add_argument(
         "--write-soul-clarification", action="store_true",
@@ -115,10 +124,14 @@ def main(argv: list[str] | None = None) -> int:
             "skipped. Add markers in the SOUL integration step.",
             file=sys.stderr,
         )
-        # Distinct exit code so pipeline callers can notice partial completion
-        # without mistaking it for a full run. Index + core are valid; SOUL is
-        # the only view that was skipped.
-        return 3
+        # Exit 0. This is the DOCUMENTED graceful path — a base whose SOUL.md
+        # has no auto-zone yet is healthy, and every view that could be
+        # regenerated was. A distinct code here made every caller that checks
+        # the exit status report a failure on a healthy run, which is the same
+        # class of defect as a silent success: the status stops meaning what it
+        # says. `--strict-soul` is how a caller that genuinely requires the SOUL
+        # step asks for a failure.
+        return 0
 
     soul_args: list[str] = []
     if args.write_soul_clarification:

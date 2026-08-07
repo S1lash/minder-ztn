@@ -69,6 +69,8 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+
+from _common import configure_std_streams  # type: ignore
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import roles_cadence
@@ -552,6 +554,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     args = _build_parser().parse_args(argv)
     try:
         # The one place a path from the command line becomes a real path,

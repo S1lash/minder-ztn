@@ -65,12 +65,25 @@ names at two gates, via the single SoT
 `_system/scripts/_common.py::normalize_portable_name` (deterministic,
 idempotent — autonomous-resolution layer per ENGINE_DOCTRINE §3.1):
 
-- `/ztn:process` pre-scan (§0.0 in the SKILL) — renames before anything reads
+- `/ztn:process` pre-scan (§0.0b in the SKILL) — renames before anything reads
   the path, so every downstream reference (`source:`, PROCESSED.md, manifests)
   is born with the safe name;
 - `/ztn:save` inbox pre-pass — renames before staging, so a raw inbox drop
   committed from one device never breaks checkout on a Windows device;
 - `/ztn:lint` Scan A.10 — backstop for paths that slipped past both gates.
+
+**Split names.** A producer can put a `/` in the recording title — «07-09
+Встреча - A/B-тест». No filesystem accepts that in a name, so the sync or the
+unzip turns one segment into two nested directories, and the item lands one
+level deeper than its layout says. `normalize_portable_name` cannot reach this:
+it works on a NAME, and both resulting segments are legal names. Recovery is
+`_system/scripts/repair_split_names.py`, run by `/ztn:process` §0.0a with
+`/ztn:lint` A.10a as the backstop. It rejoins with the same `-` the normaliser
+substitutes for `/`, and only inside a folder layout (`dir-per-item` /
+`dir-with-summary`), never entering a `Skip Subdirs` folder, and ONLY when the
+parent holds exactly one child that is itself a complete item. Every other shape
+— including any directory under a `flat-md` source, which may be the owner's own
+— surfaces as a `source-layout-split-name` CLARIFICATION and is left in place.
 
 Already-processed paths are **grandfathered**: names under
 `_sources/processed/` listed in PROCESSED.md keep their original form, and

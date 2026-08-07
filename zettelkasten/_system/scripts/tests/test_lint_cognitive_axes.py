@@ -135,6 +135,6 @@ def test_archived_principle_not_flagged(tmp_path, monkeypatch):
                scope="sensitive")  # would trip 3 checks if active...
     # ...but make it archived:
     p = tmp_path / "0_constitution/principle/ai-interaction/011-x.md"
-    p.write_text(p.read_text().replace("status: active", "status: archived"))
+    p.write_text(p.read_text().replace("status: active", "status: archived"), encoding="utf-8")
     _hub(tmp_path, is_sensitive="false")
     assert _run(tmp_path, monkeypatch) == []

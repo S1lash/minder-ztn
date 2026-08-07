@@ -111,7 +111,7 @@ def test_rollup_median_and_category_aggregation(tmp_path):
     for i in range(7, 21):
         _emit_record(base, mon + timedelta(days=i))
     res = ww.run(base, today="2024-01-28")
-    data = json.loads(Path(next(x for x in res.rollup_paths if "2024-W01" in x)).read_text())
+    data = json.loads(Path(next(x for x in res.rollup_paths if "2024-W01" in x)).read_text(encoding="utf-8"))
     assert data["rollup"]["scores"]["focus_score"]["median"] == 70.0
     assert data["rollup"]["scores"]["focus_score"]["min"] == 60.0
     assert data["rollup"]["scores"]["focus_score"]["max"] == 80.0
@@ -134,7 +134,7 @@ def test_top_death_loop_aggregation(tmp_path):
     for i in range(7, 21):
         _emit_record(base, mon + timedelta(days=i), top_death_loop=None)
     res = ww.run(base, today="2024-01-28")
-    data = json.loads(Path(next(x for x in res.rollup_paths if "2024-W01" in x)).read_text())
+    data = json.loads(Path(next(x for x in res.rollup_paths if "2024-W01" in x)).read_text(encoding="utf-8"))
     loops = data["rollup"]["top_death_loops"]
     top = loops[0]
     assert top["pair"] == "Chrome <-> Slack"
@@ -154,7 +154,7 @@ def test_week_over_week_delta(tmp_path):
     for i in range(14, 28):
         _emit_record(base, w1 + timedelta(days=i), focus=75.0)
     res = ww.run(base, today="2024-02-04")
-    data = json.loads(Path(next(x for x in res.rollup_paths if "2024-W02" in x)).read_text())
+    data = json.loads(Path(next(x for x in res.rollup_paths if "2024-W02" in x)).read_text(encoding="utf-8"))
     assert data["prior_week"] == "2024-W01"
     # W02 focus median 75 - W01 focus median 60 = +15
     assert data["delta_vs_prior_week"]["focus_score"] == 15.0

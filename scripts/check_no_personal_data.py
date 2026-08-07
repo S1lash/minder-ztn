@@ -78,6 +78,12 @@ except ImportError:
     print("error: PyYAML required. Install: pip install pyyaml", file=sys.stderr)
     sys.exit(2)
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from lib.manifest import TEXT_SUFFIXES, repo_root, scan_targets  # noqa: E402
+from lib.manifest import load_manifest as _load_manifest  # noqa: E402
+from lib.portable import emit_lines  # noqa: E402
+
 
 # Ships EMPTY — this file is engine code, distributed to every friend's
 # clone. Naming the owner's identity, employer, or coworkers here would be
@@ -90,10 +96,6 @@ DEFAULT_BLACKLIST: list[str] = []
 
 BLACKLIST_FILENAME = "personal-data-blacklist.txt"
 
-# Filename suffixes considered text. Anything else skipped.
-TEXT_SUFFIXES = {
-    ".md", ".yml", ".yaml", ".sh", ".py", ".txt", ".json", ".toml", ".cfg", ".ini",
-}
 
 # Paths that legitimately ship a verbatim owner axiom/principle/rule as a
 # worked example — the owner's rule is "abstract principles may ship", so a
@@ -132,17 +134,12 @@ def is_sanctioned_principle_home(rel_path: Path) -> bool:
     return False
 
 
-def repo_root() -> Path:
-    return Path(__file__).resolve().parent.parent
-
-
 def load_manifest(root: Path) -> dict:
-    p = root / ".engine-manifest.yml"
-    if not p.exists():
-        print(f"error: manifest not found at {p}", file=sys.stderr)
+    """The manifest, or a clean abort naming the file this gate cannot run without."""
+    if not (root / ".engine-manifest.yml").exists():
+        print(f"error: manifest not found at {root / '.engine-manifest.yml'}", file=sys.stderr)
         sys.exit(2)
-    with p.open() as f:
-        return yaml.safe_load(f)
+    return _load_manifest(root)
 
 
 def load_owner_blacklist(root: Path) -> list[str]:
@@ -577,26 +574,24 @@ def build_dynamic_blacklist(root: Path) -> list[str]:
     return general_patterns + constitution_patterns
 
 
+# Two files that are engine surface but must never be scanned: this gate (it
+# would match its own explanatory prose) and the owner blacklist (it is a list
+# of the very patterns being hunted, and it never ships).
+def _self_excluded(root: Path) -> set[Path]:
+    return {Path(__file__).resolve(), (root / BLACKLIST_FILENAME).resolve()}
+
+
 def expand_paths(root: Path, raw: list[str]) -> list[Path]:
-    """Expand manifest entries into concrete file paths."""
-    out: list[Path] = []
-    self_path = Path(__file__).resolve()
-    blacklist_path = (root / BLACKLIST_FILENAME).resolve()
-    for entry in raw or []:
-        p = root / entry.rstrip("/")
-        if p.is_dir():
-            for sub in p.rglob("*"):
-                if sub.is_file() and sub.suffix in TEXT_SUFFIXES and sub.resolve() not in (self_path, blacklist_path):
-                    out.append(sub)
-        elif p.is_file():
-            if p.suffix in TEXT_SUFFIXES and p.resolve() not in (self_path, blacklist_path):
-                out.append(p)
-        else:
-            # Path does not exist yet (e.g. integrations/VERSION before creation).
-            # Skip silently — release tooling will error if a manifested path
-            # is missing at extraction time.
-            continue
-    return sorted(set(out))
+    """Expand manifest entries into concrete scannable files.
+
+    Thin wrapper over `lib.manifest.expand_paths` for callers holding one
+    section. `main()` uses `scan_targets` instead, which additionally subtracts
+    `exclude:`.
+    """
+    from lib.manifest import expand_paths as _expand
+
+    skip = _self_excluded(root)
+    return sorted(p for p in _expand(root, raw) if p.resolve() not in skip)
 
 
 def scan_file(path: Path, patterns: list[re.Pattern[str]]) -> list[tuple[int, str, str]]:
@@ -627,9 +622,13 @@ def main() -> int:
     root = repo_root()
     manifest = load_manifest(root)
 
-    engine_paths = expand_paths(root, manifest.get("engine", []))
-    template_paths = expand_paths(root, manifest.get("template", []))
-    targets = sorted(set(engine_paths + template_paths))
+    # `scan_targets` subtracts `exclude:`. Engine entries are frequently
+    # directory globs (`scripts/`) with owner-specific files carved out beneath
+    # them; without the subtraction such a file still trips this gate even
+    # though the manifest says it never ships, and excluding it has no
+    # observable effect.
+    skip = _self_excluded(root)
+    targets = [p for p in scan_targets(root, manifest) if p.resolve() not in skip]
 
     general_dynamic, constitution_dynamic = build_dynamic_blacklist_tagged(root)
     always_raw = (
@@ -661,7 +660,7 @@ def main() -> int:
         for line_no, pat, line in hits:
             total_hits += 1
             if args.quiet:
-                print(f"{rel}:{line_no}\t{pat}\t{line}")
+                emit_lines([f"{rel}:{line_no}\t{pat}\t{line}"])
             else:
                 print(f"{rel}:{line_no}  [{pat}]")
                 print(f"    {line}")

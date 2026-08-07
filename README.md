@@ -55,7 +55,7 @@ gh repo create my-ztn --template <maintainer>/minder-ztn --private --clone
 cd my-ztn
 
 # 2. Install the Claude Code integration + Obsidian vault config
-./integrations/claude-code/install.sh
+bash integrations/claude-code/install.sh
 
 # 3. Open Claude Code in the repo and run:
 #    /ztn:bootstrap

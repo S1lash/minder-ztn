@@ -49,7 +49,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from _common import die, state_dir
+from _common import configure_std_streams, die, state_dir
 
 
 JSONL_FILENAME = "check-decision-runs.jsonl"
@@ -387,6 +387,8 @@ def repo_root_from_jsonl(jsonl_path: Path) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kind", required=True, choices=("run", "followup"))
     parser.add_argument("--run-id", required=True,

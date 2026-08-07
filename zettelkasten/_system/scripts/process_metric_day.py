@@ -33,6 +33,8 @@ import shutil
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from _common import configure_std_streams  # type: ignore
 from typing import Any, Iterable, Optional
 
 import yaml
@@ -1020,6 +1022,9 @@ def _main(argv: list[str] | None = None) -> int:
             "categorical_events": r.categorical_events,
         }, ensure_ascii=False))
     return 0
+
+
+configure_std_streams()
 
 
 if __name__ == "__main__":

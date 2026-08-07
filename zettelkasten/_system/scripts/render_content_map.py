@@ -42,6 +42,7 @@ from _common import (
     read_frontmatter,
     repo_root,
     views_dir,
+    configure_std_streams,
 )
 
 
@@ -296,6 +297,8 @@ def render_content_map(base: Path) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--dry-run", action="store_true",

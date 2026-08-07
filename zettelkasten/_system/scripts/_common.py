@@ -16,6 +16,48 @@ from typing import Iterable
 
 import yaml
 
+# ---------------------------------------------------------------------------
+# Std-stream encoding — one owner for this half of the engine
+# ---------------------------------------------------------------------------
+#
+# Every helper here emits JSONL on stdout that a SKILL parses, and owner text is
+# not ASCII. Python encodes std streams through the platform default — cp1252 on
+# a stock Windows box — so a single Cyrillic note title raises
+# `UnicodeEncodeError` and the helper dies mid-stream. Reading paths from a pipe
+# fails the same way in the other direction.
+#
+# `scripts/lib/portable.py` is the engine-wide owner of this; the two script
+# trees always ship together, so importing it is the normal path. The fallback
+# exists because `_system/scripts/` must stay runnable on its own — migration
+# `014` does exactly that, `cd`-ing here and importing `_common` with nothing
+# else on the path. It duplicates one stdlib call, not a decision.
+try:  # pragma: no cover - exercised by whichever tree is present
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+    from lib.portable import (  # noqa: F401
+        configure_stdin,
+        configure_stdout,
+        configure_std_streams,
+    )
+except ImportError:  # pragma: no cover
+    def _reconfigure(stream) -> None:
+        fn = getattr(stream, "reconfigure", None)
+        if fn is None:
+            return
+        try:
+            fn(newline="\n", encoding="utf-8")
+        except (ValueError, OSError):
+            return
+
+    def configure_stdout() -> None:
+        _reconfigure(sys.stdout)
+
+    def configure_stdin() -> None:
+        _reconfigure(sys.stdin)
+
+    def configure_std_streams() -> None:
+        configure_stdin()
+        configure_stdout()
+
 
 # -----------------------------------------------------------------------------
 # Schema definition (mirrors 0_constitution/CONSTITUTION.md §3)

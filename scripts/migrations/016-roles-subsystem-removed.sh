@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: heal
 # 016-roles-subsystem-removed — Tell the owner that the roles subsystem was
 # removed from the engine, and that any role they created is now inert.
 #

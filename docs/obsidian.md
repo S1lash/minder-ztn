@@ -11,7 +11,7 @@ and is bookmarked from `minder-ztn.md` once you open the vault.
 After cloning the skeleton (or after `/ztn:update`), run:
 
 ```bash
-./integrations/claude-code/install.sh
+bash integrations/claude-code/install.sh
 ```
 
 This wires Claude Code skills **and** seeds Obsidian config under
@@ -43,7 +43,7 @@ freely — themes, hotkeys, snippets, community plugins, workspace layout.
 To reset to engine defaults later:
 
 ```bash
-./integrations/obsidian/seed.sh --force
+bash integrations/obsidian/seed.sh --force
 ```
 
 This backs up your existing `.obsidian/` to `.obsidian.backup-{ts}/` and

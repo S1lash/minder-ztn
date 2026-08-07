@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: heal
 # 010-cognitive-model-hub-seed — seed the cognitive-model hub for existing installs.
 #
 # `5_meta/mocs/hub-cognitive-model.md` is the visible projection of «how you

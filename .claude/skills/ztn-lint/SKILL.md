@@ -59,12 +59,23 @@ already resolved. Courtesy check, not a gate.
 Skip with `--no-sync-check`.
 
 ```bash
+remote_ahead=0
 if git remote get-url origin >/dev/null 2>&1; then
   git fetch origin --quiet 2>/dev/null || true
-  branch=$(git rev-parse --abbrev-ref HEAD)
-  remote_ahead=$(git rev-list --count "HEAD..origin/${branch}" 2>/dev/null || echo 0)
+  # `git_current_branch` (scripts/lib/git.sh) — NOT `rev-parse --abbrev-ref`,
+  # which exits 0 and prints the literal string `HEAD` when HEAD is detached,
+  # making the comparison ref `origin/HEAD` and the count meaningless.
+  . scripts/lib/git.sh 2>/dev/null || true
+  branch=$(git_current_branch 2>/dev/null || true)
+  if [ -n "$branch" ]; then
+    remote_ahead=$(git rev-list --count "HEAD..origin/${branch}" 2>/dev/null || echo 0)
+  fi
 fi
 ```
+
+Detached HEAD leaves `branch` empty and `remote_ahead` at 0 — there is no
+remote-tracking counterpart to compare against, so the check silently
+proceeds like any other unavailable-signal case.
 
 - `origin` absent, fetch failed, or `remote_ahead == 0` → silently proceed.
 - `remote_ahead > 0` → prompt:
@@ -768,7 +779,7 @@ until /ztn:maintain Step 7.7 proves stable in production use.
 
 **A.10 Portable filename backstop:**
 
-Defence-in-depth behind the two primary gates (`/ztn:process` §0.0
+Defence-in-depth behind the two primary gates (`/ztn:process` §0.0b
 pre-scan, `/ztn:save` Step 0.5 pre-pass). Catches non-portable names —
 Windows-illegal characters (`< > : " / \ | ? *`, control chars),
 trailing dots/spaces, reserved device basenames — that slipped into the
@@ -797,8 +808,25 @@ every path segment:
    `/ztn:resolve-clarifications` (rename + reference rewrite as a
    deliberate, reviewed action).
 
-A.10 never rewrites references — only inbox renames (reference-free by
-construction) are autonomous.
+**A.10a Split-name backstop:**
+
+The same defence-in-depth for the shape portable-name normalisation cannot
+see: an inbox item whose producer put a `/` in the recording title, which the
+filesystem turned into two nested directories. Both resulting segments are
+legal names, so A.10 above finds nothing wrong with either.
+
+```bash
+python3 _system/scripts/repair_split_names.py --inbox _sources/inbox --apply --json
+```
+
+Backstop behind `/ztn:process` §0.0a, same routing as A.10: an unambiguous
+join (parent holds exactly one child, and that child is a complete item) is a
+silent autofix, fix-id `split-name-autofix` — reference-safe by construction,
+because an unprocessed inbox item has no references yet. Every other shape is
+`weak`, CLARIFICATION `source-layout-split-name`, item left in place.
+
+A.10 never rewrites references — only inbox renames and rejoins
+(reference-free by construction) are autonomous.
 
 **A.11 Content markup canonicalization (content_type drift + missing content_angle):**
 
@@ -1634,8 +1662,11 @@ Stdout is JSONL — one event per validated batch. Skill ingests the stream, rou
 | `violation` | `manifest-schema-violation: {batch_id}` | Subject = batch filename. Context lists each error path + message + schema-path; `errors_truncated: true` shown when error count > 50 |
 | `unknown-version` | `manifest-schema-unknown-version: {batch_id}` | Subject = batch filename + reported `format_version`. Context lists `available_majors` from the schemas dir. To resolve: ship the missing schema file (`v{N}.json`) or roll back the producer's `format_version` |
 | `internal-error` | `validator-internal-error: {batch_id}` | Validator-side fault (json parse, validator exception). Lint never crashes — error becomes a CLARIFICATION; other scans continue |
+| `quarantined` | none | log to Hidden, and report the total count in the run entry. The manifest carries `section_extras.quarantine` with a reason: no deterministic repair reaches conformance (typically a checksum whose file is gone). Re-raising it nightly would be a permanent nag over a state that cannot improve without inventing data — and inventing it is exactly what the retrofit refuses to do |
 
 All three CLARIFICATION classes are **surfaced tier** — never auto-resolve. Floor: `weak`. The owner reviews and either fixes the producer (e.g. /ztn:process emission shape) or commits a schema migration shim.
+
+A `violation` on a HISTORICAL batch is usually repairable rather than reportable: `python3 _system/scripts/rewrite_manifest_violations.py --batches-dir _system/state/batches --base . --apply --quarantine` runs every deterministic repair and quarantines the rest. Migration `007` does exactly this, so a friend's clone reaches a stable state on update rather than accumulating the same CLARIFICATIONs each night.
 
 #### H.2 — Validator helper missing
 
@@ -2170,6 +2201,7 @@ The skill clusters items by theme, reminds context + verbatim quotes inline, and
 - `calendar-aggregation-orphans` — a note's future `📅` event is absent from CALENDAR.md (A.6.3); owner runs `/ztn:process --reconcile-calendar`
 - `portable-name-collision` — non-portable inbox name whose normalised form already exists in the same directory, or normalisation returned None (A.10 — no autofix, owner resolves)
 - `portable-name-escape` — non-portable tracked path outside inbox and not grandfathered via PROCESSED.md (A.10 — surfaced only; rename + reference rewrite is an owner-reviewed action)
+- `source-layout-split-name` — an inbox directory holding no item marker of its own but containing subdirectories, in a shape too ambiguous to rejoin (several children, a child that is not a complete item, or a target name already taken). A producer's `/` in the recording title split one name into two folders; A.10a rejoins the unambiguous case and surfaces this one (no autofix — never guess which folders belong together)
 
 **Content markup (A.11):**
 - `content-type-canon-reviewed` — judgment remap applied with default target, validate (A.11 — weak × high; reversible via Evidence Trail)

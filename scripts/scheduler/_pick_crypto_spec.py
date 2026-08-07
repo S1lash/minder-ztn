@@ -27,6 +27,11 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from lib.portable import configure_std_streams  # noqa: E402
+
+
 PACKAGE = "cryptography"
 SAFE = re.compile(
     r"^cryptography(\s*(==|>=|<=|~=|!=|>|<)\s*[0-9][0-9A-Za-z.*+!-]*)?$"
@@ -44,6 +49,9 @@ def pick(path: Path) -> str:
             continue
         return line if SAFE.match(line) else PACKAGE
     return PACKAGE
+
+
+configure_std_streams()
 
 
 if __name__ == "__main__":

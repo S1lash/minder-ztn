@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: heal
 # 004-scheduler-single-commit-protocol — Reminder migration for friends
 # updating from engine 0.22.x or earlier.
 #

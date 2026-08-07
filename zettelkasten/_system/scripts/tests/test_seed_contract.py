@@ -110,7 +110,7 @@ class TestScanSkeleton(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as t:
             sk = self._fake_skeleton(Path(t))
-            (sk / "zettelkasten/_system/scripts/biometric_thresholds.yaml").write_text("a: 999\n")
+            (sk / "zettelkasten/_system/scripts/biometric_thresholds.yaml").write_text("a: 999\n", encoding="utf-8")
             v = G.scan_skeleton(sk, self._manifest(), _REPO)
             self.assertTrue(any("tuning leak" in x for x in v), v)
 

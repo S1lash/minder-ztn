@@ -26,6 +26,8 @@ import sys
 from dataclasses import asdict, dataclass
 from datetime import date as date_cls, timedelta
 from pathlib import Path
+
+from _common import configure_std_streams  # type: ignore
 from statistics import median
 from typing import Any
 
@@ -648,3 +650,6 @@ def _main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(_main())
+
+
+configure_std_streams()

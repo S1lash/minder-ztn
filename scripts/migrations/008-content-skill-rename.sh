@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: structural
 # 008-content-skill-rename — /ztn:check-content → /ztn:content reshape.
 #
 # Engine 0.35.0 reshapes the content skill: the folder
@@ -45,8 +46,19 @@ if [[ -L "$PROJ_SKILLS/ztn-check-content" || -e "$PROJ_SKILLS/ztn-check-content"
     echo "removed stale project symlink: .claude/skills/ztn-check-content"
 fi
 if [[ -d "$SKILLS/ztn-content" && ! -e "$PROJ_SKILLS/ztn-content" ]]; then
-    ( cd "$PROJ_SKILLS" && ln -s "../../integrations/claude-code/skills/ztn-content" "ztn-content" )
-    echo "added project symlink: .claude/skills/ztn-content"
+    # portability-ok: failure is handled below rather than aborting
+    # Git Bash refuses to create a real symlink unless
+    # `MSYS=winsymlinks:nativestrict` is set, and this migration is structural
+    # — an unguarded `ln -s` would abort the whole update on Windows over a
+    # link `/ztn:update` recreates anyway (`.claude/skills` is checked out from
+    # upstream as real files, and install.sh re-links the user-level copy).
+    if ( cd "$PROJ_SKILLS" && ln -s "../../integrations/claude-code/skills/ztn-content" "ztn-content" ) 2>/dev/null; then
+        echo "added project symlink: .claude/skills/ztn-content"
+    else
+        echo "note: could not create .claude/skills/ztn-content symlink here" >&2
+        echo "  (expected on Git Bash without MSYS=winsymlinks:nativestrict);" >&2
+        echo "  the next /ztn:update checks the folder out from upstream." >&2
+    fi
 fi
 
 # 3. User-level symlink (install.sh recreates the ztn-content one).

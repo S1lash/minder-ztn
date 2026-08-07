@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: structural
 # 006-describe-me-top-level-source — promote describe-me to a top-level source.
 #
 # Engine 0.30.0 registers `describe-me` as a first-class source row
@@ -83,6 +84,7 @@ if [[ ! -f "$SOURCES_LIVE" ]]; then
 fi
 
 python3 - "$SOURCES_LIVE" <<'PY'
+import sys; sys.stdout.reconfigure(newline="\n", encoding="utf-8")  # LF on Git Bash
 import re
 import sys
 from pathlib import Path

@@ -321,11 +321,12 @@ Two entity classes carry epistemic markers consumers should respect:
 
 ```bash
 python3 - << 'EOF'
+import sys; sys.stdout.reconfigure(newline="\n", encoding="utf-8")  # LF on Git Bash
 import json, sys
 from jsonschema import Draft202012Validator
-schema = json.load(open('zettelkasten/_system/docs/manifest-schema/v2.json'))
+schema = json.load(open('zettelkasten/_system/docs/manifest-schema/v2.json', encoding='utf-8'))
 v = Draft202012Validator(schema)
-batch = json.load(open(sys.argv[1] if len(sys.argv) > 1 else '/dev/stdin'))
+batch = json.load(open(sys.argv[1] if len(sys.argv) > 1 else '/dev/stdin', encoding='utf-8'))
 errs = list(v.iter_errors(batch))
 if not errs:
     print('valid')

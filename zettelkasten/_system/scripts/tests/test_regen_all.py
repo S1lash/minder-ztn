@@ -25,7 +25,7 @@ def _run_regen(argv: list[str], env_extra: dict[str, str] | None = None) -> subp
     if env_extra:
         env.update(env_extra)
     cmd = [sys.executable, str(SCRIPTS_DIR / "regen_all.py")] + argv
-    return subprocess.run(cmd, env=env, capture_output=True, text=True)
+    return subprocess.run(cmd, env=env, capture_output=True, text=True, encoding="utf-8")
 
 
 class RegenAllTests(unittest.TestCase):
@@ -35,8 +35,13 @@ class RegenAllTests(unittest.TestCase):
             fx.write_principle("axiom/identity/001.md", VALID_NOTE)
             fx.write_system_file("SOUL.md", "# SOUL\n\nNo markers here.\n")
             result = _run_regen([], env_extra={"ZTN_BASE": str(fx.base)})
-            # Exit code 3 = partial completion (SOUL skipped), not a full run
-            self.assertEqual(result.returncode, 3, msg=result.stderr)
+            # Exit 0: a base whose SOUL.md has no auto-zone yet is HEALTHY, and
+            # every view that could be regenerated was. A distinct code here
+            # made every caller checking the status report a failure on a
+            # healthy run — the status stops meaning what it says.
+            # `--strict-soul` is how a caller that requires the step asks for a
+            # failure (covered by the next test).
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
             self.assertIn("no auto-zone markers", result.stderr)
             # Index + core must still have been produced
             self.assertTrue((fx.system / "views" / "CONSTITUTION_INDEX.md").exists())
@@ -65,7 +70,7 @@ class RegenAllTests(unittest.TestCase):
             self.assertTrue((fx.system / "views" / "CONSTITUTION_INDEX.md").exists())
             self.assertTrue((fx.system / "views" / "constitution-core.md").exists())
             # SOUL values zone written
-            soul_text = soul_path.read_text()
+            soul_text = soul_path.read_text(encoding="utf-8")
             self.assertIn("If it can be better", soul_text)
         clear_ztn_env()
 
@@ -77,14 +82,14 @@ class RegenAllTests(unittest.TestCase):
             fx.write_principle("axiom/identity/001.md", VALID_NOTE)
             fx.write_system_file("SOUL.md", SOUL_TEMPLATE)
             _run_regen([], env_extra={"ZTN_BASE": str(fx.base)})
-            first_index = (fx.system / "views" / "CONSTITUTION_INDEX.md").read_text()
-            first_core = (fx.system / "views" / "constitution-core.md").read_text()
-            first_soul = (fx.system / "SOUL.md").read_text()
+            first_index = (fx.system / "views" / "CONSTITUTION_INDEX.md").read_text(encoding="utf-8")
+            first_core = (fx.system / "views" / "constitution-core.md").read_text(encoding="utf-8")
+            first_soul = (fx.system / "SOUL.md").read_text(encoding="utf-8")
 
             _run_regen([], env_extra={"ZTN_BASE": str(fx.base)})
-            second_index = (fx.system / "views" / "CONSTITUTION_INDEX.md").read_text()
-            second_core = (fx.system / "views" / "constitution-core.md").read_text()
-            second_soul = (fx.system / "SOUL.md").read_text()
+            second_index = (fx.system / "views" / "CONSTITUTION_INDEX.md").read_text(encoding="utf-8")
+            second_core = (fx.system / "views" / "constitution-core.md").read_text(encoding="utf-8")
+            second_soul = (fx.system / "SOUL.md").read_text(encoding="utf-8")
 
             def strip_ts(s: str) -> str:
                 return "\n".join(
@@ -129,7 +134,7 @@ class RegenAllTests(unittest.TestCase):
             self.assertFalse((fx.system / "views" / "constitution-core.md").exists())
             # SOUL should be unchanged
             self.assertEqual(
-                (fx.system / "SOUL.md").read_text(),
+                (fx.system / "SOUL.md").read_text(encoding="utf-8"),
                 SOUL_TEMPLATE,
             )
         clear_ztn_env()

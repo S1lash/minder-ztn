@@ -92,14 +92,14 @@ class HarvestBatchesTests(unittest.TestCase):
                 "concepts": {"upserts": [
                     {"name": "api_v2_design", "type": "idea", "subtype": "rest"},
                 ]},
-            }))
+            }), encoding="utf-8")
             (batches / "20260301-bbb.json").write_text(json.dumps({
                 "batch_id": "20260301-bbb",
                 "timestamp": "2026-03-01T10:00:00Z",
                 "concepts": {"upserts": [
                     {"name": "api_v2_design", "type": "decision", "subtype": "later"},
                 ]},
-            }))
+            }), encoding="utf-8")
             _write_md(
                 fx.base / "_records/meetings/20260101-meeting.md",
                 'created: 2026-01-01\nconcepts: [api_v2_design]',
@@ -121,7 +121,7 @@ class HarvestBatchesTests(unittest.TestCase):
                     {"name": "ivan_petrov", "type": "person"},
                     {"name": "acme_payments", "type": "bogus_value"},
                 ]},
-            }))
+            }), encoding="utf-8")
             agg, _ = bcr.build(fx.base)
             self.assertIsNone(agg.get("ivan_petrov").type if agg.get("ivan_petrov") else None)
             self.assertIsNone(agg.get("acme_payments").type if agg.get("acme_payments") else None)
@@ -132,7 +132,7 @@ class HarvestBatchesTests(unittest.TestCase):
             fx = make_fixture(Path(tmp))
             batches = fx.base / "_system/state/batches"
             batches.mkdir(parents=True)
-            (batches / "bad.json").write_text("not json{")
+            (batches / "bad.json").write_text("not json{", encoding="utf-8")
             agg, stats = bcr.build(fx.base)
             self.assertEqual(stats["batches_read"], 0)
         clear_ztn_env()
@@ -150,7 +150,7 @@ class AliasPreservationTests(unittest.TestCase):
                 "| name | type | subtype | first_seen | last_seen | mentions | aliases |\n"
                 "|---|---|---|---|---|---|---|\n"
                 "| api_v2_design | idea | — | 2026-01-01 | 2026-04-01 | 5 | api_v2, api2 |\n"
-            )
+            , encoding="utf-8")
             _write_md(
                 fx.base / "_records/meetings/20260401-meeting.md",
                 'created: 2026-04-01\nconcepts: [api_v2_design]',
@@ -169,7 +169,7 @@ class AliasPreservationTests(unittest.TestCase):
                 "| name | type | subtype | first_seen | last_seen | mentions | aliases |\n"
                 "|---|---|---|---|---|---|---|\n"
                 "| renamed_concept | idea | — | 2026-01-01 | 2026-01-01 | 0 | old_name |\n"
-            )
+            , encoding="utf-8")
             agg, _ = bcr.build(fx.base)
             self.assertIn("renamed_concept", agg)
             self.assertEqual(agg["renamed_concept"].mentions, 0)
@@ -233,9 +233,9 @@ class IdempotenceTests(unittest.TestCase):
             )
             self.assertEqual(bcr.main(["--root", str(fx.base)]), 0)
             registry = fx.base / "_system/registries/CONCEPTS.md"
-            first = registry.read_text()
+            first = registry.read_text(encoding="utf-8")
             self.assertEqual(bcr.main(["--root", str(fx.base)]), 0)
-            second = registry.read_text()
+            second = registry.read_text(encoding="utf-8")
             # Same date semantics — idempotent on identical inputs
             self.assertEqual(first, second)
         clear_ztn_env()

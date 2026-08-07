@@ -59,7 +59,7 @@ class CompactTests(unittest.TestCase):
                 "--summary", "test summary",
             ])
             self.assertEqual(rc, 0)
-            text = note.read_text()
+            text = note.read_text(encoding="utf-8")
             self.assertIn("[compacted] test summary", text)
             self.assertIn(recent_date, text)
             # Only one [compacted] line emitted
@@ -93,14 +93,14 @@ class CompactTests(unittest.TestCase):
                 ]),
             )
             cutoff = (date.today() - timedelta(days=400)).isoformat()
-            before = note.read_text()
+            before = note.read_text(encoding="utf-8")
             rc = cmp_module.main([
                 "--file", str(note),
                 "--cutoff", cutoff,
                 "--summary", "won't apply",
             ])
             self.assertEqual(rc, 0)
-            self.assertEqual(before, note.read_text())
+            self.assertEqual(before, note.read_text(encoding="utf-8"))
         clear_ztn_env()
 
     def test_already_compacted_entries_are_skipped(self):
@@ -122,7 +122,7 @@ class CompactTests(unittest.TestCase):
                 "--summary", "new summary",
             ])
             self.assertEqual(rc, 0)
-            text = note.read_text()
+            text = note.read_text(encoding="utf-8")
             # Old [compacted] entry must still be there
             self.assertIn("previously compacted summary", text)
             # New [compacted] entry added
@@ -174,7 +174,7 @@ test
                 "--cutoff", cutoff,
                 "--summary", "ok",
             ])
-            result = note.read_text()
+            result = note.read_text(encoding="utf-8")
             # Extract frontmatter block from both original and result
             orig_fm = note_text.split("---", 2)[1]
             result_fm = result.split("---", 2)[1]
@@ -223,7 +223,7 @@ test
                 "--summary", "ok",
             ])
             self.assertEqual(rc, 0)
-            result = note.read_text()
+            result = note.read_text(encoding="utf-8")
             # Statement value must still contain the literal '---'
             self.assertIn("Separator: ---", result)
             # Frontmatter must still parse as valid YAML after rewrite

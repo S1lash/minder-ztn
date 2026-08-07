@@ -20,6 +20,7 @@ from _common import (
     iter_principles,
     now_iso_utc,
     views_dir,
+    configure_std_streams,
 )
 
 
@@ -112,6 +113,8 @@ def render_index(principles: list) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true",
                         help="print rendered index to stdout without writing")

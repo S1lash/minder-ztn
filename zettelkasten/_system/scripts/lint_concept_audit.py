@@ -42,6 +42,7 @@ from _common import (
     read_frontmatter,
     repo_root,
     write_frontmatter,
+    configure_std_streams,
 )
 
 
@@ -633,6 +634,8 @@ def process_file(
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--mode", choices=["scan", "fix"], default="scan",

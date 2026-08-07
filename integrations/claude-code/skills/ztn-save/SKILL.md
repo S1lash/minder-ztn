@@ -71,7 +71,7 @@ Before snapshotting, walk `_sources/inbox/{id}/` (immediate children of
 every source folder, plus files one level inside per-item folders). Any
 entry whose name fails `_system/scripts/_common.py::is_portable_name` is
 renamed to `normalize_portable_name(name)` — same SoT and same rules as
-`/ztn:process` §0.0. This keeps Windows-illegal names (colons in Plaud
+`/ztn:process` §0.0b. This keeps Windows-illegal names (colons in Plaud
 ISO timestamps, etc.) out of git entirely: a raw inbox drop committed
 from a phone or a Mac would otherwise break `git checkout` on a Windows
 device pulling it.

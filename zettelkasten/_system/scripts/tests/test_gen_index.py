@@ -33,7 +33,7 @@ class GenIndexTests(unittest.TestCase):
             out = fx.base / "_system" / "views" / "CONSTITUTION_INDEX.md"
             rc = g.main(["--output", str(out)])
             self.assertEqual(rc, 0)
-            text = out.read_text()
+            text = out.read_text(encoding="utf-8")
             self.assertIn("## Axioms", text)
             self.assertIn("## Principles", text)
             self.assertIn("## Rules", text)
@@ -54,9 +54,9 @@ class GenIndexTests(unittest.TestCase):
             fx.write_principle("axiom/identity/001.md", VALID_NOTE)
             out = fx.base / "_system" / "views" / "CONSTITUTION_INDEX.md"
             g.main(["--output", str(out)])
-            first = out.read_text()
+            first = out.read_text(encoding="utf-8")
             g.main(["--output", str(out)])
-            second = out.read_text()
+            second = out.read_text(encoding="utf-8")
             # Strip the timestamp line only.
             def strip_ts(s: str) -> str:
                 return "\n".join(

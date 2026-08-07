@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: heal
 # 005-scheduler-pr-merge-delivery — Reminder for friends running scheduler
 # Routines that delivery now goes through `gh pr create + gh pr merge
 # --squash` (or the github MCP equivalent) in Cloud Routines

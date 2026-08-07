@@ -44,6 +44,7 @@ from _common import (
     state_dir,
     system_dir,
     today_iso,
+    configure_std_streams,
 )
 
 
@@ -205,6 +206,8 @@ def append_clarification_drift(path: Path, current: str, expected: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true",
                         help="print rendered SOUL.md to stdout without writing")

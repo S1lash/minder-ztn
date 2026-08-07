@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: heal
 # 015-cognitive-model-activate — Announce that the `cognitive-model` lens now
 # ships `status: active` platform-wide, and offer to seed the cognitive hub now.
 #

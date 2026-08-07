@@ -187,3 +187,82 @@ class CliTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAnchorPositionTolerance(unittest.TestCase):
+    """The `^task-id` anchor is found wherever it sits on the line.
+
+    Two real bases diverged on where the record reference sits relative to the
+    anchor. A regex pinned to end-of-line reads one shape and is blind to the
+    other — and the blindness looks exactly like "this base has no tasks", so a
+    clone reported 100% of its note task-ids as orphans while the completeness
+    gate treated that as truth.
+    """
+
+    def test_anchor_last(self):
+        ids, text = rt.parse_task_line("- [ ] Do the thing — [[rec-1]] ^task-do")
+        self.assertEqual(ids, ["task-do"])
+        self.assertEqual(text, "Do the thing — [[rec-1]]")
+
+    def test_anchor_before_trailing_reference(self):
+        ids, text = rt.parse_task_line("- [ ] Do the thing ^task-do — `rec-1`")
+        self.assertEqual(ids, ["task-do"])
+        self.assertIn("Do the thing", text)
+
+    def test_trailing_annotation_after_anchor(self):
+        ids, _ = rt.parse_task_line("- [ ] Thing — [[rec]] ^task-x *(дубль)*")
+        self.assertEqual(ids, ["task-x"])
+
+    def test_two_anchors_both_counted(self):
+        """One utterance can resolve into two tracked tasks; neither is dropped."""
+        ids, text = rt.parse_task_line("- [ ] Book the follow-up ^task-a ^task-b")
+        self.assertEqual(ids, ["task-a", "task-b"])
+        self.assertEqual(text, "Book the follow-up")
+
+    def test_caret_in_prose_is_not_an_anchor(self):
+        self.assertEqual(rt.parse_task_line("- [ ] Compute 2^10 by hand"), ([], ""))
+
+    def test_done_task_never_parses(self):
+        self.assertEqual(rt.parse_task_line("- [x] Finished ^task-done"), ([], ""))
+
+    def test_both_shapes_reconcile_identically(self):
+        for line in ("- [ ] T — [[n1]] ^task-shape", "- [ ] T ^task-shape — `n1`"):
+            with self.subTest(line=line):
+                with tempfile.TemporaryDirectory() as tmp:
+                    base = _base(tmp)
+                    _note(base, "n1.md", f"# N\n\n{line}\n")
+                    tasks = _tasks(base, _TASKS_HEADER + f"{line}\n")
+                    result = rt.reconcile(base, tasks)
+                    self.assertEqual(result["orphan_count"], 0)
+                    self.assertTrue(result["consistent"])
+
+
+class TestParserSelfCheck(unittest.TestCase):
+    """A parser that reads nothing must say so, never report a clean result."""
+
+    def test_unparseable_aggregate_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = _base(tmp)
+            _note(base, "n1.md", "# N\n\n- [ ] T — [[n1]] ^task-x\n")
+            # Open-task lines, but not one carries an anchor: the aggregate is
+            # plainly non-empty and this parser cannot read it.
+            tasks = _tasks(base, _TASKS_HEADER + "- [ ] a task with no anchor\n"
+                                                 "- [ ] another one\n")
+            with self.assertRaises(rt.ParserMismatch):
+                rt.reconcile(base, tasks)
+
+    def test_genuinely_empty_aggregate_is_not_a_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = _base(tmp)
+            _note(base, "n1.md", "# N\n\n- [ ] T — [[n1]] ^task-x\n")
+            tasks = _tasks(base, _TASKS_HEADER)
+            result = rt.reconcile(base, tasks)
+            self.assertEqual(result["orphan_count"], 1)
+
+    def test_cli_exits_3_on_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = _base(tmp)
+            _note(base, "n1.md", "# N\n\n- [ ] T ^task-x\n")
+            _tasks(base, _TASKS_HEADER + "- [ ] no anchor here\n")
+            rc = rt.main(["--base", str(base), "--report"])
+            self.assertEqual(rc, 3)

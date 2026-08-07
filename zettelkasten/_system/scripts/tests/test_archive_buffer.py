@@ -38,10 +38,10 @@ class ArchiveBufferTests(unittest.TestCase):
             # Archive exists with right content
             arch_path = arch_dir / "2026-W17-principle-candidates-archived.jsonl"
             self.assertTrue(arch_path.exists())
-            lines = [l for l in arch_path.read_text().splitlines() if l.strip()]
+            lines = [l for l in arch_path.read_text(encoding="utf-8").splitlines() if l.strip()]
             self.assertEqual(len(lines), 2)
             # Buffer cleared
-            self.assertEqual(buf.read_text(), "")
+            self.assertEqual(buf.read_text(encoding="utf-8"), "")
         clear_ztn_env()
 
     def test_empty_buffer_noop(self):
@@ -49,13 +49,13 @@ class ArchiveBufferTests(unittest.TestCase):
             fx = make_fixture(Path(tmp))
             buf = fx.system / "state" / "principle-candidates.jsonl"
             buf.parent.mkdir(parents=True, exist_ok=True)
-            buf.write_text("")
+            buf.write_text("", encoding="utf-8")
             rc = a.main([
                 "--buffer", str(buf),
                 "--archive-dir", str(fx.system / "lint-context" / "weekly"),
             ])
             self.assertEqual(rc, 0)
-            self.assertEqual(buf.read_text(), "")
+            self.assertEqual(buf.read_text(encoding="utf-8"), "")
         clear_ztn_env()
 
     def test_archive_verify_mismatch_preserves_buffer(self):
@@ -83,8 +83,8 @@ class ArchiveBufferTests(unittest.TestCase):
                     ab.archive_and_clear(buf, arch)
                 self.assertIn("verify failed", str(ctx.exception))
                 # Buffer MUST remain intact on verify failure
-                self.assertIn("s0", buf.read_text())
-                self.assertIn("s2", buf.read_text())
+                self.assertIn("s0", buf.read_text(encoding="utf-8"))
+                self.assertIn("s2", buf.read_text(encoding="utf-8"))
             finally:
                 ab._count_nonblank_lines = orig_count
         clear_ztn_env()
@@ -109,7 +109,7 @@ class ArchiveBufferTests(unittest.TestCase):
                 ])
                 self.assertEqual(rc, 2)
                 # Buffer untouched
-                self.assertIn("x", buf.read_text())
+                self.assertIn("x", buf.read_text(encoding="utf-8"))
             finally:
                 ab.archive_and_clear = orig
         clear_ztn_env()
@@ -129,7 +129,7 @@ class ArchiveBufferTests(unittest.TestCase):
             ])
             self.assertEqual(rc, 0)
             # Buffer still has the entry
-            self.assertIn("s1", buf.read_text())
+            self.assertIn("s1", buf.read_text(encoding="utf-8"))
         clear_ztn_env()
 
 

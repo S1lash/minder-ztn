@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: heal
 # 013-hub-index-completeness — Detect hub files missing from HUB_INDEX.md (the
 # LLM-maintained index silently lagging the hub files at scale) and nudge the
 # owner to regenerate it.

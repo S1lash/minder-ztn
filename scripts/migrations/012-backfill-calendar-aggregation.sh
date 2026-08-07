@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: heal
 # 012-backfill-calendar-aggregation — Detect notes with a future 📅 event that
 # never reached CALENDAR.md (the aggregation silent-drop) and nudge the owner to
 # recover them through the pipeline.

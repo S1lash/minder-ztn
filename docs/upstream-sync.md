@@ -36,8 +36,9 @@ afterwards.
 ## Routine sync (script — CI / power users)
 
 ```bash
-scripts/sync_engine.sh           # fetch + apply
-scripts/sync_engine.sh --dry-run # preview changes only
+bash scripts/sync_engine.sh             # fetch + apply
+bash scripts/sync_engine.sh --dry-run   # preview changes only
+bash scripts/sync_engine.sh --self-heal # repair the script itself, then apply
 ```
 
 What the script does:
@@ -48,19 +49,41 @@ What the script does:
    files.
 3. Skips `template:` paths — those seeded once at clone time and are
    now your data (e.g. your `SOUL.md`, your `PEOPLE.md`).
-4. Runs any pending migrations under `scripts/migrations/`. The
-   marker file `.engine-migrations-applied` records which scripts
-   already ran (commit it).
-5. Prints a recap.
+4. Checks its own post-conditions: at least one engine path really
+   resolved upstream, and `integrations/VERSION` really moved to what
+   upstream ships. A run that changed nothing is a broken run, not an
+   up-to-date one, and the script refuses to print «done» over it.
+5. Runs any pending migrations through `scripts/run_migrations.py`,
+   which records every attempt in `.engine-migrations.jsonl` (commit
+   it). Each migration declares its kind: a `structural` failure stops
+   the update, a `heal` failure — a repair of existing data — is
+   recorded and retried next time, never blocking.
+6. Prints a recap with the version delta.
 
 If you have local changes inside any engine path, the script aborts
 with `error: engine paths have uncommitted changes`. Commit or stash
-first, then re-run.
+first, then re-run. A path that is dirty but already identical to
+upstream is not an abort — there is nothing there to lose.
+
+### When the sync itself is broken
+
+The update machinery ships through the update, so a clone carrying a
+broken copy cannot receive its own repair the normal way. If the script
+reports that **none** of the engine paths were found upstream, that is
+what happened — recover with either:
+
+```bash
+/ztn:update                              # the skill repairs scripts/ first, always
+bash scripts/sync_engine.sh --self-heal  # the script equivalent
+```
+
+Both restore `scripts/` from the remote before doing anything else, then
+proceed with the repaired copy.
 
 ## After a sync
 
 - Re-install the Claude Code symlinks (some skills may have been
-  renamed): `./integrations/claude-code/install.sh`. This step also
+  renamed): `bash integrations/claude-code/install.sh`. This step also
   invokes `integrations/obsidian/seed.sh` to seed `<vault>/.obsidian/`
   and `<vault>/minder-ztn.md` if missing — engine improvements to the
   Obsidian config never overwrite your live `.obsidian/` (run

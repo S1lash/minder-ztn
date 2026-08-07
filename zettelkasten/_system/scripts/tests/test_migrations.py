@@ -44,7 +44,7 @@ def _copy_migration(root: Path, name: str) -> Path:
 
 
 def _run(mig: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(["bash", str(mig)], capture_output=True, text=True)
+    return subprocess.run(["bash", str(mig)], capture_output=True, text=True, encoding="utf-8")
 
 
 def _tree_md5(root: Path) -> dict[str, str]:
@@ -238,3 +238,75 @@ class Migration014FenceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# 018 — carrying a previous-shape role across
+# ---------------------------------------------------------------------------
+
+
+class PreviousShapeConfigTests(unittest.TestCase):
+    """`_018_plan.listed` reads BOTH YAML list forms.
+
+    Previous-shape `config.yml` files were written by a concierge, not against a
+    schema, so `tools: [notion]` and a `- notion` block are both real. Reading
+    only the block form made a tool-bearing role look like it used none — and
+    its conversion plan then told the owner that no credentials carry across,
+    when they do. Silence about a credential is the exact class of miss this
+    migration exists to prevent.
+    """
+
+    @staticmethod
+    def _listed(text: str, key: str = "tools") -> list:
+        import sys
+
+        sys.path.insert(0, str(_MIGRATIONS))
+        from _018_plan import listed  # type: ignore
+
+        return listed(text, key)
+
+    def test_block_form(self):
+        self.assertEqual(self._listed("id: x\ntools:\n  - notion\n  - calendar\n"),
+                         ["notion", "calendar"])
+
+    def test_inline_flow_form(self):
+        self.assertEqual(self._listed("id: x\ntools: [notion, calendar]\n"),
+                         ["notion", "calendar"])
+
+    def test_inline_quoted_items(self):
+        self.assertEqual(self._listed("id: x\ntools: ['notion', \"calendar\"]\n"),
+                         ["notion", "calendar"])
+
+    def test_empty_forms_are_empty(self):
+        for text in ("id: x\ntools: []\n", "id: x\n", "id: x\ntools:\n"):
+            with self.subTest(text=text):
+                self.assertEqual(self._listed(text), [])
+
+    def test_a_following_key_does_not_leak_into_the_list(self):
+        self.assertEqual(
+            self._listed("id: x\ntools:\n  - notion\ncadence: daily\n"), ["notion"]
+        )
+
+    def test_tool_bearing_role_gets_the_store_names_in_its_plan(self):
+        """End-to-end: the plan must name what carries across, in either form."""
+        import json
+        import sys
+
+        sys.path.insert(0, str(_MIGRATIONS))
+        import _018_plan as plan  # type: ignore
+
+        for cfg in ("id: r\ncadence: daily\ntools: [notion]\n",
+                    "id: r\ncadence: daily\ntools:\n  - notion\n"):
+            with self.subTest(cfg=cfg), tempfile.TemporaryDirectory() as tmp:
+                prev = Path(tmp) / "_previous"
+                (prev / "r").mkdir(parents=True)
+                (prev / "r" / "config.yml").write_text(cfg, encoding="utf-8")
+                (prev / "r" / "hooks").mkdir()
+                (prev / "r" / "hooks" / "tick.md").write_text("do a thing\n", encoding="utf-8")
+
+                # argv[0] is the program name, as when the shell invokes it.
+                plan.main(["_018_plan.py", str(prev), json.dumps(["NOTION_TOKEN"])])
+
+                built = json.loads((prev / "r.plan.json").read_text(encoding="utf-8"))
+                self.assertEqual(built["proposed"]["secrets"], ["NOTION_TOKEN"])
+                self.assertIn("ZTN_ROLES_KEY", built["proposed"]["secrets_note"])

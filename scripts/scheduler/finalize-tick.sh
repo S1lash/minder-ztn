@@ -6,7 +6,7 @@
 # Two delivery modes — auto-detected from `.scheduler-state/start-branch`
 # (written by pin-main.sh):
 #
-#   1. LOCAL mode (start branch = `main` or absent).
+#   1. LOCAL mode (start branch = `main`, absent, or the `DETACHED` sentinel).
 #      The runner has direct push rights to `origin/main`. Single
 #      `git push origin main`. Used for local cron / launchd schedulers
 #      where the working tree persists between ticks.
@@ -59,6 +59,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$SCRIPT_DIR/../lib/git.sh"
 
 if [ $# -lt 1 ]; then
   echo "usage: $0 <tag> [override-message]" >&2
@@ -159,7 +160,7 @@ declare -a STAGED=()
 while IFS= read -r p; do
   [ -z "$p" ] && continue
   STAGED+=("$p")
-done < <(git -c core.quotepath=false diff --cached --name-only)
+done < <(git_staged_paths)
 
 categorize() {
   local p="$1"
@@ -249,7 +250,12 @@ if [ -f .scheduler-state/start-branch ]; then
   START_BRANCH="$(cat .scheduler-state/start-branch 2>/dev/null || true)"
 fi
 
-if [ -z "$START_BRANCH" ] || [ "$START_BRANCH" = "main" ] || [ "$START_BRANCH" = "DETACHED" ]; then
+# LOCAL mode covers everything that is not a real sandbox branch: `main`, an
+# absent state file, and the `DETACHED` sentinel. `git_is_branch_name` also
+# rejects the literal `HEAD` — a value a pre-fix `pin-main.sh` could persist —
+# so a stale state file can never route a tick into ROUTINES mode and make it
+# push to a remote branch called `HEAD`.
+if ! git_is_branch_name "$START_BRANCH" || [ "$START_BRANCH" = "main" ]; then
   echo "finalize-tick: LOCAL mode (start branch '$START_BRANCH') — direct push to origin/main"
   git push origin main || exit 2
   rm -f "$AUTHORED_SHAS_FILE"

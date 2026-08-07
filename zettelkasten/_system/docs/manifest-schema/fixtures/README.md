@@ -66,12 +66,13 @@ When replacing a real batch with a fixture:
 
 ```bash
 python3 - << 'EOF'
+import sys; sys.stdout.reconfigure(newline="\n", encoding="utf-8")  # LF on Git Bash
 import json, glob
 from jsonschema import Draft202012Validator
-schema = json.load(open('zettelkasten/_system/docs/manifest-schema/v2.json'))
+schema = json.load(open('zettelkasten/_system/docs/manifest-schema/v2.json', encoding='utf-8'))
 v = Draft202012Validator(schema)
 for path in sorted(glob.glob('zettelkasten/_system/docs/manifest-schema/fixtures/*.json')):
-    errs = list(v.iter_errors(json.load(open(path))))
+    errs = list(v.iter_errors(json.load(open(path, encoding='utf-8'))))
     print(path, 'OK' if not errs else f'FAIL ({len(errs)} errors)')
 EOF
 ```

@@ -26,7 +26,7 @@ import re
 import sys
 from pathlib import Path
 
-from _common import read_frontmatter, repo_root
+from _common import configure_std_streams, read_frontmatter, repo_root
 
 
 VALID_HUB_KINDS = frozenset({"project", "trajectory", "domain"})
@@ -191,6 +191,8 @@ def _scan_hub(path: Path, valid_ids: set[str]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args(argv)

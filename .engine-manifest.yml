@@ -41,7 +41,13 @@ engine:
   # `.obsidian/` in friend's vault is never overwritten on update.
   - integrations/obsidian/
 
-  # Cross-cutting scripts
+  # Cross-cutting scripts. This is a WHOLESALE glob: anything dropped under
+  # `scripts/` becomes engine surface and reaches every friend's clone. A
+  # one-off importer or a machine-specific helper belongs outside it, or in
+  # `exclude:` below — never left to ship by accident. Two gates run over
+  # everything this glob covers and will refuse a release: the personal-data
+  # linter (`check_no_personal_data.py`) and the portability gate
+  # (`check_portability.py`).
   - scripts/
 
   # Engine documentation (spec / architecture)

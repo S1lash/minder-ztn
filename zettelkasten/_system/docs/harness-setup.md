@@ -58,7 +58,7 @@ layer loads.
 
 ```bash
 cd <wherever-you-cloned>/minder-ztn
-./integrations/claude-code/install.sh
+bash integrations/claude-code/install.sh
 ```
 
 After install, add the constitution-capture import to `~/.claude/CLAUDE.md`
@@ -75,7 +75,7 @@ The installer is idempotent and non-interactive. In a fresh container:
 
 1. `git clone <your-fork-url>` (or `gh repo create my-ztn --template <upstream>`)
 2. `pip install -r minder-ztn/zettelkasten/_system/scripts/requirements.txt`
-3. `./minder-ztn/integrations/claude-code/install.sh`
+3. `bash minder-ztn/integrations/claude-code/install.sh`
 
 ## Why `built/` for rules + commands but not skills
 

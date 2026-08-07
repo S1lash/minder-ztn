@@ -30,7 +30,7 @@ When you find these in conflict, the higher one wins. When a rule is absent ever
 - `integrations/claude-code/{install.sh,uninstall.sh,SETUP_PROMPT.md,scheduler-prompts/}` — installer + scheduler templates
 - `integrations/minder-ztn-mcp/` — MCP integration guide
 - `integrations/obsidian/` — Obsidian vault config seed (`.obsidian/` defaults + `HOME.template.md` dashboard, idempotently seeded by `seed.sh` from `claude-code/install.sh`)
-- `scripts/` — release, sync, lint, migrations
+- `scripts/` — release, sync, gates, migrations; `scripts/lib/` holds the shared primitives every one of them uses
 - `zettelkasten/_system/docs/` — system spec
 - `zettelkasten/_system/scripts/` — python pipeline + tests
 - `zettelkasten/_system/registries/{FOLDERS.md,CONCEPT_NAMING.md,AGENT_LENSES.md,lenses/}` — engine registries (pure spec; sync upstream-to-downstream)
@@ -75,7 +75,7 @@ These are quoted from `_system/docs/CONVENTIONS.md` because they get violated ot
 1. **No version references.** Never write `v4.5`, `Version: 4.7`, `ZTN v3` in SKILL headers, descriptions, system docs. Components describe themselves by name. The single exception is `batch-format.md`, where `version: 1.0` IS the content of the spec.
 2. **No phase references.** Never write `(Phase 4)`, `Phase 5+`, `per PHASE-4-SDD §Q8`. Phase narratives are git history, not doc content.
 3. **No rename or migration history.** Don't write «previously this was called X», «moved from Y to Z», «renamed in vN». The file IS the contract; git log carries narrative.
-4. **No personal names in engine code.** Engine prompts, system docs, SKILL examples use placeholders (`john-doe`, `ivan-petrov`, `<owner>`) or read from `zettelkasten/_system/SOUL.md → ## Identity → Name:` at runtime. The personal-data linter (`scripts/check-no-personal-data.sh`) enforces this in CI; PRs that fail it are blocked.
+4. **No personal names in engine code.** Engine prompts, system docs, SKILL examples use placeholders (`john-doe`, `ivan-petrov`, `<owner>`) or read from `zettelkasten/_system/SOUL.md → ## Identity → Name:` at runtime. The personal-data linter (`scripts/check_no_personal_data.py`) enforces this in CI; PRs that fail it are blocked.
 5. **Describe current behaviour.** Default mental check before committing any doc edit: *would this sentence still make sense after the v4.6→v4.7 narrative is forgotten?* If no, rephrase.
 6. **Template-spec sync — both files or neither.** Several engine-spec docs ship as `*.template.md` (see `.engine-manifest.yml → template:`). These are **strip-seed** entries: `release_engine.py` renames `X.template.<ext>` → `X.<ext>` when copying to the skeleton (for the full seed-contract — strip-seed vs skill-seed vs layered — read the header comment above `template:` in `.engine-manifest.yml`; the `check_seed_contract.py` gate enforces it at release + CI). `sync_engine.sh` skips template paths so friend's owner-Extensions survive `/ztn:update`. Consequence: any **spec-portion edit** to a live file with a `.template.md` sibling MUST be backported to the template in the same change, otherwise friends never receive the spec update. Owner-mutable sections (Extensions tables, populated rows, owner data) naturally diverge — that is by design — but canonical sets, format rules, autofix tables, heuristic descriptions, and example values are spec and must stay byte-identical between live and template. Verify with `diff <live>.md <live>.template.md` before commit. The high-risk files today: `AUDIENCES.md` ↔ `AUDIENCES.template.md`, `DOMAINS.md` ↔ `DOMAINS.template.md`, `INDEX.md` ↔ `INDEX.template.md`, `TAGS.md` ↔ `TAGS.template.md`. CI does not enforce this; the discipline is on the editor.
 
@@ -114,13 +114,13 @@ Skills are discovered through two paths:
 
 1. **Project-level (Routines + interactive in repo CWD)** — `.claude/skills/ztn-*` symlinks at the repo root point into `integrations/claude-code/skills/<name>/`. Auto-discovered by Claude Code (interactive + Routines) when CWD is inside the repo. SKILL.md sources use repo-relative `zettelkasten/...` paths and need no rendering.
 
-2. **User-level (interactive from any CWD)** — `./integrations/claude-code/install.sh` renders rules / commands templates (which still use `{{MINDER_ZTN_BASE}}`) into `integrations/claude-code/built/` (gitignored) and symlinks `~/.claude/{rules,commands,skills}/` so the constitution-capture hook + ambient `/ztn:capture-candidate` / `/ztn:check-decision` are reachable from sessions opened outside this repo. The skills loop in install.sh is a no-op pass for skills (no placeholder to render); kept for user-level symlink coverage.
+2. **User-level (interactive from any CWD)** — `bash integrations/claude-code/install.sh` renders rules / commands templates (which still use `{{MINDER_ZTN_BASE}}`) into `integrations/claude-code/built/` (gitignored) and symlinks `~/.claude/{rules,commands,skills}/` so the constitution-capture hook + ambient `/ztn:capture-candidate` / `/ztn:check-decision` are reachable from sessions opened outside this repo. The skills loop in install.sh is a no-op pass for skills (no placeholder to render); kept for user-level symlink coverage.
 
 **Never edit:**
 - `integrations/claude-code/built/**` — generated output of install.sh
 - `~/.claude/skills/<name>/SKILL.md` — symlink chain into the repo
 
-After editing a SKILL source, no rebuild is required — both `.claude/skills/` and `~/.claude/skills/` resolve to the same source. After editing a rule or command source, re-run `./integrations/claude-code/install.sh` (idempotent) to refresh `built/`.
+After editing a SKILL source, no rebuild is required — both `.claude/skills/` and `~/.claude/skills/` resolve to the same source. After editing a rule or command source, re-run `bash integrations/claude-code/install.sh` (idempotent) to refresh `built/`.
 
 ## Authoritative docs to keep current
 
@@ -150,6 +150,9 @@ When engine behaviour changes, these are the docs that must move with it. Drift 
 | `zettelkasten/_system/roles/_minder.md` | How a role uses the base — layer shapes, registries, the inbox-note shape `/ztn:process` picks up |
 | `zettelkasten/5_skills/CLAUDE_ZETTELKASTEN.md`, `zettelkasten/5_skills/ztn-*.md` | Engine quick-reference cards |
 | `.engine-manifest.yml` | Engine boundary; what ships to skeleton. Header comment above `template:` is the **SoT for the seed contract** (strip-seed / skill-seed / layered) |
+| `scripts/lib/` | Shared engine primitives: `portable` (LF/UTF-8 stdout + file I/O), `manifest` (the single reader of `.engine-manifest.yml`), `migrations` (the ledger + declared kinds), `git.sh` (branch identity, quotepath-safe path listing, MSYS-safe ref access). A concern that lands here has more than one call site — that is the bar |
+| `scripts/check_portability.py` | Portability gate — makes `ENGINE_DOCTRINE §3.9` executable. Runs in CI and inside `release_engine.py`; a release cannot ship a §3.9 violation. Escapes: inline `portability-ok: <reason>` or a row in `scripts/portability-allowlist.txt` |
+| `scripts/run_migrations.py` | The migration runner. Honours each migration's declared `# migration-kind:` — `structural` failure aborts, `heal` failure is recorded and the update continues. Called by `sync_engine.sh` and by `/ztn:update` |
 | `scripts/check_seed_contract.py` | Seed-contract gate — enforces the contract at release + CI; add a new seed's invariant here if you introduce a new seeding kind |
 | `CONTRIBUTING.md` | Contribution rules |
 | `docs/onboarding.md`, `docs/upstream-sync.md`, `docs/scheduling.md` | Friend-facing docs |
@@ -159,9 +162,14 @@ When you change a SKILL.md, ask: *does this affect anything in the table above?*
 ## Verification — run before finalising engine changes
 
 ```bash
+# Portability gate — every shipped artifact must behave the same on Windows
+# (Git Bash), macOS (bash 3.2) and Linux. CI runs this; engine PRs fail
+# otherwise. `--report` lists findings without failing; `--rules` explains each.
+python3 scripts/check_portability.py
+
 # Personal-data linter — engine code must not name any specific person.
 # CI runs this; engine PRs fail otherwise.
-scripts/check-no-personal-data.sh
+python3 scripts/check_no_personal_data.py
 
 # Python pipeline tests
 pytest zettelkasten/_system/scripts/tests/

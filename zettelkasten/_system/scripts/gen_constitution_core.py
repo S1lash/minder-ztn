@@ -30,6 +30,7 @@ from _common import (
     iter_principles,
     now_iso_utc,
     views_dir,
+    configure_std_streams,
 )
 
 
@@ -98,6 +99,8 @@ def render_core(
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=None,
                         help="override output path (default: _system/views/constitution-core.md)")

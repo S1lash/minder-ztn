@@ -16,6 +16,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from lib.portable import configure_std_streams  # noqa: E402
+
+
 PARKED_DIRNAME = "_previous"
 HANDOFF_NAME = "HANDOFF.md"
 CONFIG_NAME = "config.yml"
@@ -182,6 +187,8 @@ def handoff_text(roles: list, base_name: str, tools_md: bool) -> str:
 
 
 def main(argv: list) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     base = Path(argv[1]).resolve() if len(argv) > 1 else Path("zettelkasten").resolve()
     repo = base.parent
     roles_root = base / "_system" / "roles"

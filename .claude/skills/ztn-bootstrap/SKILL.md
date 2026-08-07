@@ -160,7 +160,7 @@ warning:
 > **Install path mismatch.** The skill is loaded from `{path}` but
 > this repo is at `{repo}`. If you have multiple ZTN instances, this
 > may cause writes to land in the wrong tree. Re-run
-> `./integrations/claude-code/install.sh` from this repo, then re-
+> `bash integrations/claude-code/install.sh` from this repo, then re-
 > invoke. Continue anyway? (y/n)
 
 This catches the common «cloned a new instance, forgot to re-install»

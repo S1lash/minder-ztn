@@ -2,6 +2,53 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.55.0 — Updates that actually apply, on every machine
+
+If you run minder-ztn on Windows, `/ztn:update` has been quietly doing nothing.
+It reported success each time and changed no files — the update machinery read
+its own list of paths through a helper that adds an invisible character on Git
+Bash, so every path failed to match and every failure was read as "this file
+was removed upstream". Nothing about the output said so. This release fixes
+that and, more importantly, makes the failure impossible to repeat silently.
+
+**The updater now repairs itself first.** Before reading anything, `/ztn:update`
+pulls the update machinery from upstream and re-reads it from the copy that
+just arrived. A clone stuck on any older version can now recover by running the
+update — which is the property that matters, because a broken updater could
+never deliver its own fix.
+
+**A sync that changes nothing now says so, loudly.** It counts what it applied,
+checks the version really moved, and refuses to print «done» over an empty run.
+
+**A repair can no longer block your updates.** Some migrations repair old data
+rather than change the engine's shape. One of those used to abort the whole
+update when it could not finish, and stayed unrecorded — so the next update
+re-ran it and aborted at the same point, forever. Each migration now declares
+which kind it is: a repair that cannot finish is recorded, the update continues,
+and it is retried next time. If a better repair ships later, your clone picks it
+up by itself.
+
+**Your task list is read correctly whichever way it was written.** The
+completeness check that finds tasks living in a note but missing from
+`TASKS.md` expected the task id in one exact position on the line. Written the
+other common way, it matched nothing — and reported every task as missing. It
+now reads both, counts a line carrying two ids as two tasks, and refuses to
+report a result at all when it cannot parse what it is looking at.
+
+**A recording whose title contains a slash is recovered.** Your recorder names
+the export after the title, and a title like «A/B-тест» cannot be a filename —
+the sync turns it into two nested folders and the item lands where nothing
+looks for it. It is now rejoined automatically when there is only one sensible
+reading, and surfaced for you when there is not.
+
+**Installing on Windows no longer half-works.** The installer detects Git Bash
+and re-runs itself with real symlinks enabled, instead of failing partway and
+leaving debris you had to delete by hand.
+
+Also: historical batch manifests are repaired rather than re-reported every
+night; anything genuinely unrepairable is marked once with the reason instead
+of nagging forever, and nothing is ever invented to make it look valid.
+
 ## 0.54.0 — Roles are back, as standing jobs you describe in your own words
 
 A role is a job you would otherwise do by hand every week: check whether the
@@ -990,7 +1037,7 @@ tick fires, instead of accumulating on origin indefinitely.
 
 No manual migration required for friends pulling this release —
 `git pull` brings the new `.claude/skills/` symlinks; re-running
-`./integrations/claude-code/install.sh` (already part of the
+`bash integrations/claude-code/install.sh` (already part of the
 `/ztn:update` follow-up reminder) refreshes user-level symlinks.
 If you have scheduled prompts pasted into Claude Code's `/schedule`,
 re-paste the bodies of the three updated files in
@@ -1011,7 +1058,7 @@ tweaks. Requires Dataview JS Queries enabled (already part of the
 Dataview setup checklist).
 
 The CLI path stays available for power users:
-`./integrations/obsidian/seed.sh --reset-graph`.
+`bash integrations/obsidian/seed.sh --reset-graph`.
 
 ### Lens output upgraded for Obsidian
 
@@ -1092,7 +1139,7 @@ bookmarks, and visual cues per note type.
 **To opt in:**
 
 1. Run `/ztn:update` (or `scripts/sync_engine.sh`)
-2. Run `./integrations/claude-code/install.sh` — it now seeds
+2. Run `bash integrations/claude-code/install.sh` — it now seeds
    `<vault>/.obsidian/` and `<vault>/minder-ztn.md` if they don't exist.
 3. Open Obsidian → "Open folder as vault" → select `zettelkasten/`
 4. Install three community plugins (instructions print on first run):

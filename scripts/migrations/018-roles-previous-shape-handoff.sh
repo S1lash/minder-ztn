@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: heal
 # 018-roles-previous-shape-handoff — Carry a role built on the previous shape
 # across to the current one, without pretending it can be converted.
 #

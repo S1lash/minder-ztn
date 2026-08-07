@@ -70,7 +70,7 @@ class IterPrinciplesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fx = make_fixture(Path(tmp))
             # Top-level protocol doc — must be skipped
-            (fx.constitution / "CONSTITUTION.md").write_text("# proto")
+            (fx.constitution / "CONSTITUTION.md").write_text("# proto", encoding="utf-8")
             fx.write_principle("axiom/identity/001.md", VALID_NOTE)
             principles = c.iter_principles(fx.constitution)
             self.assertEqual(len(principles), 1)

@@ -27,7 +27,7 @@ class RenderSoulTests(unittest.TestCase):
             soul_path = fx.write_system_file("SOUL.md", SOUL_TEMPLATE)
             rc = r.main(["--soul", str(soul_path)])
             self.assertEqual(rc, 0)
-            text = soul_path.read_text()
+            text = soul_path.read_text(encoding="utf-8")
             self.assertIn("Hand-written focus area.", text)
             self.assertIn("Hand-written style area.", text)
             self.assertIn(r.SOUL_MARKER_START, text)
@@ -46,7 +46,7 @@ class RenderSoulTests(unittest.TestCase):
             soul_path = fx.write_system_file("SOUL.md", SOUL_TEMPLATE)
             rc = r.main(["--soul", str(soul_path)])
             self.assertEqual(rc, 0)
-            self.assertIn("work email", soul_path.read_text().lower())
+            self.assertIn("work email", soul_path.read_text(encoding="utf-8").lower())
         clear_ztn_env()
 
     def test_placeholder_never_in_values(self):
@@ -56,7 +56,7 @@ class RenderSoulTests(unittest.TestCase):
             soul_path = fx.write_system_file("SOUL.md", SOUL_TEMPLATE)
             rc = r.main(["--soul", str(soul_path)])
             self.assertEqual(rc, 0)
-            text = soul_path.read_text()
+            text = soul_path.read_text(encoding="utf-8")
             self.assertNotIn("Placeholder content never ships.", text)
         clear_ztn_env()
 
@@ -102,12 +102,12 @@ class RenderSoulTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             # Step 2: user hand-edits the auto-zone body (keeping the markers
             # and the auto-generated source-hash comment intact).
-            rendered = soul_path.read_text()
+            rendered = soul_path.read_text(encoding="utf-8")
             tampered = rendered.replace(
                 "If it can be better, it should be better",
                 "HAND EDITED BY USER, NOT GENERATED",
             )
-            soul_path.write_text(tampered)
+            soul_path.write_text(tampered, encoding="utf-8")
             # Step 3: re-render — source hash unchanged, body differs → drift.
             rc = r.main([
                 "--soul", str(soul_path),
@@ -115,7 +115,7 @@ class RenderSoulTests(unittest.TestCase):
                 "--clarifications", str(clar_path),
             ])
             self.assertEqual(rc, 0)
-            self.assertIn("soul-manual-edit-to-auto-zone", clar_path.read_text())
+            self.assertIn("soul-manual-edit-to-auto-zone", clar_path.read_text(encoding="utf-8"))
         clear_ztn_env()
 
     def test_source_change_is_not_drift(self):
@@ -133,10 +133,11 @@ class RenderSoulTests(unittest.TestCase):
             r.main(["--soul", str(soul_path)])
             # Edit the source principle (legit change, not auto-zone hand-edit)
             principle_path.write_text(
-                principle_path.read_text().replace(
+                principle_path.read_text(encoding="utf-8").replace(
                     "If it can be better, it should be better",
                     "If it can be better, it must be better",
-                )
+                ),
+                encoding="utf-8",
             )
             # Re-render with clarification logging enabled
             r.main([
@@ -145,7 +146,7 @@ class RenderSoulTests(unittest.TestCase):
                 "--clarifications", str(clar_path),
             ])
             # No drift CLARIFICATION should have been written
-            self.assertNotIn("soul-manual-edit-to-auto-zone", clar_path.read_text())
+            self.assertNotIn("soul-manual-edit-to-auto-zone", clar_path.read_text(encoding="utf-8"))
         clear_ztn_env()
 
     def test_trailing_whitespace_is_not_drift(self):
@@ -156,13 +157,13 @@ class RenderSoulTests(unittest.TestCase):
             soul_path = fx.write_system_file("SOUL.md", SOUL_TEMPLATE)
             # First run: clean render
             r.main(["--soul", str(soul_path)])
-            text = soul_path.read_text()
+            text = soul_path.read_text(encoding="utf-8")
             # Append trailing spaces to a few lines inside the auto-zone
             noisy = "\n".join(
                 line + "   " if line.startswith("- **If") else line
                 for line in text.splitlines()
             ) + "\n"
-            soul_path.write_text(noisy)
+            soul_path.write_text(noisy, encoding="utf-8")
             clar_path = fx.write_system_file(
                 "CLARIFICATIONS.md", CLARIFICATIONS_TEMPLATE
             )
@@ -173,7 +174,7 @@ class RenderSoulTests(unittest.TestCase):
             ])
             self.assertNotIn(
                 "soul-manual-edit-to-auto-zone",
-                clar_path.read_text(),
+                clar_path.read_text(encoding="utf-8"),
             )
         clear_ztn_env()
 
@@ -183,9 +184,9 @@ class RenderSoulTests(unittest.TestCase):
             fx.write_principle("axiom/identity/001.md", VALID_NOTE)
             soul_path = fx.write_system_file("SOUL.md", SOUL_TEMPLATE)
             r.main(["--soul", str(soul_path)])
-            once = soul_path.read_text()
+            once = soul_path.read_text(encoding="utf-8")
             r.main(["--soul", str(soul_path)])
-            twice = soul_path.read_text()
+            twice = soul_path.read_text(encoding="utf-8")
             def strip_ts(s: str) -> str:
                 return "\n".join(
                     line for line in s.splitlines()

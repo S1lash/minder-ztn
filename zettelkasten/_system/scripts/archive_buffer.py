@@ -29,7 +29,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from _common import die, state_dir
+from _common import configure_std_streams, die, state_dir
 
 
 BUFFER_FILENAME = "principle-candidates.jsonl"
@@ -84,6 +84,8 @@ def archive_and_clear(
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--week", default=None,

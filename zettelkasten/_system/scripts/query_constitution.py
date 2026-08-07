@@ -34,6 +34,7 @@ from _common import (
     die,
     is_visible,
     iter_principles,
+    configure_std_streams,
 )
 
 
@@ -70,6 +71,8 @@ def principle_to_dict(p: Principle) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--consumer", default="claude-code",

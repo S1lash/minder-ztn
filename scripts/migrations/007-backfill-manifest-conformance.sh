@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: heal
 # 007-backfill-manifest-conformance — bring existing batch manifests to the v2
 # schema contract after the producer-conformance fix.
 #
@@ -37,10 +38,21 @@ if [ ! -f "$SCRIPTS/rewrite_manifest_violations.py" ]; then
 fi
 
 echo "007-backfill-manifest-conformance: retrofitting historical batch manifests…"
-python3 "$SCRIPTS/rewrite_manifest_violations.py" --batches-dir "$BATCHES" --apply || {
+# `--base` enables the on-disk repairs (locate a missing path by note-id,
+# recompute a truncated checksum, read a title back off the note). `--quarantine`
+# marks anything no deterministic repair can reach, in `section_extras`, so lint
+# Scan H records it once instead of re-raising it forever. Neither ever invents
+# a value.
+#
+# A non-zero exit here is NOT fatal: this migration is declared `heal`, so the
+# runner records the outcome and the update continues. A best-effort repair of
+# historical data must never be able to block a future engine update — see
+# scripts/lib/migrations.py.
+python3 "$SCRIPTS/rewrite_manifest_violations.py" \
+    --batches-dir "$BATCHES" --base "$ZTN" --apply --quarantine || {
   echo "007-backfill-manifest-conformance: retrofit reported failures — inspect output above." >&2
   echo "  Your batches are unchanged on any file that failed; re-run manually:" >&2
-  echo "    python3 $SCRIPTS/rewrite_manifest_violations.py --batches-dir $BATCHES --apply" >&2
+  echo "    python3 $SCRIPTS/rewrite_manifest_violations.py --batches-dir $BATCHES --base $ZTN --apply --quarantine" >&2
   exit 1
 }
 

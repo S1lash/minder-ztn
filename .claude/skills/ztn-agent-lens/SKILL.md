@@ -132,12 +132,23 @@ Skip with `--no-sync-check` (the scheduled tick passes this implicitly
 because Step 1 of the scheduler-prompt runs `/ztn:sync-data` first).
 
 ```bash
+remote_ahead=0
 if git remote get-url origin >/dev/null 2>&1; then
   git fetch origin --quiet 2>/dev/null || true
-  branch=$(git rev-parse --abbrev-ref HEAD)
-  remote_ahead=$(git rev-list --count "HEAD..origin/${branch}" 2>/dev/null || echo 0)
+  # `git_current_branch` (scripts/lib/git.sh) — NOT `rev-parse --abbrev-ref`,
+  # which exits 0 and prints the literal string `HEAD` when HEAD is detached,
+  # making the comparison ref `origin/HEAD` and the count meaningless.
+  . scripts/lib/git.sh 2>/dev/null || true
+  branch=$(git_current_branch 2>/dev/null || true)
+  if [ -n "$branch" ]; then
+    remote_ahead=$(git rev-list --count "HEAD..origin/${branch}" 2>/dev/null || echo 0)
+  fi
 fi
 ```
+
+Detached HEAD leaves `branch` empty and `remote_ahead` at 0 — there is no
+remote-tracking counterpart to compare against, so the check silently
+proceeds like any other unavailable-signal case.
 
 - `origin` not configured, or fetch failed (offline) → silently proceed.
 - `remote_ahead == 0` → silently proceed.

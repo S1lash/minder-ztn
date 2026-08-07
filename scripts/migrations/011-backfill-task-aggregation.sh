@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: heal
 # 011-backfill-task-aggregation — Detect tasks that live in notes but never
 # reached the TASKS.md aggregate (the aggregation silent-drop) and nudge the
 # owner to recover them through the pipeline.

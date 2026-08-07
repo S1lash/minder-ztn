@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# migration-kind: heal
 # 014-repair-evidence-trail-fence — Detect notes whose YAML fence closes AFTER a
 # body heading (the `## Evidence Trail`-inside-frontmatter corruption) and nudge
 # the owner to repair them through the pipeline.
@@ -30,6 +31,7 @@ fi
 count="$(
     cd "$SCRIPTS" && python3 - "$ZK" <<'PY'
 import sys
+sys.stdout.reconfigure(newline="\n", encoding="utf-8")  # LF on Git Bash
 from pathlib import Path
 
 import _common as c  # type: ignore

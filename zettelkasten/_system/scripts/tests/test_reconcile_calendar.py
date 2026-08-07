@@ -157,3 +157,52 @@ class CliTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEventLineTolerance(unittest.TestCase):
+    """The bold wrapper around an event date is a convention, not a guarantee."""
+
+    def test_bold_span_is_preferred(self):
+        """A date later in the same line belongs to the description, not the event."""
+        line = "- 📅 **~середина июля** — созвон, дедлайн 2026-09-01"
+        self.assertEqual(rc.event_date_string(line), "~середина июля")
+
+    def test_plain_line_still_parses(self):
+        line = "- 📅 2026-08-12 — созвон с командой"
+        self.assertEqual(rc.event_date_string(line), "2026-08-12 — созвон с командой")
+
+    def test_non_event_line_is_none(self):
+        self.assertIsNone(rc.event_date_string("- [ ] not an event"))
+
+    def test_unbolded_future_event_is_detected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = _base(tmp)
+            _note(base, "n1.md", "# N\n\n- 📅 2026-08-12 — созвон\n")
+            cal = base / "_system" / "CALENDAR.md"
+            cal.write_text("# Calendar\n\n## Upcoming\n\n- nothing\n", encoding="utf-8")
+            result = rc.reconcile(base, cal, TODAY)
+            self.assertEqual(result["orphan_notes"], ["n1"])
+
+
+class TestParserSelfCheck(unittest.TestCase):
+    """A calendar full of links from which none parse is a broken parser."""
+
+    def test_unparseable_calendar_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = _base(tmp)
+            cal = base / "_system" / "CALENDAR.md"
+            # `[[` present on forward-facing lines, but never closed — nothing
+            # can be extracted, and that must not read as "empty calendar".
+            cal.write_text(
+                "# Calendar\n\n## Upcoming\n\n- 📅 **2026-08-12** — [[broken-link\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(rc.ParserMismatch):
+                rc.calendar_forward_notes(cal)
+
+    def test_genuinely_empty_calendar_is_not_a_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = _base(tmp)
+            cal = base / "_system" / "CALENDAR.md"
+            cal.write_text("# Calendar\n\n## Upcoming\n\n_(nothing yet)_\n", encoding="utf-8")
+            self.assertEqual(rc.calendar_forward_notes(cal), set())

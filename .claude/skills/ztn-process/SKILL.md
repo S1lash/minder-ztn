@@ -159,12 +159,23 @@ inbox/ may be stale.
 Skip entirely if `--no-sync-check` is passed.
 
 ```bash
+remote_ahead=0
 if git remote get-url origin >/dev/null 2>&1; then
   git fetch origin --quiet 2>/dev/null || true
-  branch=$(git rev-parse --abbrev-ref HEAD)
-  remote_ahead=$(git rev-list --count "HEAD..origin/${branch}" 2>/dev/null || echo 0)
+  # `git_current_branch` (scripts/lib/git.sh) — NOT `rev-parse --abbrev-ref`,
+  # which exits 0 and prints the literal string `HEAD` when HEAD is detached,
+  # making the comparison ref `origin/HEAD` and the count meaningless.
+  . scripts/lib/git.sh 2>/dev/null || true
+  branch=$(git_current_branch 2>/dev/null || true)
+  if [ -n "$branch" ]; then
+    remote_ahead=$(git rev-list --count "HEAD..origin/${branch}" 2>/dev/null || echo 0)
+  fi
 fi
 ```
+
+Detached HEAD leaves `branch` empty and `remote_ahead` at 0 — there is no
+remote-tracking counterpart to compare against, so the check silently
+proceeds like any other unavailable-signal case.
 
 Cases:
 - `origin` not configured, or fetch failed (offline) → silently proceed.
@@ -250,9 +261,54 @@ Partial derived views would poison downstream reasoning.
 
 Before any processing begins, scan ALL new transcripts to build shared context.
 
-### 0.0 Portable-name normalisation
+### 0.0a Split-name recovery
 
-Runs FIRST — before Quick Read touches any inbox path. Walk
+Runs before §0.0b, because it decides what the item folders even are.
+
+A producer names an export after the recording's title, and a title can contain
+`/` — «07-09 Встреча - A/B-тест», «вкладки Top/New». No filesystem accepts that
+in a name, so the sync or the unzip turns one segment into two directories and
+the item arrives one level deeper than the layout says.
+
+`normalize_portable_name` cannot reach this: it maps `/` → `-` on a NAME, and by
+the time the engine looks there is no illegal character left — both segments are
+legal names. The information survives in the directory structure, and joining
+the segments with `-` reproduces exactly what the normaliser would have made of
+the original string.
+
+```bash
+python3 _system/scripts/repair_split_names.py --inbox _sources/inbox --apply --json
+```
+
+Scope comes from `SOURCES.md`, never from guesswork:
+
+- **`Skip Subdirs` is never entered** (`garmin/raw/`). A source declares those
+  folders out of the queue; a repair that reaches past a declared boundary and
+  MOVES owner data is the failure this engine exists to prevent.
+- **`dir-per-item` / `dir-with-summary`** are the only layouts eligible for an
+  autonomous join — they are the ones whose items are folders.
+- **`flat-md`, or a source not in the registry** — items are files, so the
+  layout defines no folders at all. A directory there is surfaced and never
+  joined: it may be the owner's own organisation.
+
+Within an eligible layout, a **split-name candidate** is a directory carrying no
+item marker of its own and containing subdirectories — a shape the folder
+layouts never otherwise produce.
+
+- **Exactly one child, and that child is a complete item** → join, silently.
+  Qualifies for the autonomous-resolution exception (ENGINE_DOCTRINE §3.1): the
+  join is a pure function of the two names, it refuses on any ambiguity, and the
+  owner has nothing to decide because it is plainly one name.
+- **Anything else** — several children, a child that is not an item, a target
+  name already taken → **no move**. Surface a `source-layout-split-name`
+  CLARIFICATION naming the paths, and leave the item where it is; it processes
+  next run once the owner resolves.
+- **Audit** — list every join (`old → new`) in the batch report and the
+  `log_process.md` run entry. Zero joins → no mention.
+
+### 0.0b Portable-name normalisation
+
+Runs before Quick Read touches any inbox path. Walk
 `_sources/inbox/{id}/` for every Active + Reserved source: each immediate
 child (folder or file, plus files one level inside per-item folders) whose
 name fails `_common.py::is_portable_name` is renamed to
@@ -262,7 +318,7 @@ similar) name export folders with pure-ISO timestamps
 BEFORE anything reads or references the path guarantees every downstream
 artefact (pre-scan briefing, `source:` frontmatter, `**Transcript:**`
 lines, PROCESSED.md, manifests) is born with the safe name — nothing ever
-needs rewriting. Spec: `_system/registries/SOURCES.md` template →
+needs rewriting. Spec: `_system/registries/SOURCES.md` →
 «Portable names».
 
 Rules:
@@ -490,8 +546,8 @@ the file name / mtime (for `flat-md`).
 
 Folder-name forms accepted (all may coexist within one source):
 
-1. **Portable ISO** (canonical for new items, post-§0.0) — `2026-04-29T14-09-30Z` → hyphens in the time part map back to `HH:MM:SS`; use as-is.
-2. **Pure ISO** — `2026-04-29T14:09:30Z` → use as-is. Legacy form: appears only under `_sources/processed/` (grandfathered) — §0.0 normalises it away in inbox.
+1. **Portable ISO** (canonical for new items, post-§0.0b) — `2026-04-29T14-09-30Z` → hyphens in the time part map back to `HH:MM:SS`; use as-is.
+2. **Pure ISO** — `2026-04-29T14:09:30Z` → use as-is. Legacy form: appears only under `_sources/processed/` (grandfathered) — §0.0b normalises it away in inbox.
 3. **ISO + topic suffix** — `2026-04-29T14-09-30Z_short topic` (or the colon variant) → split on first `_`, parse left side.
 4. **Date + topic** — `2026-04-29_short-topic` → midnight UTC of that date.
 5. **Legacy short date + topic** — `04-29 short topic` → assume current year, midnight UTC. No CLARIFICATION; mtime is the secondary anchor if parsing later turns out wrong.

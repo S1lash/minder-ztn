@@ -10,6 +10,11 @@
 # DELIBERATELY skipped — they seed once at clone time and are then
 # friend's data.
 #
+# This script is the CI / power-user entry point. The default owner path is
+# the `/ztn:update` skill, which does the same work with a preview and a
+# plain-language digest — and which repairs THIS script from upstream before
+# reading it, so a clone stuck on an old broken copy can always recover.
+#
 # Preconditions:
 #   - git remote `upstream` configured and reachable
 #   - working tree clean (script aborts if dirty in any engine path)
@@ -19,20 +24,33 @@
 #   scripts/sync_engine.sh                # fetch + apply
 #   scripts/sync_engine.sh --dry-run      # show what would change
 #   scripts/sync_engine.sh --remote name  # use a remote other than upstream
+#   scripts/sync_engine.sh --self-heal    # repair THIS script from the remote
+#                                         # first, then re-run — recovery for a
+#                                         # clone whose copy is too broken to
+#                                         # sync itself
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# `scripts/lib/git.sh` is sourced AFTER the self-heal below, never here. A clone
+# old enough to need recovering predates the library entirely, so sourcing it at
+# the top would kill the script on line one — on exactly the clone the recovery
+# path exists for.
 
 REMOTE="upstream"
 BRANCH="main"
 DRY_RUN=0
+SELF_HEAL=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
+    --self-heal) SELF_HEAL=1 ;;
     --remote) REMOTE="$2"; shift ;;
     --branch) BRANCH="$2"; shift ;;
     -h|--help)
-      sed -n '2,22p' "$0"; exit 0 ;;
+      sed -n '2,31p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
   shift
@@ -53,24 +71,49 @@ if [ ! -f "$MANIFEST" ]; then
   exit 2
 fi
 
+# Self-heal: land the update machinery from the remote before trusting it.
+#
+# The machinery ships THROUGH the update, so a clone carrying a broken copy can
+# never receive its own repair by the normal path. `git checkout <ref> -- <path>`
+# passes no `<ref>:<path>` argument, so it works even where the manifest reader
+# below does not. `/ztn:update` does this unconditionally; here it is opt-in,
+# because a CI run wants the script it was invoked with.
+if [ $SELF_HEAL -eq 1 ]; then
+  echo "[sync] self-heal: fetching $REMOTE/$BRANCH and restoring scripts/ ..."
+  git fetch "$REMOTE" "$BRANCH"
+  git checkout "$REMOTE/$BRANCH" -- scripts/
+  echo "[sync] self-heal: scripts/ restored — re-running the repaired script"
+  exec bash "$REPO_ROOT/scripts/sync_engine.sh" --remote "$REMOTE" --branch "$BRANCH"
+fi
+
+# Only now — the self-heal above is what puts this file there on an old clone.
+if [ ! -f "$SCRIPT_DIR/lib/git.sh" ]; then
+  echo "error: $SCRIPT_DIR/lib/git.sh is missing." >&2
+  echo "  This clone predates the shared git helpers. Recover with either:" >&2
+  echo "      /ztn:update" >&2
+  echo "      bash scripts/sync_engine.sh --self-heal" >&2
+  exit 2
+fi
+. "$SCRIPT_DIR/lib/git.sh"
+
+VERSION_FILE="integrations/VERSION"
+version_before=""
+[ -f "$VERSION_FILE" ] && version_before="$(tr -d '\r\n' < "$VERSION_FILE")"
+
 echo "[sync] fetching $REMOTE/$BRANCH ..."
 git fetch "$REMOTE" "$BRANCH"
 
-# Read engine paths from manifest via python3 (yaml).
+# Read engine paths from the manifest.
+#
 # Portable read loop (not `mapfile` — that is bash 4.0+, and macOS ships
-# bash 3.2, so a friend updating on system bash would fail here).
+# bash 3.2). The helper emits through `lib.portable.emit_lines`, which forces
+# LF: python's text-mode stdout writes CRLF on Git Bash, and a path carrying a
+# trailing `\r` fails EVERY `git cat-file` below — which this script would then
+# read as "absent upstream" and report success having synced nothing.
 ENGINE_PATHS=()
 while IFS= read -r _line; do
   [ -n "$_line" ] && ENGINE_PATHS+=("$_line")
-done < <(
-  python3 - "$MANIFEST" <<'PY'
-import sys, yaml
-with open(sys.argv[1]) as f:
-    m = yaml.safe_load(f)
-for p in m.get("engine", []):
-    print(p.rstrip("/"))
-PY
-)
+done < <(python3 "$SCRIPT_DIR/manifest_paths.py" --section engine)
 
 if [ ${#ENGINE_PATHS[@]} -eq 0 ]; then
   echo "error: no engine paths in $MANIFEST" >&2
@@ -78,10 +121,20 @@ if [ ${#ENGINE_PATHS[@]} -eq 0 ]; then
 fi
 
 # Abort if any engine path has uncommitted local changes.
+#
+# The check exists to protect an owner's uncommitted customisation from being
+# overwritten. A path whose working tree already MATCHES the remote holds no
+# such customisation — there is nothing there to lose — so it is not an abort.
+# Without that carve-out the self-heal below deadlocks the script against
+# itself: `--self-heal` checks `scripts/` out from the remote, which makes it
+# dirty, which the very next run refuses to proceed past.
 DIRTY=0
 for p in "${ENGINE_PATHS[@]}"; do
   if ! git diff --quiet -- "$p" 2>/dev/null || \
      ! git diff --cached --quiet -- "$p" 2>/dev/null; then
+    if git diff --quiet "$REMOTE/$BRANCH" -- "$p" 2>/dev/null; then
+      continue  # dirty vs HEAD, identical to upstream — nothing at risk
+    fi
     echo "  ! dirty: $p" >&2
     DIRTY=1
   fi
@@ -111,9 +164,15 @@ fi
 DEREF_CLEAN_PATHS=(".claude/skills")
 
 echo "[sync] checking out engine paths from $REMOTE/$BRANCH ..."
+RESOLVED=0
+ABSENT=0
 for p in "${ENGINE_PATHS[@]}"; do
-  # `git checkout <ref> -- <path>` works for both files and directories.
-  if git cat-file -e "$REMOTE/$BRANCH:$p" 2>/dev/null; then
+  # `git_ref_has_path` — never a bare `git cat-file -e "$ref:$p"`. MSYS on Git
+  # Bash rewrites a `<ref>:<path>` argument, and every dotfile engine path
+  # (.gitignore, .claude/CLAUDE.md, .engine-manifest.yml) fails as an invalid
+  # object name under that rewrite.
+  if git_ref_has_path "$REMOTE/$BRANCH" "$p"; then
+    RESOLVED=$((RESOLVED + 1))
     for clean in "${DEREF_CLEAN_PATHS[@]}"; do
       if [ "$p" = "$clean" ]; then
         rm -rf "$p"
@@ -124,32 +183,59 @@ for p in "${ENGINE_PATHS[@]}"; do
     echo "  + $p"
   else
     # Path may have been removed upstream — leave local copy alone.
+    ABSENT=$((ABSENT + 1))
     echo "  · $p (not in upstream, kept local)"
   fi
 done
 
+# ---------------------------------------------------------------------------
+# Post-conditions. A sync that resolves nothing is a broken sync, not an
+# up-to-date one, and the two are indistinguishable without these checks —
+# which is precisely how a Windows clone ran `/ztn:update` for weeks while
+# applying nothing and exiting 0 every time.
+# ---------------------------------------------------------------------------
+
+if [ "$RESOLVED" -eq 0 ]; then
+  echo >&2
+  echo "error: not one of the ${#ENGINE_PATHS[@]} engine paths was found in $REMOTE/$BRANCH." >&2
+  echo "  That is never the shape of an up-to-date clone — upstream would have to have" >&2
+  echo "  deleted the entire engine. Something mangled the paths before git saw them." >&2
+  echo "  Most likely: a stale copy of this script whose manifest reader emitted CRLF," >&2
+  echo "  or MSYS path conversion on Git Bash." >&2
+  echo "  Recover with:  /ztn:update                       (repairs this script first)" >&2
+  echo "             or:  bash scripts/sync_engine.sh --self-heal" >&2
+  exit 2
+fi
+
+version_after=""
+[ -f "$VERSION_FILE" ] && version_after="$(tr -d '\r\n' < "$VERSION_FILE")"
+version_upstream="$(git_ref_read_path "$REMOTE/$BRANCH" "$VERSION_FILE" | tr -d '\r\n' || true)"
+
+if [ -n "$version_upstream" ] && [ "$version_after" != "$version_upstream" ]; then
+  echo >&2
+  echo "error: $VERSION_FILE is '$version_after' after the sync but upstream ships" >&2
+  echo "  '$version_upstream'. The checkout did not land what it reported." >&2
+  echo "  Nothing has been rolled back; inspect with:  git status" >&2
+  exit 2
+fi
+
+echo
+if [ "$version_before" != "$version_after" ]; then
+  echo "[sync] $RESOLVED path(s) updated, $ABSENT absent upstream — engine ${version_before:-?} → ${version_after:-?}"
+else
+  echo "[sync] $RESOLVED path(s) updated, $ABSENT absent upstream — engine ${version_after:-?} (unchanged)"
+fi
+
 echo
 echo "[sync] applying migrations (if any) ..."
-MIG_DIR="scripts/migrations"
-if [ -d "$MIG_DIR" ]; then
-  shopt -s nullglob
-  ran=0
-  for m in "$MIG_DIR"/*.sh; do
-    name="$(basename "$m")"
-    marker=".engine-migrations-applied"
-    touch "$marker"
-    if grep -qxF "$name" "$marker"; then
-      continue
-    fi
-    echo "  > $name"
-    bash "$m"
-    echo "$name" >> "$marker"
-    ran=$((ran + 1))
-  done
-  if [ $ran -eq 0 ]; then
-    echo "  (none pending)"
-  fi
-fi
+# The runner owns the ledger and each migration's declared kind: a `structural`
+# failure aborts, a `heal` failure is recorded and the update continues. See
+# scripts/lib/migrations.py for why a repair of old data must never be able to
+# block a future update.
+python3 "$SCRIPT_DIR/run_migrations.py" || {
+  echo "error: a structural migration failed — see above." >&2
+  exit 2
+}
 
 cat <<EOF
 
@@ -157,7 +243,7 @@ cat <<EOF
 
 Review the diff:    git status
 Run tests:          (your test suite — engine ships pytest under zettelkasten/_system/scripts/tests/)
-Re-install Claude:  ./integrations/claude-code/install.sh
+Re-install Claude:  bash integrations/claude-code/install.sh
 
 If something looks wrong, revert with:  git restore --staged --worktree .
 EOF

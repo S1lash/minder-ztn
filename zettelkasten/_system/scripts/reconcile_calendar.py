@@ -30,6 +30,11 @@ CLI:
 
 ``--today`` overrides the date used to decide "future" (for deterministic tests);
 it defaults to the real current date.
+
+Exit status: 0 on success (a backlog is not an error); 2 when the reconciler
+itself could not run; 3 on a parser mismatch — forward-facing calendar lines
+present but no note-id parsed, which must never be reported as a clean or
+fully-orphaned result.
 """
 from __future__ import annotations
 
@@ -40,10 +45,21 @@ import re
 import sys
 from pathlib import Path
 
+from _common import configure_std_streams  # type: ignore
+
 DEFAULT_ROOTS = ("_records", "1_projects", "2_areas", "3_resources")
 
-# `- 📅 **{date-string}** …` event line in a note body.
-_EVENT_RE = re.compile(r"^\s*- 📅 \*\*(.+?)\*\*")
+# A `- 📅 …` event line in a note body.
+#
+# Two tiers, because the date string is written by a model following a prose
+# spec and the bold wrapper is a convention, not a guarantee. `_EVENT_BOLD_RE`
+# takes the bold span when it is there — that span IS the event's own date, and
+# preferring it keeps a date mentioned later in the same line (a different
+# event, a deadline in the description) from being read as this one's. Without
+# a bold span the whole remainder is handed to the date search instead of the
+# line being skipped outright, which is what a `$`-shaped assumption would do.
+_EVENT_RE = re.compile(r"^\s*- 📅\s+(.+)$")
+_EVENT_BOLD_RE = re.compile(r"^\s*- 📅\s+\*\*(.+?)\*\*")
 # First YYYY-MM-DD or YYYY-MM anywhere in the (possibly fuzzy) date string.
 _DATE_RE = re.compile(r"(\d{4})-(\d{2})(?:-(\d{2}))?")
 # A `[[note-id]]` or `[[note-id|alias]]` wikilink (alias stripped on use).
@@ -53,6 +69,27 @@ _HEADING_RE = re.compile(r"^## (.+?)\s*$")
 _PAST_HEADING_RE = re.compile(r"^## Past\b")
 # Fenced code block delimiter — `- 📅` inside a ``` example is not a real event.
 _FENCE_RE = re.compile(r"^\s*(```|~~~)")
+
+
+def event_date_string(line: str) -> str | None:
+    """The date span of a `- 📅` event line, or None when the line is not one.
+
+    Prefers the bold span; falls back to the whole remainder of the line.
+    """
+    bold = _EVENT_BOLD_RE.match(line)
+    if bold:
+        return bold.group(1)
+    plain = _EVENT_RE.match(line)
+    return plain.group(1) if plain else None
+
+
+def count_event_lines(lines: list[str]) -> int:
+    """`- 📅` lines regardless of whether a date parsed — the self-check denominator."""
+    return sum(1 for line in lines if _EVENT_RE.match(line))
+
+
+class ParserMismatch(RuntimeError):
+    """The aggregate has forward-facing entries but none yielded a note-id."""
 
 
 def _first_future_date(date_str: str, today: _dt.date) -> bool:
@@ -99,17 +136,25 @@ def scan_note_future_event_notes(base: Path, today: _dt.date, roots=DEFAULT_ROOT
                     continue
                 if in_fence:
                     continue
-                m = _EVENT_RE.match(line)
-                if m and _first_future_date(m.group(1), today):
+                date_str = event_date_string(line)
+                if date_str is not None and _first_future_date(date_str, today):
                     notes.add(path.stem)
                     break
     return notes
 
 
 def calendar_forward_notes(path: Path) -> set[str]:
-    """Note-ids wikilinked from any forward-facing CALENDAR section."""
+    """Note-ids wikilinked from any forward-facing CALENDAR section.
+
+    Raises `ParserMismatch` when forward-facing lines plainly contain `[[` and
+    none of them yielded a note-id. Zero linked notes over a non-empty calendar
+    is not an empty calendar — it is this parser failing to read a format it
+    owns, and reporting it as "every future event is an orphan" is how a
+    completeness gate returns garbage confidently.
+    """
     linked: set[str] = set()
     in_past = False
+    forward_with_links = 0
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError):
@@ -120,8 +165,15 @@ def calendar_forward_notes(path: Path) -> set[str]:
             continue
         if in_past:
             continue
+        if "[[" in line:
+            forward_with_links += 1
         for m in _WIKILINK_RE.finditer(line):
             linked.add(m.group(1).split("|")[0].strip())  # drop |alias
+    if not linked and forward_with_links:
+        raise ParserMismatch(
+            f"{path}: {forward_with_links} forward-facing line(s) carry `[[`, "
+            "0 note-ids parsed. The calendar is not empty — this parser cannot read it."
+        )
     return linked
 
 
@@ -143,6 +195,8 @@ def _default_calendar_path(base: Path) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", type=Path, required=True, help="zettelkasten base dir")
     parser.add_argument("--calendar", type=Path, default=None, help="CALENDAR.md path")
@@ -163,7 +217,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         today = _dt.date.today()
 
-    result = reconcile(base, calendar_path, today)
+    try:
+        result = reconcile(base, calendar_path, today)
+    except ParserMismatch as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 3
     if args.json:
         print(json.dumps(result, ensure_ascii=False))
     else:

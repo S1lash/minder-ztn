@@ -58,6 +58,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from _common import configure_std_streams  # type: ignore
+
 try:
     from jsonschema import Draft202012Validator
 except ModuleNotFoundError:
@@ -210,6 +212,22 @@ def validate_one(
         })
         return
 
+    # A manifest the retrofit could not make valid by any deterministic repair
+    # carries `section_extras.quarantine` with the reason. Re-raising it every
+    # night would be a permanent nag over a state that is already recorded and
+    # cannot be improved without inventing data. It is reported once, as its own
+    # event kind, so the count stays visible without producing CLARIFICATIONs.
+    extras = data.get("section_extras")
+    if isinstance(extras, dict) and isinstance(extras.get("quarantine"), dict):
+        emit({
+            "kind": "quarantined",
+            "batch": name,
+            "format_version": fv,
+            "reason": str(extras["quarantine"].get("reason", ""))[:300],
+            "marked": extras["quarantine"].get("marked"),
+        })
+        return
+
     _, schema = schemas[major]
     try:
         validator = Draft202012Validator(schema)
@@ -244,6 +262,8 @@ def validate_one(
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--batches-dir", type=Path, required=True)
     parser.add_argument("--schemas-dir", type=Path, required=True)

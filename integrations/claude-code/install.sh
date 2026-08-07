@@ -24,6 +24,37 @@
 
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Git Bash: make real symlinks possible before anything is linked.
+#
+# Without `MSYS=winsymlinks:nativestrict`, Git Bash's `ln -s` either writes a
+# plain text stub or fails outright — and it fails PARTWAY, leaving a stray
+# directory inside ~/.claude/skills/ that the friend then has to delete by hand
+# before a retry ("ln: failed to create symbolic link … : Not a directory").
+#
+# Detecting the platform and re-executing ourselves once with the variable set
+# is the whole fix: the friend is never asked to know about an environment
+# variable, and the guard is inert everywhere else. `MINDER_ZTN_SYMLINK_REEXEC`
+# makes it strictly once — if the second run still cannot link, the failure is
+# real and must surface rather than loop.
+# ---------------------------------------------------------------------------
+case "$(uname -s 2>/dev/null || echo unknown)" in
+  MINGW* | MSYS* | CYGWIN*)
+    case "${MSYS:-}" in
+      *winsymlinks:nativestrict*) ;;
+      *)
+        if [ -z "${MINDER_ZTN_SYMLINK_REEXEC:-}" ]; then
+          printf '[install] %s\n' "Git Bash detected — re-running with MSYS=winsymlinks:nativestrict so symlinks are real"
+          MSYS="${MSYS:+$MSYS }winsymlinks:nativestrict" \
+          MINDER_ZTN_SYMLINK_REEXEC=1 \
+            exec bash "${BASH_SOURCE[0]}" "$@"
+        fi
+        printf '[install] %s\n' "warning: MSYS=winsymlinks:nativestrict could not be applied; symlinks may be stubs" >&2
+        ;;
+    esac
+    ;;
+esac
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 INTEGR_ROOT="$SCRIPT_DIR"
@@ -73,10 +104,31 @@ backup_if_exists() {
 
 link() {
   # link <src> <dst>
+  #
+  # Leaves the destination either fully linked or absent — never half-made.
+  # A previous run that could not create real symlinks (Git Bash without
+  # `winsymlinks:nativestrict`, guarded at the top of this script) used to leave
+  # a stub file or a stray directory behind, and the next run then failed on it
+  # with "Not a directory" and stopped mid-loop, growing the residue. Clearing
+  # the destination first and verifying the result afterwards removes both
+  # halves of that failure.
   local src="$1" dst="$2"
   backup_if_exists "$dst" "$src"
   mkdir -p "$(dirname "$dst")"
+  # `backup_if_exists` returns early when `$dst` is already the symlink we
+  # want; anything else it moves away. This clears whatever survived either
+  # path, so `ln` never lands inside an existing directory.
+  if [ -L "$dst" ] || [ -e "$dst" ]; then
+    rm -rf "$dst"
+  fi
   ln -sfn "$src" "$dst"
+  if [ ! -L "$dst" ]; then
+    rm -rf "$dst"
+    log "error: could not create a real symlink at $dst" >&2
+    log "  Your shell wrote a stub instead. On Git Bash, run:" >&2
+    log "    MSYS=winsymlinks:nativestrict bash integrations/claude-code/install.sh" >&2
+    return 1
+  fi
   log "linked: $dst -> $src"
 }
 
@@ -242,7 +294,7 @@ Obsidian vault config:
   - Seeded into $MINDER_ZTN_BASE/.obsidian/ if not already present.
   - Open the vault: Obsidian → Open folder as vault → $MINDER_ZTN_BASE
   - Start at HOME.md (Cmd+O → "HOME").
-  - Reset to engine defaults later: integrations/obsidian/seed.sh --force
+  - Reset to engine defaults later: bash integrations/obsidian/seed.sh --force
 
 Restart Claude Code (open a new session) to pick up the rules.
 Re-run this installer any time after a 'git pull' on minder-ztn — it is

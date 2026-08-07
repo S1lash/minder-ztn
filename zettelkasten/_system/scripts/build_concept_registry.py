@@ -51,6 +51,7 @@ from _common import (
     read_frontmatter,
     repo_root,
     write_frontmatter,
+    configure_std_streams,
 )
 
 
@@ -349,6 +350,8 @@ def build(base: Path) -> tuple[dict[str, ConceptAgg], dict]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--root", type=Path, default=None)

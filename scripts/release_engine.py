@@ -28,24 +28,17 @@ import argparse
 import os
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
-try:
-    import yaml
-except ImportError:
-    print("error: PyYAML required. Install: pip install pyyaml", file=sys.stderr)
-    sys.exit(2)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-
-def repo_root() -> Path:
-    return Path(__file__).resolve().parent.parent
-
-
-def load_manifest(root: Path) -> dict:
-    p = root / ".engine-manifest.yml"
-    with p.open() as f:
-        return yaml.safe_load(f)
+# `repo_root` / `load_manifest` are re-exported so the historical
+# `from release_engine import ...` call sites keep working; `lib.manifest` is
+# the single owner of both.
+from lib.manifest import load_manifest, repo_root  # noqa: E402,F401
+from lib.portable import configure_std_streams  # noqa: E402
 
 
 _TEMPLATE_SUFFIX_RE = re.compile(r"^(.*)\.template(\.[^.]+)$")
@@ -344,6 +337,8 @@ def copy_path(src_root: Path, dst_root: Path, rel: str, *, strip_template: bool,
 
 
 def main() -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target", required=True, help="destination directory (must not exist or be empty)")
     ap.add_argument("--dry-run", action="store_true", help="list files without copying")
@@ -361,12 +356,22 @@ def main() -> int:
         target.mkdir(parents=True, exist_ok=True)
 
     if not args.skip_lint:
-        import subprocess
-        print("running personal-data linter...")
-        rc = subprocess.run([str(root / "scripts" / "check-no-personal-data.sh")]).returncode
-        if rc != 0:
-            print("error: linter found leaks — fix before release", file=sys.stderr)
-            return 2
+        # Both gates are invoked through `sys.executable`, never through the
+        # `.sh` wrapper: Windows has no executable bit and `.sh` is not a Win32
+        # application, so `subprocess.run(["…/x.sh"])` raises WinError 193 and
+        # the release cannot start at all. The wrapper stays as a human
+        # convenience.
+        for label, script, failure in (
+            ("personal-data linter", "check_no_personal_data.py", "linter found leaks"),
+            ("portability gate", "check_portability.py", "portability violations found"),
+        ):
+            print(f"running {label}...")
+            rc = subprocess.run(
+                [sys.executable, str(root / "scripts" / script)]
+            ).returncode
+            if rc != 0:
+                print(f"error: {failure} — fix before release", file=sys.stderr)
+                return 2
 
     total = 0
     print(f"\nengine paths → {target}")

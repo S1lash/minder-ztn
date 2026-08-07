@@ -47,9 +47,12 @@ LOCKS=(
 BLOCKED=()
 for lock in "${LOCKS[@]}"; do
   [ -e "$lock" ] || continue
-  # mtime as epoch seconds (BSD/macOS uses -f %m, GNU uses -c %Y).
+  # mtime as epoch seconds. Trying the BSD form then the GNU form IS the
+  # portable idiom — neither exists on both platforms.
+  # portability-ok: deliberate BSD-then-GNU fallback pair
   if mtime="$(stat -f %m "$lock" 2>/dev/null)"; then
     :
+  # portability-ok: the GNU half of the pair above
   elif mtime="$(stat -c %Y "$lock" 2>/dev/null)"; then
     :
   else

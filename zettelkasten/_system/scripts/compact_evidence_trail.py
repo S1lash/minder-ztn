@@ -34,6 +34,7 @@ from _common import (
     frontmatter_closed_before_body,
     parse_file,
     read_frontmatter,
+    configure_std_streams,
 )
 
 
@@ -141,6 +142,8 @@ def compact_section(section: str, cutoff: date, summary_body: str) -> tuple[str,
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Owner text is not ASCII; std streams must not use the platform default.
+    configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--file", type=Path, required=True,
                         help="target constitution note")
