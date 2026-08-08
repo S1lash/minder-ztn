@@ -529,3 +529,69 @@ class QuarantineTests(unittest.TestCase):
         data = {}
         r.quarantine(data, reason="x", errors=[], ts="2026-08-07T00:00:00Z")
         self.assertIn("quarantine", data["section_extras"])
+
+
+class BatchIdRecoveryTests(unittest.TestCase):
+    """A malformed `batch_id` is recovered from the manifest's own timestamp.
+
+    A live tick wrote `batch_id: 20260807-processtick` — it had assembled the
+    JSON and written it to `batches/` WITHOUT invoking the emitter, so the
+    emitter's refusal (which does fire; replaying that file through it exits 3)
+    never got the chance. The real instant was sitting in the same document as
+    `2026-08-07T15:12:38Z`, so recovering `20260807-151238` reads the document
+    rather than guessing at it.
+    """
+
+    @staticmethod
+    def _conform(raw, stem=None, ts=None):
+        import emit_batch_manifest as e  # type: ignore
+
+        return e._conform_batch_id(raw, stem, ts)
+
+    def test_recovers_the_exact_time_from_the_timestamp(self):
+        self.assertEqual(
+            self._conform("20260807-processtick", None, "2026-08-07T15:12:38Z"),
+            "20260807-151238",
+        )
+
+    def test_refuses_a_timestamp_from_a_different_day(self):
+        """A date mismatch means the two fields disagree — do not pick a winner."""
+        self.assertEqual(
+            self._conform("20260807-processtick", None, "2026-08-01T15:12:38Z"),
+            "20260807-000000",
+        )
+
+    def test_zero_fills_when_there_is_no_timestamp_to_read(self):
+        self.assertEqual(self._conform("20260807-processtick", None, None),
+                         "20260807-000000")
+
+    def test_a_conformant_id_is_returned_untouched(self):
+        self.assertEqual(self._conform("20260807-151238", None, "2026-08-07T09:00:00Z"),
+                         "20260807-151238")
+
+    def test_no_date_anywhere_yields_nothing(self):
+        self.assertIsNone(self._conform("processtick", None, "2026-08-07T15:12:38Z"))
+
+    def test_end_to_end_repair_keeps_the_original(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "20260807-processtick-process.json"
+            path.write_text(json.dumps({
+                "batch_id": "20260807-processtick",
+                "timestamp": "2026-08-07T15:12:38Z",
+                "format_version": "2.1",
+                "processor": "ztn:process",
+            }, ensure_ascii=False), encoding="utf-8")
+
+            data = json.loads(path.read_text(encoding="utf-8"))
+            r.repair_historical(data, filename=str(path), base=None)
+            self.assertEqual(data["batch_id"], "20260807-151238")
+            self.assertEqual(
+                data["section_extras"]["legacy_batch_id"], "20260807-processtick"
+            )
+
+    def test_the_emitter_still_refuses_a_malformed_id_it_is_handed(self):
+        """The producer's refusal is the first line of defence and must stay."""
+        import emit_batch_manifest as e  # type: ignore
+
+        with self.assertRaises(Exception):
+            e.validate_manifest({"batch_id": "20260807-processtick"})

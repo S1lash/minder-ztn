@@ -71,7 +71,10 @@ def _load_accept_sets(
     return audience_accept, domain_accept
 
 
-_BATCH_ID_RE = re.compile(r"^(\d{8})-(\d{6})")
+# The `YYYYMMDD-HHMMSS` prefix of a manifest FILENAME, used to rebuild a
+# truncated `timestamp`. Not a batch_id authority — `_conform_batch_id` in the
+# emitter owns that rule, and this module delegates to it.
+_FILENAME_TS_RE = re.compile(r"^(\d{8})-(\d{6})")
 
 _SCHEMAS_CACHE: dict | None = None
 
@@ -211,7 +214,7 @@ def repair_historical(
 
     # --- root: timestamp truncated mid-value ("2026-07-20T23") -------------
     ts = data.get("timestamp")
-    m = _BATCH_ID_RE.match(stem)
+    m = _FILENAME_TS_RE.match(stem)
     if isinstance(ts, str) and not ts.endswith("Z") and m:
         d, t = m.group(1), m.group(2)
         rebuilt = f"{d[:4]}-{d[4:6]}-{d[6:]}T{t[:2]}:{t[2:4]}:{t[4:]}Z"
@@ -219,12 +222,20 @@ def repair_historical(
         data["timestamp"] = rebuilt
         note("timestamp_truncated", f"{ts!r} → {rebuilt}")
 
-    # --- root: batch_id carrying the skill suffix from the filename --------
+    # --- root: a batch_id that is not `YYYYMMDD-HHMMSS(-N)` ----------------
+    #
+    # Delegated to the emitter's `_conform_batch_id`, which OWNS that rule —
+    # it strips a skill suffix, normalises a `-batchN` form, recovers the time
+    # from the manifest's own `timestamp`, and zero-fills only as a last
+    # resort. A second implementation here would be a second answer to the
+    # same question, and the two would drift.
     bid = data.get("batch_id")
-    if isinstance(bid, str) and m and bid != m.group(0):
-        legacy(data, "batch_id", bid)
-        data["batch_id"] = m.group(0)
-        note("batch_id_suffixed", f"{bid!r} → {m.group(0)}")
+    conformed = e._conform_batch_id(bid, stem, data.get("timestamp"))
+    if conformed is not None and conformed != bid:
+        if isinstance(bid, str):
+            legacy(data, "batch_id", bid)
+        data["batch_id"] = conformed
+        note("batch_id_conformed", f"{bid!r} → {conformed}")
 
     # --- records / knowledge_notes created[]: missing path, null id/title ---
     for section_name in ("records", "knowledge_notes"):

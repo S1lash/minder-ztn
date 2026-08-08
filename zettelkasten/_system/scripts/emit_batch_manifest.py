@@ -1715,17 +1715,38 @@ def _normalise_iso_z(value) -> str | None:
     return None
 
 
-def _conform_batch_id(raw, filename_stem: str | None) -> str | None:
-    """Return a `^YYYYMMDD-HHMMSS(-N)?$`-conformant batch_id derived from
-    the raw value (or the filename stem). Strips a trailing skill suffix,
-    normalises a `-batchN` suffix to `-N`, and fills a missing time
-    component with `000000`. Returns None when no date can be found.
+def _conform_batch_id(
+    raw, filename_stem: str | None, timestamp: str | None = None,
+) -> str | None:
+    """Return a `^YYYYMMDD-HHMMSS(-N)?$`-conformant batch_id.
+
+    Sources, in order of how much they actually know:
+
+    1. `raw`, when it already conforms.
+    2. The manifest's own `timestamp`, when the id carries a date but no
+       readable time. A batch whose id reads `20260807-processtick` has the
+       real instant sitting beside it as `2026-08-07T15:12:38Z` — recovering
+       `20260807-151238` from there is reading the document, not guessing at
+       it, and it beats the zero-fill below by a working day.
+    3. `raw` or the filename stem, zero-filling the time as a last resort.
+
+    Returns None when no date can be found anywhere.
     """
     if isinstance(raw, str) and _CONFORMANT_BATCH_ID_RE.fullmatch(raw):
         return raw
     src = raw if isinstance(raw, str) else (filename_stem or "")
     if not isinstance(src, str):
         return None
+
+    date_only = re.match(r"^([0-9]{8})", src)
+    has_time = re.match(r"^[0-9]{8}-[0-9]{6}", src)
+    if date_only and not has_time and isinstance(timestamp, str):
+        ts = re.match(
+            r"^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})Z$",
+            timestamp,
+        )
+        if ts and f"{ts.group(1)}{ts.group(2)}{ts.group(3)}" == date_only.group(1):
+            return "".join(ts.groups()[:3]) + "-" + "".join(ts.groups()[3:])
     for suffix, _proc in FILENAME_SKILL_SUFFIXES:
         if src.endswith(suffix):
             src = src[: -len(suffix)]
@@ -1806,7 +1827,7 @@ def synthesise_required_fields(
 
     # batch_id
     raw_bid = data.get("batch_id")
-    conformed = _conform_batch_id(raw_bid, stem)
+    conformed = _conform_batch_id(raw_bid, stem, data.get("timestamp"))
     if conformed is not None and conformed != raw_bid:
         if isinstance(raw_bid, str):
             extras = data.get("section_extras")

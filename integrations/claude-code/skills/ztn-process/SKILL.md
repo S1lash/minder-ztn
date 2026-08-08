@@ -2759,6 +2759,26 @@ Failure semantics:
   produces non-zero exit — autofix or drop per the autonomous-
   pipeline contract.
 
+**Then verify what actually landed — in this tick, not tonight.**
+
+```bash
+python3 _system/scripts/lint_manifest_schema.py \
+    --batches-dir _system/state/batches --schemas-dir _system/docs/manifest-schema --all \
+  | grep '"batch": "{batch_id}-process.json"'
+```
+
+A `"kind": "violation"` line here means the file on disk does not honour the
+manifest contract. Treat it exactly as an emitter `exit 3`: the manifest is not
+valid, so do NOT append the BATCH_LOG row, and surface it in the run report.
+
+This check exists because the emitter can only refuse what it is given. A tick
+that assembles the JSON and writes it to `batches/` **without invoking the
+emitter** bypasses every guarantee above, and the only thing that noticed was
+the nightly lint — a full day later, on a manifest a downstream consumer may
+already have read. It has happened: a tick invented `batch_id: 20260807-processtick`
+where the format is `YYYYMMDD-HHMMSS`. Verifying the artefact rather than
+trusting the procedure closes that gap whatever its cause.
+
 If exit `3` fires: the in-memory accumulator is malformed (missing
 section the SKILL forgot to populate, or wrong processor enum). Do
 NOT retry blindly — read stderr message, fix the accumulator
