@@ -26,8 +26,30 @@ What is derivable, and how confident:
                 carry across intact and nothing is re-entered.
     seed      — the body. The old `hooks/tick.md`, handed to the concierge as
                 RAW MATERIAL to rewrite, never as text to paste.
+    memory    — what the role LEARNT, as an inventory with paths. The
+                assignment is half a long-running role; the other half is the
+                board, the reading and the verdicts it built up over months.
+                Both shapes keep that between runs, so it carries across — but
+                only if something points at it. Nothing did, and a re-created
+                role woke up remembering nothing while every byte sat intact
+                one directory away.
 
 Emits `_previous/{id}.plan.json`. Deletes nothing, reads only.
+
+**The plan file is a view, not the source.** What a parked role holds lives in
+the parked directory; this only reads it. So the file may be regenerated at any
+time, and `/ztn:role:add --from-previous` does exactly that before reading it:
+
+    python3 scripts/migrations/_018_plan.py <base>/_system/roles/_previous
+
+Deriving at read time is what removes the whole «this artifact was written
+before we knew better» class, rather than one instance of it. A migration
+records itself applied and never runs again, so a plan written by an older
+engine would otherwise stay on disk, authoritative and wrong, forever.
+
+Invoked with the parked directory alone, it reads the credential store's names
+itself. That derivation used to live in the calling shell, which made two owners
+for one fact.
 """
 
 from __future__ import annotations
@@ -39,6 +61,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lib.portable import configure_std_streams  # noqa: E402
+
+from _018_memory import inventory  # noqa: E402
 
 
 CONFIG = "config.yml"
@@ -122,6 +146,7 @@ def build(role_dir: Path, store_names: list) -> dict:
     tick = read(role_dir / "hooks" / "tick.md").strip()
     ask = read(role_dir / "hooks" / "ask.md").strip()
     brief = read(role_dir / "brief.md").strip()
+    memory = inventory(role_dir)
 
     writes, why = ["state"], ["every role keeps its own memory"]
     if flag(cfg, "emit_inbox"):
@@ -164,9 +189,22 @@ def build(role_dir: Path, store_names: list) -> dict:
                 "drop it and say so."
             ),
         },
+        "memory": dict(
+            memory,
+            instruction=(
+                "What this role LEARNT, still on disk, paths relative to the "
+                "directory this plan sits in. A role that ran for months is half "
+                "assignment and half accumulated state, and re-creating only the "
+                "assignment ships a role that has forgotten everything it knew. "
+                "READ these files, then seed the new role's `state/` from them "
+                "before the trial run — carrying the substance across, in "
+                "whatever files the new assignment says it keeps. As with the "
+                "assignment: rewrite, never paste. The old part archetypes "
+                "(ledger / narrative / assessment) are gone; what they held is "
+                "not."
+            ) if memory["has_memory"] else "",
+        ),
         "must_ask": _must_ask(cfg, tick),
-        "ran_before": any((role_dir / m).is_file()
-                          for m in ("state.md", "decisions.jsonl")),
     }
 
 
@@ -195,13 +233,34 @@ def _must_ask(cfg: str, tick: str) -> list:
     return asks
 
 
+def store_names_for(parked_root: Path) -> list:
+    """Credential names on this base, read from the parked directory's position.
+
+    The store is the SAME file, shape and primitive in both shapes — only the
+    environment variable holding the key was renamed — so the NAMES are readable
+    with no key at all. Reading them here rather than in the calling shell is
+    what lets any caller regenerate a plan with one argument.
+
+    `_previous` sits at `<base>/_system/roles/_previous`, so the base is three
+    levels up. A directory that is not shaped that way (a test fixture, a
+    hand-made copy) yields no names rather than an error: a plan that names no
+    credential is recoverable, and a crash mid-update is not.
+    """
+    try:
+        store = parked_root.parents[2] / "_system" / "state" / "secrets.enc.json"
+        payload = json.loads(store.read_text(encoding="utf-8"))
+    except (IndexError, OSError, UnicodeDecodeError, ValueError):
+        return []
+    return sorted(payload) if isinstance(payload, dict) else []
+
+
 def main(argv: list) -> int:
     # Owner text is not ASCII; std streams must not use the platform default.
     configure_std_streams()
     parked_root = Path(argv[1]).resolve()
-    store_names = json.loads(argv[2]) if len(argv) > 2 else []
     if not parked_root.is_dir():
         return 0
+    store_names = json.loads(argv[2]) if len(argv) > 2 else store_names_for(parked_root)
     written = 0
     for d in sorted(parked_root.iterdir()):
         if not d.is_dir() or d.name.startswith("_"):

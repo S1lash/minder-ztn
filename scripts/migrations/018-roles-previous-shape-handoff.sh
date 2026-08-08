@@ -46,6 +46,13 @@
 #     directory, next to `config.yml` and `hooks/`, where `state/` is expected.
 #   - writes `_system/roles/_previous/HANDOFF.md` — one section per role, in
 #     the owner's own words, quoting what they actually wrote.
+#   - writes `_system/roles/_previous/{id}.plan.json` — what `/ztn:role:add
+#     --from-previous` carries across without asking, what it must not decide
+#     alone, and an inventory of the memory the role built up between runs with
+#     the path to every file of it. A long-running role is half assignment and
+#     half accumulated state; naming only the assignment re-creates a role that
+#     has forgotten everything, while every byte of it sits intact one
+#     directory away.
 #   - names `_system/registries/TOOLS.md` if it exists. It is owner data, it
 #     survives every sync, and after this update nothing reads it.
 #
@@ -80,12 +87,12 @@ fi
 
 python3 "$SCRIPT_DIR/_018_handoff.py" "$BASE"
 
-# The credential store is the SAME file, shape and primitive in both shapes —
-# only the environment variable holding the key was renamed. So the names are
-# readable here without any key at all, and they go into each conversion plan.
-STORE="$BASE/_system/state/secrets.enc.json"
-NAMES="$(python3 -c 'import sys,json,pathlib; p=pathlib.Path(sys.argv[1]); print(json.dumps(sorted(json.loads(p.read_text(encoding="utf-8"))) if p.is_file() else []))' "$STORE" 2>/dev/null || echo "[]")"
-python3 "$SCRIPT_DIR/_018_plan.py" "$BASE/_system/roles/_previous" "$NAMES"
+# The plans are rebuilt on every run, from the parked directory — which is the
+# source of what a role holds; the plan file is only a view of it. Credential
+# names are read by the plan builder itself, from the store's position relative
+# to the parked directory, so this call needs one argument and «what is in the
+# store» has one owner.
+python3 "$SCRIPT_DIR/_018_plan.py" "$BASE/_system/roles/_previous"
 
 # The migration verifies its OWN work rather than reporting intent. A run that
 # half-succeeded and said nothing is the failure mode this whole migration

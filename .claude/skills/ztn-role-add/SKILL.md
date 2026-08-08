@@ -207,6 +207,18 @@ role at `_system/roles/_previous/{id}.plan.json`. Read that plan and let it do
 the work it can, so the owner is asked about what genuinely needs them and
 nothing else.
 
+**Rebuild the plan before you read it.** The parked directory is what a role
+holds; the plan file is a view of it, and the copy on disk may have been written
+months ago by an engine that read less than this one does. A migration records
+itself applied and never runs again, so a stale view would otherwise stay there,
+authoritative and wrong, forever. One command, idempotent, reads only:
+
+```bash
+REPO="$(git rev-parse --show-toplevel)"; BASE=""
+for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; [ -n "$BASE" ] && BASE="ambiguous" && break; BASE="${d%/}"; done
+python3 "$REPO/scripts/migrations/_018_plan.py" "$BASE/_system/roles/_previous"
+```
+
 **Read the plan first.** It has four parts and they are not interchangeable:
 
 | | What to do with it |
@@ -214,7 +226,23 @@ nothing else.
 | `certain` | Take it. `name`, `cadence`, `status` mean the same in both shapes — confirm in one sentence, do not re-interview |
 | `proposed` | **Show it and get a yes.** `writes` and `secrets` are proposals with reasoning attached; say the reasoning out loud, in their words, and let them correct it. A `writes:` the owner never looked at is the failure this whole design guards against |
 | `seed` | **Raw material to REWRITE, never text to paste.** It is written in a vocabulary that no longer exists — parts, ledger ops, staged acts. Read what they WANTED and write that in the current shape, in their register. A sentence that only makes sense under the old machinery gets dropped, and you say which |
+| `memory` | **Read every file it names and seed the new role's `state/` from them, before the trial run.** This is what the role LEARNT — a board, a reading, verdicts, a decision log. For a role that ran for months it is the larger half of its value, and the assignment alone does not reproduce it |
 | `must_ask` | Ask each one. It is short on purpose — a long interview is one the owner stops reading, which is exactly how an unexamined `writes:` gets accepted |
+
+**A role that ran before does not start empty.** The plan's `memory` names what
+it accumulated and where every file of it still sits. Read them, and write the
+new role's state from them — the substance carried into whatever files the new
+assignment says the role keeps, rewritten rather than pasted: the old part
+archetypes are gone, what they held is not. Do this **before** Step 10's trial
+run, so the trial reasons over the real state and the owner sees the role
+answering as the one they had, not as a stranger with its name. Say in one line
+what carried over and what did not survive the change of shape.
+
+Judgement, not transcription. A board of nineteen live items is memory; a
+watermark keyed to machinery that no longer exists is not, and you drop it and
+say so. If the new assignment genuinely has no place for part of it, that is a
+real answer — name it out loud rather than quietly leaving it behind, and the
+parked original still holds it.
 
 **Credentials carry across untouched.** The store is the same file, the same
 shape and the same encryption in both; only the environment variable holding

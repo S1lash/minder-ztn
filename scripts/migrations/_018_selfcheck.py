@@ -30,8 +30,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lib.portable import configure_std_streams  # noqa: E402
 
+# One owner for the parked directory's name — `_018_memory`. It was a
+# constant here and in the hand-off, which is two homes for one fact.
+from _018_memory import PARKED_DIRNAME as PARKED  # noqa: E402
 
-PARKED = "_previous"
+
 HANDOFF = "HANDOFF.md"
 CONFIG = "config.yml"
 ROLE = "role.md"
@@ -145,6 +148,19 @@ def main(argv: list) -> int:
                         f"{d.name}: the plan carries a schedule")
                 r.check(bool(payload.get("proposed", {}).get("writes")),
                         f"{d.name}: the plan proposes where it may write")
+                # A role that ran carries a board, a reading, a decision log —
+                # usually more of its value than the assignment. If the plan
+                # does not point at it, the owner re-creates the role and it
+                # wakes up remembering nothing, while every byte sits intact one
+                # directory away. Present-but-unreferenced is lost, so this is a
+                # FAIL rather than a note.
+                mem = payload.get("memory") or {}
+                if mem.get("has_memory"):
+                    located = bool(mem.get("rendered") or mem.get("parts")
+                                   or mem.get("decisions"))
+                    r.check(located and bool(mem.get("instruction")),
+                            f"{d.name}: the plan carries the memory it built up",
+                            f"{mem.get('records', 0)} record(s) located")
             except ValueError:
                 r.check(False, f"{d.name}: the plan is valid JSON")
 

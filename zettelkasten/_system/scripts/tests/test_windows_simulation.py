@@ -340,3 +340,100 @@ class LineEndingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PreviousShapeRoleUnderAnsiTests(unittest.TestCase):
+    """Migration 018 carries the owner's own prose — under a Windows locale.
+
+    It is the one migration whose entire output IS owner text: an assignment
+    written in their language, quoted back to them in a hand-off written in
+    theirs. On a Git Bash box the platform default is an ANSI code page, so a
+    single unqualified read or write turns that into mojibake — and a hand-off
+    the owner cannot read is the same silence the migration exists to break,
+    only harder to diagnose. It also has to survive a clone with no executable
+    bit, which is why it is invoked as `bash <path>`.
+    """
+
+    ROLE_TICK = "Следи за доской проекта и держи документ актуальным.\n"
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        (self.root / "scripts" / "migrations").mkdir(parents=True)
+        shutil.copytree(_SCRIPTS / "lib", self.root / "scripts" / "lib")
+        for name in ("018-roles-previous-shape-handoff.sh", "_018_handoff.py",
+                     "_018_plan.py", "_018_selfcheck.py", "_018_memory.py"):
+            shutil.copy(_SCRIPTS / "migrations" / name,
+                        self.root / "scripts" / "migrations" / name)
+
+        role = self.root / "zettelkasten" / "_system" / "roles" / "смотритель"
+        (role / "hooks").mkdir(parents=True)
+        (role / "parts").mkdir()
+        (role / "config.yml").write_text(
+            "id: смотритель\nname: 'Смотритель доски'\ncadence: weekly\n"
+            "cadence_anchor: monday\nstatus: active\nemit_inbox: true\n",
+            encoding="utf-8")
+        (role / "hooks" / "tick.md").write_text(self.ROLE_TICK, encoding="utf-8")
+        (role / "state.md").write_text("# Состояние\n\nдоска на 12 позиций\n",
+                                       encoding="utf-8")
+        (role / "decisions.jsonl").write_text('{"почему":"так решили"}\n',
+                                              encoding="utf-8")
+        (role / "parts" / "доска.json").write_text(
+            '{"part_id":"доска","archetype":"ledger","items":[{"key":"к-1"},{"key":"к-2"}]}',
+            encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_the_handoff_and_plan_survive_an_ascii_default(self):
+        result = _run(
+            ["bash", str(self.root / "scripts" / "migrations"
+                         / "018-roles-previous-shape-handoff.sh")],
+            self.root, _ansi_env(),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        parked = self.root / "zettelkasten" / "_system" / "roles" / "_previous"
+        handoff = (parked / "HANDOFF.md").read_text(encoding="utf-8")
+        self.assertIn("Смотритель доски", handoff)
+        self.assertIn(self.ROLE_TICK.strip(), handoff)
+        # The memory summary is the part this migration used to omit entirely;
+        # it is also Cyrillic, so it proves the encoding on the new path too.
+        self.assertIn("доска — 2 зап.", handoff)
+        self.assertIn("решений в журнале — 1", handoff)
+
+        import json as _json
+        plan = _json.loads((parked / "смотритель.plan.json").read_text(encoding="utf-8"))
+        self.assertEqual(plan["certain"]["name"], "Смотритель доски")
+        self.assertTrue(plan["memory"]["has_memory"])
+        self.assertEqual(plan["memory"]["records"], 2)
+        self.assertEqual(plan["memory"]["rendered"]["path"], "смотритель/state.md")
+        self.assertEqual(plan["seed"]["assignment"], self.ROLE_TICK.strip())
+
+    def test_the_selfcheck_survives_an_ascii_default(self):
+        migration = self.root / "scripts" / "migrations" / "018-roles-previous-shape-handoff.sh"
+        self.assertEqual(_run(["bash", str(migration)], self.root, _ansi_env()).returncode, 0)
+        result = _run(
+            ["python3", str(self.root / "scripts" / "migrations" / "_018_selfcheck.py")],
+            self.root, _ansi_env(),
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("carries the memory it built up", result.stdout)
+
+    def test_migration_020_survives_an_ascii_default(self):
+        """The path an already-migrated Windows clone actually takes."""
+        migrations = self.root / "scripts" / "migrations"
+        shutil.copy(_SCRIPTS / "migrations" / "020-roles-previous-shape-memory.sh",
+                    migrations / "020-roles-previous-shape-memory.sh")
+        self.assertEqual(
+            _run(["bash", str(migrations / "018-roles-previous-shape-handoff.sh")],
+                 self.root, _ansi_env()).returncode, 0)
+        parked = self.root / "zettelkasten" / "_system" / "roles" / "_previous"
+        (parked / "HANDOFF.md").write_text("# устарело\n", encoding="utf-8")
+
+        result = _run(["bash", str(migrations / "020-roles-previous-shape-memory.sh")],
+                      self.root, _ansi_env())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        healed = (parked / "HANDOFF.md").read_text(encoding="utf-8")
+        self.assertIn("Смотритель доски", healed)
+        self.assertIn("доска — 2 зап.", healed)

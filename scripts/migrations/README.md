@@ -31,7 +31,28 @@ fetch + checkout. One file per breaking engine change.
     migration. Conservative default when the header is absent.
   - **`heal`** — no, merely incomplete. A non-zero exit is recorded as
     `partial`, the update CONTINUES, and the migration is retried on the next
-    update — so an improved repair shipped later reaches the clone by itself.
+    update — so an improved repair shipped later reaches a clone **where it kept
+    failing**.
+
+  **Retry follows failure, never improvement.** A migration recorded `applied`
+  never runs again, of any kind. So improving a migration reaches only clones
+  that have not run it yet: the population that already succeeded is
+  unreachable through that file, forever. This is correct — re-running a
+  succeeded migration on every update is how a chain becomes unbounded work —
+  but it decides where a repair goes, and getting it wrong ships a fix into a
+  branch nothing can execute.
+
+  Two ways to reach an already-migrated clone, in order of preference:
+
+  1. **Derive at read time instead of storing.** When the artifact is a VIEW of
+     data the clone still holds, have the consumer rebuild it rather than trust
+     a file written once. This removes the whole «written before we knew
+     better» class rather than one instance, and needs no ledger entry at all
+     (`018`'s conversion plans, rebuilt by `/ztn:role:add --from-previous`).
+  2. **A new migration.** When the artifact is read by a person rather than by
+     code, there is no read-time hook to hang the rebuild on, and a new ledger
+     entry is the only mechanism. Delegate to the original's producers rather
+     than restating them (`020`, which re-runs `018`'s two).
 
   Worked examples on both sides, because the line is not "does it touch owner
   data":
@@ -42,6 +63,7 @@ fetch + checkout. One file per breaking engine change.
   | `009` biometric namespace | structural | it MOVES owner data, and the new pipeline reads only the new location — half-moved means reading the wrong place |
   | `002` `Family` column | structural | a schema column `/ztn:process` branches on; conservative on schema, by default |
   | `018` roles hand-off | heal | it also moves owner data, but nothing reads the old location — un-run means invisible, not wrong |
+  | `020` roles hand-off memory | heal | it only refreshes generated artifacts a clone already holds; un-run means a stale hand-off, not a wrong engine |
   | `007` manifest retrofit | heal | historical data is repaired or it is not; the engine reads it either way |
   | `016`, `004`, `005`, `015` | heal | they only print |
 

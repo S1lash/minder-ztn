@@ -20,15 +20,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lib.portable import configure_std_streams  # noqa: E402
 
+from _018_memory import PARKED_DIRNAME, inventory, repo_path, summary_ru  # noqa: E402
 
-PARKED_DIRNAME = "_previous"
+
 HANDOFF_NAME = "HANDOFF.md"
 CONFIG_NAME = "config.yml"
 ROLE_NAME = "role.md"
-# Files that only exist once a role has actually run. Their presence changes
-# what the owner is told: an unrun role is pure intent, a run role also has a
-# record of what it decided.
-RAN_MARKERS = ("state.md", "decisions.jsonl")
 
 
 def is_previous_shape(d: Path) -> bool:
@@ -98,7 +95,6 @@ def describe(role_dir: Path) -> dict:
     cfg = read_text(role_dir / CONFIG_NAME)
     tick = read_text(role_dir / "hooks" / "tick.md").strip()
     brief = read_text(role_dir / "brief.md").strip()
-    ran = [m for m in RAN_MARKERS if (role_dir / m).is_file()]
     return {
         "id": scalar(cfg, "id") or role_dir.name,
         "name": scalar(cfg, "name") or role_dir.name,
@@ -107,7 +103,7 @@ def describe(role_dir: Path) -> dict:
         "status": scalar(cfg, "status"),
         "tick": tick,
         "brief": brief,
-        "ran": ran,
+        "memory": inventory(role_dir),
     }
 
 
@@ -134,7 +130,11 @@ def handoff_text(roles: list, base_name: str, tools_md: bool) -> str:
         "обоснованием, тебе остаётся подтвердить или поправить. Твой текст задания\n"
         "консьерж **перепишет** в текущий вид, а не скопирует: он написан в словаре,\n"
         "которого больше нет, и дословный перенос заставил бы роль импровизировать.\n"
-        "Спросит он только то, чего не может решить сам.\n")
+        "Спросит он только то, чего не может решить сам.\n"
+        "\n"
+        "**Память роли переезжает вместе с ней.** То, что роль наработала за месяцы —\n"
+        "доска, чтения, вердикты, журнал решений, — лежит рядом и указано в её плане.\n"
+        "Пересозданная роль садится на эту память, а не начинает с нуля.\n")
     out.append(
         "**Секреты переносить не надо — они уже перенеслись.** Хранилище то же самое,\n"
         "шифрование то же; переименовалась только переменная с ключом. Перенеси её\n"
@@ -145,20 +145,40 @@ def handoff_text(roles: list, base_name: str, tools_md: bool) -> str:
 
     for r in roles:
         out.append(f"## {r['name']}\n")
+        mem = r["memory"]
         meta = []
         if r["cadence"]:
             meta.append(f"просыпалась: `{r['cadence']}`")
         if r["status"]:
             meta.append(f"статус был: `{r['status']}`")
-        meta.append(f"файлы: `{base_name}/_system/roles/{PARKED_DIRNAME}/{r['id']}/`")
+        meta.append(f"файлы: `{repo_path(mem['directory'], base_name)}`")
         out.append(" · ".join(meta) + "\n")
-        if r["ran"]:
+        if mem["has_memory"]:
+            counts = summary_ru(mem)
             out.append(
-                f"**Эта роль успела отработать** — рядом лежат `{'`, `'.join(r['ran'])}`,\n"
-                "то есть запись того, что она решала. Текущий движок их не читает; они\n"
-                "твои, смотри при желании.\n")
+                "**Эта роль успела наработать память** — не только замысел, но и то, что\n"
+                "она за месяцы собрала"
+                + (f": {counts}.\n" if counts else ".\n"))
+            # Every path below goes through the one converter, so what the owner
+            # reads resolves from where they read it — the repository root.
+            where = [f"`{repo_path(p['path'], base_name)}`" for p in mem["parts"]]
+            if mem["rendered"]:
+                out.append(
+                    "\nЧитаемый срез — "
+                    f"`{repo_path(mem['rendered']['path'], base_name)}`"
+                    + (f"; данные под ним — {', '.join(where)}.\n" if where else ".\n"))
+            elif where:
+                out.append(f"\nДанные — {', '.join(where)}.\n")
+            out.append(
+                "\nЭто **переносится**: новая форма тоже держит память роли между\n"
+                "запусками, и консьерж посадит пересозданную роль на неё, а не на\n"
+                "пустое место. Иначе роль проснулась бы, забыв всё, что знала.\n")
         else:
-            out.append("Ни разу не запускалась — здесь только замысел.\n")
+            # Deliberately about the MEMORY, not about whether it ever ran. The
+            # previous shape wrote empty part files on a tick that found nothing,
+            # so «ни разу не запускалась» would be a false claim in exactly the
+            # case that is hardest to check.
+            out.append("Накопленной памяти нет — здесь только замысел.\n")
         if r["tick"]:
             out.append("\n**Что ты написал ей делать** (дословно, твоими словами):\n")
             out.append("```\n" + r["tick"] + "\n```\n")
@@ -198,10 +218,26 @@ def main(argv: list) -> int:
     pending = find_previous(roles_root)
 
     if not pending:
-        if handoff.is_file():
-            print(f"[migration 018] Already carried across — see {handoff.relative_to(repo)}")
-        else:
+        if not handoff.is_file():
             print("[migration 018] No previous-shape roles — nothing to carry across.")
+            return 0
+        # Already parked — but possibly by an older copy of this migration, whose
+        # hand-off did not mention the memory a role had built up at all. The
+        # conversion plans beside it are rebuilt unconditionally on every run, so
+        # they self-heal; the hand-off did not, and a generated file left saying
+        # something no longer true is the same silence in a quieter form. Rebuild
+        # it from the parked roles, which are the source it was written from.
+        parked = [d for d in sorted(parked_root.iterdir())
+                  if d.is_dir() and not d.name.startswith("_")]
+        if parked:
+            tools_md = (base / "_system" / "registries" / "TOOLS.md").is_file()
+            refreshed = handoff_text([describe(d) for d in parked], base.name, tools_md)
+            if refreshed != handoff.read_text(encoding="utf-8", errors="replace"):
+                handoff.write_text(refreshed, encoding="utf-8")
+                print(f"[migration 018] Already carried across — hand-off refreshed at "
+                      f"{handoff.relative_to(repo)}")
+                return 0
+        print(f"[migration 018] Already carried across — see {handoff.relative_to(repo)}")
         return 0
 
     described = [describe(d) for d in pending]
@@ -246,7 +282,9 @@ def main(argv: list) -> int:
         "",
         "       Each has a plan beside it — `{id}.plan.json` — with what carries",
         "       over untouched, what is proposed with its reasoning, the old",
-        "       assignment as raw material to REWRITE rather than paste, and the",
+        "       assignment as raw material to REWRITE rather than paste, where the",
+        "       memory the role built up still sits so it is carried in rather",
+        "       than lost, and the",
         "       short list only the owner can settle. The concierge closes what it",
         "       honestly can and asks about the rest. Its three gates still apply:",
         "       a carried-across role earns no shortcut past any of them.",
