@@ -95,6 +95,27 @@ fetch + checkout. One file per breaking engine change.
   `/bin/bash -n <migration>.sh` on macOS before shipping. Full rule:
   `_system/docs/ENGINE_DOCTRINE.md §3.9`.
 
+## Helpers beside a migration
+
+A migration whose logic does not fit in portable bash keeps its python beside it,
+named `_NNN_*.py` — the leading underscore is what keeps the runner from globbing
+it as a migration of its own (`pending()` globs `*.sh`).
+
+- `_018_handoff.py` · `_018_plan.py` · `_018_selfcheck.py` — the three producers
+  of migration `018`: the owner's hand-off, one conversion plan per parked role,
+  and the self-check that proves the move happened.
+- `_018_memory.py` — the single reader of «what a previous-shape role
+  accumulated and where it lives», shared by the hand-off and the plan so the two
+  can never disagree. It reports an inventory with paths, never a copy: the files
+  are the source of truth and sit beside the plan.
+
+`020-roles-previous-shape-memory.sh` re-runs those producers for a clone where
+`018` already recorded `applied` and therefore never runs again. It is the
+`heal`-kind answer to «a migration improved after it succeeded» — the retry rule
+in this file says retry follows failure, never improvement, so reaching an
+already-migrated clone takes a new migration, not an edit to the old one.
+
+
 ## When to author one
 
 Whenever an engine change requires friends to do something other than

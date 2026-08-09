@@ -2,6 +2,53 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.57.0 — «When did this last run» now has one answer
+
+Nothing changes in what your pipelines do. What changes is how you find out that
+they are working.
+
+Pipeline logs are written newest-first. But each one still carries a tail of
+older entries in the opposite order, so anyone reading «the last line» got the
+newest entry of that tail rather than the newest entry in the file. The gap
+reached 68 days: `log_process.md` reported 1 June while having run on 8 August.
+
+Everyone was caught by this, including the `global-navigator` lens — which
+honestly raised «activity is not visible where it is expected». The flag was
+right; the conclusion drawn from it was not.
+
+**`_system/scripts/pipeline_health.py`** is now the single answer to «when did
+this pipeline last run», for every pipeline and every role. It takes the maximum
+timestamp rather than the last line, so it does not depend on entry order and
+will not break if that order changes again. Alongside it reports
+`last_in_file_order`, so a discrepancy is visible instead of silent.
+
+Run it: `python3 _system/scripts/pipeline_health.py --base zettelkasten`.
+
+Nothing in your logs was wrong — the reading of them was.
+
+## 0.56.0 — A carried-across role keeps what it learnt
+
+If you have a role built on the previous shape, it now moves with what it
+accumulated, not with its assignment alone.
+
+A role that ran for months is half intent and half memory: a board of work in
+flight, a reading of where the project stands, a verdict per item, a log of what
+it decided. All of it lived in `state.md`, `parts/*.json` and `decisions.jsonl`.
+Migration `018` named those files only as proof that the role had run, and
+pointed at nothing inside them. Every byte survived the move and nothing
+referenced it — so the role was re-created from its assignment and woke up
+remembering nothing.
+
+Now both the owner hand-off and the concierge plan list what the role
+accumulated, how much of it there is, and where it sits. The concierge reads
+those files and seeds the re-created role from them **before** the trial run —
+rewriting rather than pasting: the old part archetypes are gone, what they held
+is not.
+
+**If you already updated and `018` has run for you**, a new migration `020`
+reaches you too: it regenerates the hand-off and the plans from your parked
+roles. The role's own files are not touched at all.
+
 ## 0.55.0 — Updates that actually apply, on every machine
 
 If you run minder-ztn on Windows, `/ztn:update` has been quietly doing nothing.
