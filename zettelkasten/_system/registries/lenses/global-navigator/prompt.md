@@ -62,6 +62,23 @@ From SRE Four Golden Signals (Google) + USE method (Brendan Gregg) + Tufte / Few
    - **Lenses with error-streak ≥2** (two consecutive `status: error`)
    - **Lint stale** — last `/ztn:lint` run >14 days ago (lint cadence is weekly-to-biweekly; surface only when clearly stale)
    - **Process backlog** — `_sources/inbox/` non-empty AND last `/ztn:process` run >7 days ago (count files, do not list)
+
+   **Never derive «when did a pipeline last run» by reading a log yourself.**
+   One command answers it for every pipeline and every role:
+
+   ```bash
+   python3 _system/scripts/pipeline_health.py --base . --json
+   ```
+
+   Take `pipelines.{name}.last_run` and `age_days` from its output. The logs are
+   not in one order — `log_lint.md` keeps its newest entry at the top and its
+   oldest seven at the bottom, so its LAST header is weeks older than its newest
+   run. Reading the last header reported lint dead for fifty days while it
+   delivered nightly, and hid a real twelve-day outage inside that false number.
+   `log_process.md` carries the same trap, sixty-eight days wide. The helper
+   takes the maximum and is order-agnostic; it also returns
+   `last_in_file_order`, so a difference between the two is visible rather than
+   silent.
    - **CLARIFICATIONS overflow** — open count > 30 (threshold review per owner)
 
    Single rejected / error / stale-by-1-day events are intentionally suppressed — only streaks and threshold breaches surface.
