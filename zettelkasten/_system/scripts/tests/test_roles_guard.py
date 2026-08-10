@@ -2943,5 +2943,154 @@ class LeakScanReadsUndecodableFilesTests(unittest.TestCase):
             self.assertEqual(guard.scan_secrets(repo, [self.REL], [SECRET_VALUE]), [])
 
 
+# ==========================================================================
+# the ignore surface, judged by consequence
+# ==========================================================================
+
+class IgnoreConsequenceTests(unittest.TestCase):
+    """`ignore` is the one field on the git surface with a benign author.
+
+    The harness that runs the tick keeps its own runtime entries in
+    `.git/info/exclude`, and the guard may not restore that file — it lives
+    inside `.git/`. Comparing bytes therefore reported the host as an attacker
+    on every scheduled run, which is worse than a missing check: an abort that
+    fires nightly stops being read, and it stops the loop dispatching every
+    role queued behind it.
+
+    So the question moved from «did the rules change» to «did anything become
+    invisible». These tests hold both halves — the benign change proceeds, the
+    hiding change still aborts.
+    """
+
+    STATE = f"{STATE_PREFIX}note.md"
+
+    def _exclude(self, repo: Path) -> Path:
+        path = repo / ".git" / "info" / "exclude"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def test_deleting_an_exclude_file_is_reported_not_aborted(self):
+        """The real nightly failure: the host rewrites `.git/info/exclude`
+        (unlink + recreate) and the guard sampled the gap. Removing an ignore
+        source makes MORE of the tree visible, so it can hide nothing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = init_repo(Path(tmp))
+            exclude = self._exclude(repo)
+            exclude.write_text("host-runtime.lock\n", encoding="utf-8")
+            (repo / "host-runtime.lock").write_text("x\n", encoding="utf-8")
+
+            tick, snap = _snap(repo), _snap(repo)
+            write_text(repo_path(repo, self.STATE), "работа роли\n")
+            exclude.unlink()
+
+            result = _check(repo, tick, snap)
+            self.assertFalse(result["git_surface"], "must not abort — nothing was hidden")
+            self.assertTrue(result["ignore_changed"], "but it is still reported")
+            self.assertEqual(result["ignore_changed"]["hidden"], [])
+            self.assertIn(self.STATE, result["in_zone"], "the role's own write still lands")
+
+    def test_hiding_a_path_behind_a_new_rule_still_aborts(self):
+        """SIBLING — the attack the field exists for. A role writes a payload
+        and adds the rule that hides it from `git status` in the same run."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = init_repo(Path(tmp))
+            tick, snap = _snap(repo), _snap(repo)
+
+            (repo / "payload.txt").write_text("exfiltrated\n", encoding="utf-8")
+            self._exclude(repo).write_text("payload.txt\n", encoding="utf-8")
+
+            result = _check(repo, tick, snap)
+            self.assertTrue(result["git_surface"], "a newly invisible path must abort")
+            self.assertEqual(set(result["git_surface"]), {"ignore"},
+                             "the abort names real git-surface fields, nothing invented")
+            self.assertIn("payload.txt", result["ignore_changed"]["hidden"])
+
+    def test_the_guard_never_deletes_the_hosts_exclude_file(self):
+        """The other half of the same night. `.git/info/exclude` is absent from
+        the role snapshot, and the remedy read that as «untracked → deleting it
+        restores the previous state» — so it deleted git's own file, which no
+        role owns and which the guard promises never to touch."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = init_repo(Path(tmp))
+            exclude = self._exclude(repo)
+            tick, snap = _snap(repo), _snap(repo)
+            exclude.write_text("host-runtime.lock\n", encoding="utf-8")
+
+            _check(repo, tick, snap)
+            self.assertTrue(exclude.exists(), "the host's ignore file must survive")
+            self.assertEqual(exclude.read_text(encoding="utf-8"), "host-runtime.lock\n")
+
+    def test_a_path_visible_before_the_run_is_not_a_hidden_payload(self):
+        """The host adds a runtime entry mid-run that hides its own lock file.
+        The file was on disk and visible when the role started, so the role
+        cannot have hidden its own payload behind it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = init_repo(Path(tmp))
+            (repo / "host-runtime.lock").write_text("held\n", encoding="utf-8")
+            tick, snap = _snap(repo), _snap(repo)
+
+            self._exclude(repo).write_text("host-runtime.lock\n", encoding="utf-8")
+
+            result = _check(repo, tick, snap)
+            self.assertFalse(result["git_surface"], "pre-existing file, not a payload")
+            self.assertEqual(result["ignore_changed"]["hidden"], [])
+
+    def test_a_second_field_keeps_its_absolute_veto(self):
+        """SIBLING — the softening is scoped to `ignore` alone. A remote has
+        no benign author here, so it aborts even alongside a harmless one."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = init_repo(Path(tmp))
+            exclude = self._exclude(repo)
+            exclude.write_text("host-runtime.lock\n", encoding="utf-8")
+            tick, snap = _snap(repo), _snap(repo)
+
+            exclude.unlink()
+            git(repo, "remote", "add", "exfil", "https://attacker.invalid/x.git")
+
+            result = _check(repo, tick, snap)
+            self.assertTrue(result["git_surface"])
+            self.assertIn("remotes", result["git_surface"])
+
+    def test_an_ordinary_run_reports_no_ignore_change(self):
+        """SIBLING — the field must not manufacture a finding on a quiet night."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = init_repo(Path(tmp))
+            tick, snap = _snap(repo), _snap(repo)
+            write_text(repo_path(repo, self.STATE), "обычная запись\n")
+            result = _check(repo, tick, snap)
+            self.assertFalse(result["ignore_changed"])
+            self.assertFalse(result["git_surface"])
+
+    def test_a_snapshot_without_the_field_keeps_the_strict_verdict(self):
+        """A tick that began before this field existed must not have its
+        ignore change read as safe — absence of evidence is not evidence."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = init_repo(Path(tmp))
+            exclude = self._exclude(repo)
+            exclude.write_text("host-runtime.lock\n", encoding="utf-8")
+            tick, snap = _snap(repo), _snap(repo)
+            snap.pop("ignored")
+
+            exclude.unlink()
+            result = _check(repo, tick, snap)
+            self.assertTrue(result["git_surface"], "cannot tell → stay conservative")
+
+    def test_the_ignored_listing_never_leaks_into_attribution(self):
+        """An ignored path is not a write the role is accountable for — it was
+        already invisible before the run, and counting it would revert build
+        output the guard has no business touching."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = init_repo(Path(tmp))
+            self._exclude(repo).write_text("cache/\n", encoding="utf-8")
+            tick, snap = _snap(repo), _snap(repo)
+
+            (repo / "cache").mkdir()
+            (repo / "cache" / "art.bin").write_text("build output\n", encoding="utf-8")
+
+            result = _check(repo, tick, snap)
+            self.assertEqual(result["reverted"], [])
+            self.assertNotIn("cache/art.bin", result["in_zone"] + result["reported_only"])
+
+
 if __name__ == "__main__":
     unittest.main()

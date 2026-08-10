@@ -2,6 +2,34 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.58.0 — A standing role no longer fails every night over an ignore rule
+
+If you run standing roles on a scheduler, they were reporting an error on runs
+where nothing had gone wrong, and the tick was stopping before it reached the
+roles queued behind them.
+
+Two faults, both in the guard that checks what a role wrote.
+
+The guard watches git's configuration, because a role could add an ignore rule
+to hide what it wrote from `git status`. It watched by comparing the ignore
+files byte for byte. But `.git/info/exclude` is git's own file, and the tool
+hosting the tick keeps its runtime entries there — so an ordinary night looked
+exactly like a role covering its tracks.
+
+Worse, on seeing that change the guard tried to put the file back. That file is
+never in a commit, so «put it back» resolved to «delete it» — the guard deleted
+git's own file, which it promises never to touch, and then reported the
+deletion it had just performed as the role's doing.
+
+Both are fixed. The guard now never writes anywhere inside `.git/`, and it
+judges an ignore change by what it did rather than by the fact that it
+happened: it asks whether anything the role could have written became
+invisible. When something did, the run still stops, exactly as before. When
+nothing did, the change is reported as a note and the run stands.
+
+Everything else on that surface — remotes, hooks, index flags, `.git/config` —
+keeps stopping the tick outright. There is no benign author for those.
+
 ## 0.57.0 — «When did this last run» now has one answer
 
 Nothing changes in what your pipelines do. What changes is how you find out that

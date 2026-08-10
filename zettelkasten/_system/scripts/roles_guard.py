@@ -142,6 +142,9 @@ ROLE_LABEL = "earlier-role"
 # NUL-separated field carrying the original path.
 _STATUS_PREFIX_WIDTH = 3
 _RENAME_CODES = "RC"
+# Porcelain's code for «this path is ignored». Never followed by a second
+# NUL-separated field, so it is consumed and the loop moves on.
+_IGNORED_CODE = "!!"
 
 
 class SnapshotError(Exception):
@@ -194,15 +197,26 @@ def _decode(raw: bytes) -> str:
     return raw.decode("utf-8")
 
 
-def _status_paths(repo: Path) -> list:
-    """Repo-relative POSIX paths of everything git reports as changed."""
-    proc = _git(repo, "status", "--porcelain", "-uall", "-z")
+def _status_scan(repo: Path) -> tuple:
+    """`(changed, ignored)` — repo-relative POSIX paths, from ONE git call.
+
+    `--ignored=matching` costs nothing extra here and buys the guard the one
+    listing an ignore rule cannot suppress. It collapses a wholly-ignored
+    directory to a single entry, which is what keeps the second list small
+    enough to carry in every snapshot.
+
+    Both lists come from the same invocation on purpose. Asking twice would
+    let the tree move between the two answers, and a role that arranged that
+    window would be reported as having hidden nothing.
+    """
+    proc = _git(repo, "status", "--porcelain", "-uall", "--ignored=matching", "-z")
     if proc.returncode != 0:
         raise RuntimeError(
             f"{repo}: git status failed ({_decode(proc.stderr).strip()})"
         )
     fields = _decode(proc.stdout).split("\0")
     paths: list = []
+    ignored: list = []
     index = 0
     while index < len(fields):
         field = fields[index]
@@ -210,13 +224,16 @@ def _status_paths(repo: Path) -> list:
         if not field:
             continue
         code, path = field[:2], field[_STATUS_PREFIX_WIDTH:]
+        if code == _IGNORED_CODE:
+            ignored.append(path)
+            continue
         paths.append(path)
         if any(char in _RENAME_CODES for char in code) and index < len(fields):
             original = fields[index]
             index += 1
             if original:
                 paths.append(original)
-    return paths
+    return paths, ignored
 
 
 def _digest(path: Path) -> str:
@@ -376,7 +393,8 @@ def capture_snapshot(repo: Path, secrets_file: Path) -> dict:
     """`{"head": sha, "entries": {path: digest}}` for the current tree."""
     head = _git(repo, "rev-parse", "HEAD")
     entries = {}
-    for relpath in _status_paths(repo):
+    changed, ignored = _status_scan(repo)
+    for relpath in changed:
         entries[relpath] = _digest(_repo_path(repo, relpath))
     # `None` here means the secrets file lives outside the repository, where
     # nothing this guard does can see it (rule 10).
@@ -387,8 +405,60 @@ def capture_snapshot(repo: Path, secrets_file: Path) -> dict:
     return {
         "head": _decode(head.stdout).strip(),
         "entries": entries,
+        "ignored": sorted(ignored),
         "git": git_surface(repo),
     }
+
+
+def newly_hidden(role_snapshot: dict, current: dict) -> list | None:
+    """Paths git could see before the run and cannot see after it.
+
+    THE question behind the whole ignore surface, asked directly instead of
+    through a digest. A digest answers «did the rules change», which is a
+    proxy — and a poor one, because most changes to the rules hide nothing at
+    all. This answers «did anything become invisible», which is the only
+    reason the guard watches the rules in the first place.
+
+    Ignore rules do not apply to TRACKED files: git reports a modification to
+    one whatever any rule says. So the only payload an ignore rule can hide is
+    an untracked path — and a path that is ignored now while it was not
+    ignored before is exactly that, whether the rule is new or the file is.
+    Both readings are worth stopping for: either the role wrote something into
+    a place the guard cannot look, or it made such a place.
+
+    A set that only SHRANK hid nothing — it made more of the tree visible, not
+    less. That is the ordinary case when something outside the role rewrites
+    `.git/info/exclude`, and it is why the harness doing so no longer reads as
+    a role attacking the guard.
+
+    A path that was ALREADY VISIBLE when the role started is discounted, and
+    that is not a softening — it is the same question asked precisely. Hiding
+    is only worth anything to a role that hides its OWN payload, and a file
+    already on disk before it ran is not that. `git status -uall` lists every
+    untracked path, so the role snapshot's `entries` is the full record of
+    what was visible; a candidate found there existed first and was hidden
+    afterwards by someone else's rule. This is the case that fires when the
+    host adds its own runtime entries mid-run: its lock file was visible at
+    role start, so it is discounted, while a payload the role created during
+    the run is in no snapshot and survives the filter.
+
+    Returns `None` — «cannot tell» — when either snapshot predates this field,
+    so a caller keeps the conservative verdict rather than inferring safety
+    from an absence.
+    """
+    before, after = role_snapshot.get("ignored"), current.get("ignored")
+    if not isinstance(before, list) or not isinstance(after, list):
+        return None
+    was_visible = set(role_snapshot.get("entries") or {})
+    candidates = set(after) - set(before)
+    return sorted(
+        path for path in candidates
+        if path not in was_visible
+        # A wholly-ignored directory collapses to one entry, so it is
+        # discounted when anything under it was visible before.
+        and not (path.endswith("/")
+                 and any(seen.startswith(path) for seen in was_visible))
+    )
 
 
 def attribute(role_snapshot: dict, current: dict) -> list:
@@ -489,7 +559,20 @@ def _restorable(role_snapshot: dict, path: str) -> bool:
     Ownership deliberately does not appear: asking "whose is this" against
     the TICK baseline deleted role A's in-zone file when role B touched it,
     because A created it mid-tick and it therefore looked revertible.
+
+    NOTHING inside `.git/` is ever restorable, whatever the snapshot says.
+    The rule above reads «absent from the snapshot → untracked → deleting it
+    restores the previous state», and for a working-tree path that is true.
+    For git's own files it is false twice over: they are never in HEAD, so
+    «restore» always resolves to «delete», and they are not the role's to
+    begin with — `.git/info/exclude` is created by `git init` and maintained
+    by whatever hosts the repository. Without this line the guard deleted the
+    host's ignore file on every run that touched it, destroying state it did
+    not own, breaking its own promise never to write inside `.git/`, and then
+    aborting anyway on the deletion it had just performed.
     """
+    if path == INFO_EXCLUDE or path.startswith(".git/"):
+        return False
     return path not in role_snapshot.get("entries", {})
 
 
@@ -671,7 +754,7 @@ def scan_commit(repo: Path, before: str, after: str, values: list) -> list:
 
 
 def _abort(reason_key, reason, repo, in_zone, out_of_zone, tick_baseline,
-           values, also=()) -> dict:
+           values, also=(), ignore_changed=False) -> dict:
     """A report with no mutation performed. Every abort has this shape.
 
     An abort reverts nothing, so EVERYTHING the role wrote is still on disk —
@@ -691,6 +774,7 @@ def _abort(reason_key, reason, repo, in_zone, out_of_zone, tick_baseline,
         "head_moved": False,
         "git_surface": False,
         "unsettled": False,
+        "ignore_changed": ignore_changed,
         "failed": [],
     }
     result[reason_key] = reason
@@ -726,6 +810,12 @@ def check(repo: Path, tick_baseline: dict, role_snapshot: dict,
     (the role committed). Ignore-file changes are the exception — they are
     reverted first and attribution is re-run from scratch, because a payload
     hidden behind a rule that no longer exists must be attributed normally.
+
+    An ignore change the revert could not undo is then judged by consequence
+    (`newly_hidden`): it aborts when something became invisible, and is
+    reported in `ignore_changed` when nothing did. The distinction is what
+    separates a role hiding its payload from the harness maintaining its own
+    runtime entries in a file the guard is forbidden to write to.
     """
     _validate_snapshot(role_snapshot, "the role snapshot")
     _validate_snapshot(tick_baseline, "the tick baseline")
@@ -786,9 +876,33 @@ def check(repo: Path, tick_baseline: dict, role_snapshot: dict,
     touched = attribute(role_snapshot, current)
     in_zone, out_of_zone = classify(touched, prefixes)
 
+    # An ignore change that survived the revert is judged by what it DID, not
+    # by the fact that it happened. `ignore` is the one field on this surface
+    # something other than the role legitimately writes: the harness hosting
+    # the tick keeps its own runtime entries in `.git/info/exclude`, which the
+    # guard may not restore because it sits inside `.git/`. Byte-comparison
+    # therefore reported the host as an attacker every night, and an abort
+    # that fires on every ordinary run stops being read at all — while still
+    # costing the loop every role queued behind it.
+    #
+    # Every other field on the surface stays absolute. A remote, a hook, an
+    # index flag or `.git/config` has no benign author here.
+    # The verdict changes; `delta` does not. It carries git-surface FIELDS, and
+    # the consequence of an ignore change is not one — a reader handed a
+    # `hidden` key beside `remotes` would report a git field that does not
+    # exist. So the evidence goes to its own place, on both branches, and the
+    # abort's fields stay exactly what the surface really holds.
+    ignore_changed: dict | bool = False
+    if delta and set(delta) == {"ignore"}:
+        hidden = newly_hidden(role_snapshot, current)
+        if hidden is not None:
+            ignore_changed = {"fields": delta, "hidden": hidden}
+            if not hidden:
+                delta = {}
+
     if delta:
         return _abort("git_surface", delta, repo, in_zone, out_of_zone,
-                      tick_baseline, values)
+                      tick_baseline, values, ignore_changed=ignore_changed)
 
     head_moved = (
         False if current["head"] == role_snapshot.get("head")
@@ -846,5 +960,6 @@ def check(repo: Path, tick_baseline: dict, role_snapshot: dict,
         "head_moved": False,
         "git_surface": False,
         "unsettled": False,
+        "ignore_changed": ignore_changed,
         "failed": applied["failed"] + leak_failures + ignore_failures,
     }
