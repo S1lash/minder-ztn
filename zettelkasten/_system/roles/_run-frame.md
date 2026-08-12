@@ -131,10 +131,21 @@ did not happen.
 End your run with exactly these two lines, on their own, as the last thing you say:
 
 ```
-outcome: ok | idle | error
+outcome: ok | idle | degraded | error
 note: <one short line — what you did, or why there was nothing to do, or what failed>
 ```
 
-`ok` — you did work. `idle` — the check found no reason to act. `error` — something
-you needed was unavailable or refused. The runner records these verbatim; they are
-what the owner reads when they want to know whether you are alive and useful.
+`ok` — you did work, all of it. `idle` — the check found no reason to act.
+`degraded` — you ran and delivered, but part of the job could not be done: a
+service refused you partway, a quota ran out, a source you needed was
+unreachable, so some of what you report is unverified. `error` — something you
+needed was unavailable or refused before you could deliver anything.
+
+**Say `degraded` rather than `ok` whenever you had to leave something
+unverified.** It costs you nothing and it is the only way the owner learns that
+a limit is being hit repeatedly — reported as `ok`, a run that half-worked
+looks like a good night, and a quota that runs out every night quietly hollows
+out your work for weeks. Name what you could not check in the note.
+
+The runner records these verbatim; they are what the owner reads when they want
+to know whether you are alive and useful.

@@ -1699,7 +1699,17 @@ A `violation` on a HISTORICAL batch is usually repairable rather than reportable
 
 #### H.2 — Validator helper missing
 
-If `lint_manifest_schema.py` exits non-zero (jsonschema not installed, schemas-dir missing, batches-dir missing), wrap the failure as a single CLARIFICATION `validator-helper-failed` with the stderr content. Do NOT crash subsequent scans — fail-open per ENGINE_DOCTRINE §3.1 wider doctrine ("never block; surface, don't decide silently"). The contract is: lint always completes; any subsystem failure becomes a clarification.
+**Do NOT install anything for this scan.** `jsonschema` is absent from the
+ephemeral sandbox the nightly tick runs in, and installing it per run is a cost
+and a log line repeated every night, forever, for a defence-in-depth check.
+Without it the helper degrades by itself: it applies the shallow contract check
+(the producer's own `validate_manifest` — top-level keys, processor enum,
+format_version major, required sections) and stamps `"degraded": true` on every
+event it emits. Report the run as degraded in the log entry when that flag is
+present; that is the honest outcome, not a failure to fix. The deep per-field
+validation resumes wherever the package happens to be available.
+
+If `lint_manifest_schema.py` exits non-zero (schemas-dir missing, batches-dir missing), wrap the failure as a single CLARIFICATION `validator-helper-failed` with the stderr content. Do NOT crash subsequent scans — fail-open per ENGINE_DOCTRINE §3.1 wider doctrine ("never block; surface, don't decide silently"). The contract is: lint always completes; any subsystem failure becomes a clarification.
 
 #### Scan H output contract
 

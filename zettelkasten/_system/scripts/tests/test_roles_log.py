@@ -429,5 +429,44 @@ class LastRunTests(unittest.TestCase):
             self.assertEqual(rlog.last_run(cfg), rlog.last_run(cfg))
 
 
+class DegradedOutcomeTests(unittest.TestCase):
+    """`degraded` — the run delivered, but part of the job could not be done.
+
+    The honest failure of a standing role is not a crash. A role whose service
+    runs out of quota mid-run still produces most of its output and returns
+    successfully, marking what it could not verify. Recorded as `ok`, that is
+    indistinguishable from a good night — and a limit hit every night hollows
+    out the role's work indefinitely while every run line reads as success.
+    """
+
+    def test_degraded_is_an_accepted_outcome(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = role_config(make_base(Path(tmp)))
+            _append(cfg, outcome="degraded", writes=2,
+                    note="board aggregates done; 3 topics unverified — connector quota")
+            entry = _entries(cfg)[0]
+            self.assertEqual(entry["outcome"], "degraded")
+            self.assertEqual(entry["writes"], 2, "a degraded run still did work")
+
+    def test_degraded_is_distinct_from_both_ok_and_error(self):
+        """SIBLING — the whole point is that it is neither. Folding it into
+        `ok` hides the hole; folding it into `error` trains the owner to
+        ignore the word, and the tick's error handling does not apply to a
+        run that behaved."""
+        self.assertIn("degraded", rlog.OUTCOMES)
+        self.assertEqual(
+            list(rlog.OUTCOMES), ["ok", "idle", "degraded", "error"],
+            "the vocabulary is fixed and ordered by how well the run went",
+        )
+
+    def test_an_unknown_outcome_is_still_refused(self):
+        """SIBLING — widening the vocabulary must not turn it into a free
+        text field, or the probe that watches for repeats matches nothing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = role_config(make_base(Path(tmp)))
+            with self.assertRaises(Exception):
+                _append(cfg, outcome="partial")
+
+
 if __name__ == "__main__":
     unittest.main()

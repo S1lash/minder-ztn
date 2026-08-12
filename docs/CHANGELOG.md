@@ -2,6 +2,37 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.60.0 — Removals finally reach you, and a role can admit it half-worked
+
+Three findings from reading real nightly runs, all the same family as the last
+release: something looked fine and was not.
+
+**Deleting a file now actually deletes it on your machine.** An update copies
+what the engine has; it had no way to say what the engine no longer has — so
+every file ever removed is still sitting in your clone. If you passed through
+the earlier roles subsystem, that is two dozen dead modules beside the live
+ones, dead tests your test run still collects, and a log nothing has written
+for months that still reads like a log which stopped updating. One review of
+the nightly runs reported exactly that as an outage; it was a leftover.
+
+The engine now lists retired paths, and every update removes them. The sweep
+can never reach your own files: anything inside your data is refused outright,
+and retiring something you produced takes a migration that tells you it did.
+
+**A role can now say it half-worked.** The honest failure of a standing role is
+not a crash — it is a service that runs out of quota partway, so the role
+delivers most of its work and marks the rest unverified. That was recorded as
+success, which looks identical to a good night. A run can now end `degraded`,
+and if two in a row do, you are told: one is a hiccup the next run covers, two
+is a limit that will keep hollowing out the work while every line still reads
+as fine.
+
+**The nightly check stops installing a package every single night.** Its
+manifest validation required a library the sandbox does not ship, so every run
+installed it and every log recorded the install. Without the library it now
+falls back to the structural check the engine already applies when writing
+those files, and says which of the two it ran. Nothing is skipped silently.
+
 ## 0.59.0 — The integrator actually runs, and an ignore rule stops halting the night
 
 Two silent failures, both of the same kind: a thing that was supposed to happen

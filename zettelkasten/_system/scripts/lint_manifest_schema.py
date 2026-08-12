@@ -63,11 +63,20 @@ from _common import configure_std_streams  # type: ignore
 try:
     from jsonschema import Draft202012Validator
 except ModuleNotFoundError:
-    sys.stderr.write(
-        "lint_manifest_schema: jsonschema package required. "
-        "Install with: pip install jsonschema\n"
-    )
-    sys.exit(2)
+    # NOT an error. The nightly tick runs in an ephemeral sandbox that ships
+    # no third-party packages, so requiring this one meant installing it on
+    # every single run and reporting the install in every single log — a cost
+    # and a line of noise repeated nightly, forever, for a defence-in-depth
+    # scan.
+    #
+    # So the scan degrades instead of refusing. Without jsonschema it applies
+    # the SHALLOW contract check — the same `validate_manifest` the producer
+    # runs at emission (top-level keys, processor enum, format_version major,
+    # per-processor required sections), imported rather than restated so the
+    # two cannot drift. What is lost is the deep per-field validation, and
+    # every degraded run says so in its output rather than passing quietly as
+    # if the full check had run.
+    Draft202012Validator = None  # type: ignore[assignment]
 
 
 SCHEMA_FILENAME_RE = re.compile(r"^v(\d+)(?:\.(\d+))?\.json$")
@@ -101,7 +110,8 @@ def load_schemas(schemas_dir: Path) -> dict[int, tuple[Path, dict]]:
             )
             continue
         try:
-            Draft202012Validator.check_schema(schema)
+            if Draft202012Validator is not None:
+                Draft202012Validator.check_schema(schema)
         except Exception as exc:  # noqa: BLE001 — surface any metaschema break
             sys.stderr.write(
                 f"lint_manifest_schema: schema {path} fails Draft 2020-12 "
@@ -229,6 +239,34 @@ def validate_one(
         return
 
     _, schema = schemas[major]
+    if Draft202012Validator is None:
+        # Degraded path: the shallow contract only. Imported from the producer
+        # so there is one definition of «structurally valid», not two.
+        try:
+            from emit_batch_manifest import (  # type: ignore
+                ManifestValidationError, validate_manifest,
+            )
+            validate_manifest(data)
+        except ModuleNotFoundError as exc:
+            emit({
+                "kind": "internal-error",
+                "batch": name,
+                "error": f"degraded-check-unavailable: {exc}",
+            })
+            return
+        except Exception as exc:  # noqa: BLE001 — ManifestValidationError et al
+            emit({
+                "kind": "violation",
+                "batch": name,
+                "format_version": fv,
+                "degraded": True,
+                "errors": [{"path": [], "message": str(exc), "schema_path": []}],
+                "errors_truncated": False,
+            })
+            return
+        emit({"kind": "ok", "batch": name, "format_version": fv, "degraded": True})
+        return
+
     try:
         validator = Draft202012Validator(schema)
         errors = list(validator.iter_errors(data))

@@ -189,6 +189,26 @@ for p in "${ENGINE_PATHS[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
+# Retirement. The loop above can only copy what upstream HAS; a path upstream
+# no longer has is simply never walked, so every file the engine ever removed
+# is still sitting on this clone. `retired:` in the manifest is the other half
+# of that contract, and it runs on every sync rather than once, so a clone at
+# any version converges — including one that has been dark for months.
+#
+# Deliberately NOT inferred from «absent upstream»: that is equally the shape
+# of a botched path list, which is exactly how a bad reader once looked like
+# «upstream deleted the entire engine». Only what the manifest names is
+# removed, and the helper refuses outright if any of it reaches owner space.
+# ---------------------------------------------------------------------------
+
+if ! python3 "$REPO_ROOT/scripts/retire_paths.py"; then
+  echo >&2
+  echo "error: retirement refused — see the paths above." >&2
+  echo "  Nothing was deleted. Fix the manifest's retired: section and re-run." >&2
+  exit 2
+fi
+
+# ---------------------------------------------------------------------------
 # Post-conditions. A sync that resolves nothing is a broken sync, not an
 # up-to-date one, and the two are indistinguishable without these checks —
 # which is precisely how a Windows clone ran `/ztn:update` for weeks while

@@ -20,6 +20,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from lib import manifest as lm  # noqa: E402
 from lib import portable as lp  # noqa: E402
+import retire_paths as rp  # noqa: E402
 
 
 class PortableTests(unittest.TestCase):
@@ -146,6 +147,80 @@ class GitShellLibTests(unittest.TestCase):
         self.assertEqual(
             subprocess.run(["/bin/bash", "-n", str(self.LIB)]).returncode, 0
         )
+
+
+class RetirementTests(unittest.TestCase):
+    """`retired:` is how a REMOVAL reaches the people running the engine.
+
+    A sync copies what upstream has; a path upstream no longer has is never
+    walked, so it stays on the clone forever. Every removal the engine ever
+    made is still present on every clone that predates it — dead modules
+    beside live ones, dead tests pytest still collects, a dead log that reads
+    as one that stopped updating.
+    """
+
+    def test_the_manifests_retired_paths_are_all_gone_from_this_repo(self):
+        """A path listed as retired and still present here means the removal
+        was never finished on the authoring side — friends would then be told
+        to delete something the maintainer still ships."""
+        manifest = lm.load_manifest(REPO_ROOT)
+        still_here = [
+            path for path in (manifest.get("retired") or [])
+            if (REPO_ROOT / path).exists()
+        ]
+        self.assertEqual(still_here, [], "retired but still shipped")
+
+    def test_a_retired_path_inside_owner_space_is_refused(self):
+        """THE guard. `exclude:` is the manifest's own enumeration of owner
+        space, and a sweep must never delete from it — an owner-produced
+        artifact is retired by a migration that explains itself, if at all."""
+        offending = rp.guard(
+            ["zettelkasten/_records/meetings/20260101-meeting-x.md"],
+            ["zettelkasten/_records/meetings/"],
+        )
+        self.assertEqual(offending, ["zettelkasten/_records/meetings/20260101-meeting-x.md"])
+
+    def test_the_live_manifest_lists_nothing_inside_owner_space(self):
+        """SIBLING — the guard fires on the real manifest, not just a fixture."""
+        manifest = lm.load_manifest(REPO_ROOT)
+        self.assertEqual(
+            rp.guard(manifest.get("retired") or [], manifest.get("exclude") or []),
+            [],
+        )
+
+    def test_a_star_entry_covers_subdirs_but_not_files_beside_them(self):
+        """`_system/roles/*/` is owner instance dirs; `_run-frame.md` sitting
+        beside them is engine. Reading the star as a plain prefix looks
+        cautious and is not — it swallows the engine files into owner space,
+        and the guard then refuses the whole sweep. Over-covering does not
+        fail safe here, it fails shut."""
+        star = "zettelkasten/_system/roles/*/"
+        self.assertTrue(rp._covered_by(star, "zettelkasten/_system/roles/minder-pm/state/x.md"))
+        self.assertFalse(rp._covered_by(star, "zettelkasten/_system/roles/_run-frame.md"))
+
+    def test_retirement_removes_only_what_is_listed_and_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "zettelkasten/_system/scripts").mkdir(parents=True)
+            dead = root / "zettelkasten/_system/scripts/dead.py"
+            live = root / "zettelkasten/_system/scripts/live.py"
+            dead.write_text("gone\n", encoding="utf-8")
+            live.write_text("stays\n", encoding="utf-8")
+
+            listed = ["zettelkasten/_system/scripts/dead.py"]
+            self.assertEqual(rp.retire(root, listed), listed)
+            self.assertFalse(dead.exists())
+            self.assertTrue(live.exists(), "an unlisted neighbour must survive")
+            self.assertEqual(rp.retire(root, listed), [], "second run is a no-op")
+
+    def test_dry_run_deletes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "a").mkdir()
+            target = root / "a/gone.py"
+            target.write_text("x\n", encoding="utf-8")
+            self.assertEqual(rp.retire(root, ["a/gone.py"], dry_run=True), ["a/gone.py"])
+            self.assertTrue(target.exists())
 
 
 if __name__ == "__main__":

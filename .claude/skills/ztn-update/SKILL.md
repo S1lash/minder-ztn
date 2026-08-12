@@ -200,6 +200,25 @@ For each path absent upstream (deleted in upstream) — leave local copy
 and note «engine path removed upstream — review and delete locally if
 appropriate».
 
+### Step 5.1 — Apply retirements
+
+```bash
+python3 scripts/retire_paths.py
+```
+
+Step 5 can only copy what upstream HAS. A path upstream no longer has is never
+walked, so without this every file the engine ever removed stays on the clone —
+dead modules beside live ones, dead tests still collected, a log nothing writes
+that still reads as one that stopped.
+
+The helper removes only what `.engine-manifest.yml` lists under `retired:`, and
+refuses outright if any of it falls under `exclude:` (owner space). A non-zero
+exit means the manifest is wrong, not the clone: nothing was deleted, so report
+it and stop rather than proceeding with a half-applied update.
+
+Report what it removed in the closing digest — a file disappearing from an
+owner's clone is something they should read about, not discover.
+
 ### Step 6 — Apply migrations
 
 If `--no-migrations` — skip.

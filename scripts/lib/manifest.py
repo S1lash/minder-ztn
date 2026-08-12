@@ -46,7 +46,7 @@ TEXT_SUFFIXES = frozenset(
 )
 
 # Manifest sections whose value is a flat list of path entries.
-LIST_SECTIONS = ("engine", "template", "exclude", "seed_skill")
+LIST_SECTIONS = ("engine", "template", "exclude", "seed_skill", "retired")
 
 _ENTRY_RE = re.compile(r"^\s*-\s+(.+?)\s*$")
 # YAML ends a scalar at a `#` preceded by whitespace. The lite reader has to do
