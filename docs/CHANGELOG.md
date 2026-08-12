@@ -2,6 +2,68 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.59.0 — The integrator actually runs, and an ignore rule stops halting the night
+
+Two silent failures, both of the same kind: a thing that was supposed to happen
+did not, and every file involved still looked perfectly fine.
+
+**Your notes are integrated again.** After each processing run, a second pass
+turns what was just written into connections — it opens and updates threads,
+links notes into hubs, writes the back-references that let a note find its way
+home, and produces the weekly health and activity summaries. That pass had no
+trigger. The scheduler's instructions said it ran «inside» the processing run,
+and it never did — the two cannot even run at the same time, because each holds
+a lock the other refuses to start on. It had been happening only because
+whatever was running the tick sometimes did it unprompted; when that stopped,
+five runs in a row produced notes nobody connected, and each one reported
+success.
+
+It is now a step of its own, stated plainly, and it runs after every processing
+tick. The backlog is not lost: the next run drains every batch that was missed.
+
+**Your scheduler stops holding a stale copy of the instructions.** A scheduler
+keeps the prompt you gave it, word for word, forever — so pasting a tick's body
+into it put one contract in two places, and the copy in the scheduler quietly
+became the older one. That is how the problem above survived: the fix could sit
+in the repository while the nightly run kept following instructions from
+months back.
+
+Each routine now takes a one-line pointer to the file instead of the file's
+contents. Replace your routine prompts with the loaders in `docs/scheduling.md`
+once — after that, engine updates reach your schedules on their own and no
+release will ask you to paste anything again.
+
+**And the system now notices this class of failure.** The nightly check gained
+one that watches for something *not having happened* — a batch older than a day
+that was never integrated is raised for you. Everything else it checks looks at
+what a pipeline produced; this one looks at the gap where a pipeline's output
+was never consumed, which is the only shape that stays invisible when every
+individual file is correct.
+
+**A standing role no longer stops the night over an ignore rule.** The
+previous release judged such a change by whether anything became invisible, and
+that was still not enough: the tool hosting the tick creates its own working
+files *while* a role is running, so they had not existed when the role started
+and read as something the role was hiding.
+
+The rule was answering the wrong question. An ignore rule matters only because
+it hides a path from the report — so now the guard reads those paths anyway.
+Whatever went invisible during a run is listed, checked for credentials, and
+reported exactly like any other write. Hiding gains a role nothing, so there is
+nothing left to halt the night for. Such a path is never deleted: the guard
+cannot tell whose file it is, and the thing it would delete may well be the
+live lock of the process running the tick.
+
+Everything else on that surface — remotes, hooks, index flags, `.git/config` —
+still stops the tick outright. There is no benign author for those.
+
+**The nightly check now leaves a machine-readable record of its own run.** It
+was the one pipeline that wrote only prose. Its runs are now summarised in the
+same structured form the others use, so «what did the system do last week» can
+be answered without reading a log by eye. Earlier runs are not reconstructed —
+their numbers exist only as sentences, and inventing them would put guesses
+into an audit trail.
+
 ## 0.58.0 — A standing role no longer fails every night over an ignore rule
 
 If you run standing roles on a scheduler, they were reporting an error on runs

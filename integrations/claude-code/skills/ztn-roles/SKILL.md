@@ -10,11 +10,13 @@ description: >
   the next one starts — named paths only, `[scheduled]` in the subject,
   never `git add -A`, never a leaked credential. The credential store is
   decrypted once, into a file outside the repository, and removed again on
-  every path that releases the lock. Scheduler-safe: never
+  every path that releases the lock. A path an ignore rule made invisible
+  during the run is attributed and reported like any other write, never
+  restored. Scheduler-safe: never
   blocks, never asks, a failing role never aborts a tick — though a role that
-  changes git's own configuration stops the tick dispatching further roles,
-  unless the change is to the ignore rules and hid nothing, which is reported
-  and carries on.
+  changes git's own configuration stops the tick dispatching further roles.
+  A change to the ignore rules is not one of those: it is reported and the
+  tick carries on.
 disable-model-invocation: false
 ---
 
@@ -464,10 +466,12 @@ python3 "$RUN" check --base "$BASE" --repo "$REPO" --role <id>
 ```
 
 `reported_only` is a list of **labelled objects**, not strings: the guard
-leaves a path alone when it cannot restore it exactly, and the label says
-whose content was in the way — `owner` (already dirty when the *tick* began:
-the owner's uncommitted work) or `earlier-role` (dirtied during this tick:
-one role wrote into another's zone, a different and more alarming event).
+leaves a path alone when it cannot restore it exactly, and the label says why
+— `owner` (already dirty when the *tick* began: the owner's uncommitted work),
+`earlier-role` (dirtied during this tick: one role wrote into another's zone,
+a different and more alarming event), or `ignored` (an ignore rule made it
+invisible during the run, so the guard cannot tell whose it is — see the
+`ignore` field below).
 
 There is exactly one exit from a dispatch and it passes through `check` and
 then `log`. Below is every way a dispatch can end. **No row skips either
@@ -498,13 +502,14 @@ way".
 | `head_moved` | `error` | `role committed: {before} → {after}` | raises `role-head-moved` (2.7) |
 | `git_surface` | `error` | `role changed git configuration: {fields}` | raises `role-guard-evaded` **on this first occurrence** (2.7), and **stops dispatching further roles** |
 | `unsettled` | `error` | `tree still changing after the run: {paths}` | raises `role-guard-evaded` **on this first occurrence** (2.7) |
-| `ignore_changed` (and `git_surface` false) | `ok` | `ignore rules changed, nothing hidden` | raises `role-ignore-changed` (2.7). **Does not stop the loop** — nothing became invisible, so the run stands |
+| `ignore_changed` | `ok` | `ignore rules changed, {N} path(s) reported` (`nothing hidden` when `hidden` is empty) | raises `role-ignore-changed` (2.7). **Never stops the loop** — what went invisible was attributed instead, so the run stands |
 | `failed` non-empty | `error` | names the failed revert | a revert that fails is reported, never swallowed |
 
 `git_surface` stops the loop for the same reason a broken guard does. The
 guard's whole model is "the repository is what `git status` prints", and a
-role that repointed a remote or added an ignore rule has changed the ground
-every later role, every later check and the final push stand on. The guard
+role that repointed a remote, redirected the hooks path or marked a file
+assume-unchanged has changed the ground every later role, every later check
+and the final push stand on. The guard
 declines to mutate it, and so does the tick — it stops and reports what
 changed. **What the role already wrote is still on disk**, and that is the
 point of 2.7.1's second clause: those paths go on the hold-back list, because
@@ -512,17 +517,38 @@ otherwise `stage.sh` commits and pushes exactly what the abort refused to
 touch. «Nothing was repaired» is true; «nothing was written» would not be, and
 the report must not imply it.
 
-The `ignore` field alone is judged by consequence rather than by change,
-because it is the only one on that surface with a benign author: the harness
-hosting the tick maintains its own runtime entries in `.git/info/exclude`, a
-file the guard may not write to. So the guard asks whether anything the role
-could have written became invisible — a path ignored after the run that was
-neither ignored nor visible before it. When something did, `git_surface` fires
-as always. When nothing did, the change is reported in `ignore_changed` and
-the run stands: an abort that fires on every ordinary night stops being read,
-and takes every role queued behind it down with it. Every other field on the
-surface — `remotes`, `hooks_path`, `index_flags`, `config` — keeps its
-absolute veto.
+The `ignore` field alone never aborts, because it is the only one whose
+danger can be answered by looking. An ignore rule hides a path from
+`git status`, and `git status` is what attribution reads — so a rule added
+mid-run used to move a write outside everything the guard could see. That is
+a blind spot in attribution, and the guard now closes it: it names every path
+that went invisible during the run, digests and scans each one, and reports it
+in `reported_only` under the `ignored` label. Hiding therefore buys a role
+nothing — a hidden write is handled exactly as the same write in plain sight
+would have been, including the credential scan.
+
+With the gap closed the veto had no job left, and it had a real cost.
+`.git/info/exclude` belongs to the harness hosting the tick, which writes its
+own runtime files and rules there **during** a role's run — so the abort fired
+on ordinary nights, and an abort that fires on ordinary nights stops being
+read while still taking every role queued behind it down with it.
+
+A hidden path is never restored. «Restore» for a path in no commit means
+delete, and this is precisely the path whose author the guard does not know —
+deleting it is how a live lock file belonging to the process running the tick
+would get removed. Reported, scanned, left alone. That holds even when it
+carries a credential: the leak is surfaced and the tick keeps the path out of
+its commit, but the file stays where it is.
+
+The stated limit: a path inside a directory that was **already wholly ignored**
+before the role ran is not covered — porcelain collapses such a directory to a
+single entry, so nothing under it is listed on either side and no comparison
+is possible. That hole is real and predates this handling; nothing here should
+be read as if the guard sees into one.
+
+Every other field on the surface — `remotes`, `hooks_path`, `index_flags`,
+`config`, `excludes_file` — keeps its absolute veto. None of them has a benign
+author, and no amount of looking makes one safe.
 `unsettled` means the tree was still moving after the role returned (a
 background process outliving it), so attribution for *that* role is
 untrustworthy; the next role's own snapshot re-establishes a baseline, so the
@@ -579,9 +605,9 @@ paragraph — the owner reads these through an LLM, not by eye):
 |---|---|---|---|
 | `role-secret-leak` | `secret_leak` non-empty | the files; which were reverted and which are still live on disk **with the reason for each** (revert failed, or unrestorable — see below); that the tick kept every one of them out of its commit **and out of the scheduler's staging** (2.7.1); and that the value must be treated as compromised. **Which** credential it was is deliberately not stated — the tick never reads the secrets file, so it does not know, and finding out is the owner's move | `rotate-credential` |
 | `role-head-moved` | `head_moved` truthy | the before/after SHAs, that the role ran git itself, and that nothing was reverted because a reset could destroy work committed alongside | `review-commit` |
-| `role-unrestorable-write` | `reported_only` non-empty **and no abort condition fired** | each `path` **with its `held_by` label**, and what the label means: `owner` — the path was already dirty when the tick began, so the guard would have destroyed the owner's uncommitted work by restoring it; `earlier-role` — a role wrote into a path an earlier role in this same tick had dirtied, which is a role reaching outside its zone into another's, and worth the owner's attention on its own | `review-and-save` |
-| `role-guard-evaded` | `git_surface` **or** `unsettled` truthy — **on the first occurrence, always** | **the evidence, not the category.** For `git_surface`: each differing field by name with its `before` and its `after` — `remotes` (which remote, which URL, both sides), `hooks_path`, `index_flags` (which path, which flag), `ignore` (which file — and name what became invisible, from `ignore_changed.hidden`, which is populated on this branch too), `config` (a digest of `.git/config`, so name it and let the other fields say what moved). For `unsettled`: the paths that changed after the role had finished. Then plainly: **nothing was repaired** — reverting a git-configuration change would mean writing inside `.git/`, which the guard is forbidden to do — and, for `git_surface`, that the tick stopped dispatching. And: treat any credential this role could reach as compromised | `inspect-git-state` |
-| `role-ignore-changed` | `ignore_changed` truthy while `git_surface` is false | the ignore files that differ, both digests, and — load-bearing — that **nothing became invisible**, so the run stands and the loop continued. Name the likely author: the guard cannot write inside `.git/`, so a change to `.git/info/exclude` is something outside the role, ordinarily the harness maintaining its own runtime entries. Do NOT carry the credential-compromise sentence: it belongs to an evasion, and repeating it on a benign event is how an owner learns to skim these. Self-quieting: once the host's entries are in place the file stops changing, so this surfaces once rather than nightly | `acknowledge` |
+| `role-unrestorable-write` | `reported_only` holds an entry labelled `owner` or `earlier-role` **and no abort condition fired** | each `path` **with its `held_by` label**, and what the label means: `owner` — the path was already dirty when the tick began, so the guard would have destroyed the owner's uncommitted work by restoring it; `earlier-role` — a role wrote into a path an earlier role in this same tick had dirtied, which is a role reaching outside its zone into another's, and worth the owner's attention on its own. **`ignored` entries do not belong here** — their content was never in the way, only their visibility was, and `role-ignore-changed` is the item that carries them with the ignore-file evidence beside them | `review-and-save` |
+| `role-guard-evaded` | `git_surface` **or** `unsettled` truthy — **on the first occurrence, always** | **the evidence, not the category.** For `git_surface`: each differing field by name with its `before` and its `after` — `remotes` (which remote, which URL, both sides), `hooks_path`, `index_flags` (which path, which flag), `config` (a digest of `.git/config`, so name it and let the other fields say what moved), `ignore` — which reaches this item in ONE case only, when a snapshot predates the `ignored` listing so nothing could be attributed and the strict verdict stood; say that, rather than implying a role was caught hiding something. For `unsettled`: the paths that changed after the role had finished. Then plainly: **nothing was repaired** — reverting a git-configuration change would mean writing inside `.git/`, which the guard is forbidden to do — and, for `git_surface`, that the tick stopped dispatching. And: treat any credential this role could reach as compromised | `inspect-git-state` |
+| `role-ignore-changed` | `ignore_changed` truthy | the ignore files that differ with both digests, and every path in `ignore_changed.hidden` — each one named, with the load-bearing part stated plainly: it was **attributed and scanned like any other write, and deliberately not restored**, because the guard cannot tell whose it is and «restore» would mean delete. Name the likely author: a change to `.git/info/exclude` is something outside the role, ordinarily the harness maintaining its own runtime files mid-run. Empty `hidden` → say nothing became invisible at all. Do NOT carry the credential-compromise sentence — it belongs to an evasion, and repeating it on an ordinary event is how an owner learns to skim these; a hidden path that really did carry a credential comes through `role-secret-leak`, which does carry it. **Raised on the first occurrence, and not again while an equivalent item is open** — the host rewrites that file on many nights, and one open item saying so is the whole signal | `acknowledge` |
 | `role-secrets-unavailable` | `secrets-open` exited 2 at 1.1 | the cause from its stderr in plain language (key unset, key wrong, package missing); which due roles were skipped for it and that each has an `error` run line; that roles needing no credential ran normally; and that the remedy is the scheduler routine's environment, not anything in the repository. Raised **once for the tick** — one condition, one item | `restore-secrets-key` |
 | `role-repeated-error` | two consecutive `error` lines (probe below) | both notes, the two timestamps, and the role's assignment in one sentence | `fix-role` |
 

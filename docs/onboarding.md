@@ -187,7 +187,7 @@ Five ready-made scheduler prompts ship in
 `integrations/claude-code/scheduler-prompts/` (canonical cadence table +
 exact cron in `docs/scheduling.md`):
 
-- `process-scheduled.md` — pre-sync → `/ztn:process` →
+- `process-scheduled.md` — pre-sync → `/ztn:process` → `/ztn:maintain` →
   `finalize-tick.sh scheduler/process`.
   Recommended cadence: 3× per day (e.g. cron `0 9,14,19 * * *`).
 - `agent-lens-nightly.md` — pre-sync → `/ztn:agent-lens --all-due` →
@@ -211,9 +211,14 @@ same morning) — see `docs/scheduling.md` for the offset rationale. To create
 new lenses use `/ztn:agent-lens-add`, and new roles `/ztn:role:add` — both
 owner-driven, neither scheduled.
 
-Paste each body into your scheduler of choice (Claude Code `/schedule`,
-GitHub Actions cron, host crontab calling `claude` headless — any
-runner that can launch a Claude Code session works).
+You do not paste these bodies into your scheduler. Each routine gets a
+one-line **loader** instead — it points at the file above, so the tick reads
+its contract from the repository at run time and engine updates reach your
+schedules without you re-pasting anything. The loaders are in
+`docs/scheduling.md` → «Plug-in — Claude Code `/schedule`». Any runner that
+can launch a Claude Code session with this repository as its working
+directory works: Claude Code `/schedule`, GitHub Actions cron, a host crontab
+calling `claude` headless.
 
 ## 10. (Optional) Tune how the assistant talks to you
 

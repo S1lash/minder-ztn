@@ -267,8 +267,68 @@ Inspect what changed:
 | `integrations/claude-code/{rules,commands,skills}/**` changed | «Re-run `bash integrations/claude-code/install.sh` to refresh `~/.claude/` symlinks.» |
 | Any file under `0_constitution/` engine paths or constitution tooling changed | «Run `/ztn:regen-constitution` to refresh views.» |
 | `_system/scripts/**` changed | «Run tests: `pytest zettelkasten/_system/scripts/tests/`.» |
-| A NEW file added under `integrations/claude-code/scheduler-prompts/**` (git status `A`) | «A new scheduled job shipped — set up a new `/schedule` routine for it (see `docs/scheduling.md` for the cron slot + prompt body). Nothing to re-paste; you don't have this routine yet.» |
-| An EXISTING file under `integrations/claude-code/scheduler-prompts/**` changed (git status `M`) | «Re-paste the updated prompt body into the matching `/schedule` routine — Claude Code holds the prompt verbatim, so engine update does not propagate to running schedules automatically.» |
+| A NEW file added under `integrations/claude-code/scheduler-prompts/**` (git status `A`) | «A new scheduled job shipped — set up a new `/schedule` routine for it (see `docs/scheduling.md` for the cron slot + its loader prompt).» |
+| ANY file under `integrations/claude-code/scheduler-prompts/**` changed (git status `M`) | Run the routine reconciliation below. Do **not** emit a bare «re-paste the prompt» line — the owner cannot act on it without knowing which of their routines it means |
+
+### Step 7.1 — Routine reconciliation (only when a prompt file changed)
+
+A scheduler holds the prompt text it was given, verbatim and forever. So a
+changed prompt file reaches a running routine only if that routine reads the
+file (a **loader**) — and if it holds a pasted **body**, that copy is now the
+older of the two and the tick is running an old release's contract against a
+current engine.
+
+**Identify by CONTENT, never by name.** Routine names are the owner's own —
+`ztn-lint`, `minder-ztn: lint (nightly)`, `nightly cleanup`, anything. Matching
+on a name the engine invented is how this step silently skips the routine that
+needed it most, or edits one that has nothing to do with ZTN.
+
+1. List the owner's routines. In Claude Code that is the `RemoteTrigger` tool
+   (`{action: "list"}`); load it with `ToolSearch select:RemoteTrigger`. If it
+   is unavailable — another runtime, no cloud routines, tool not present — say
+   so plainly, list the changed prompt FILES, and stop. Never guess.
+2. Classify each routine by its stored prompt text:
+   - **Loader** — it names a path under
+     `integrations/claude-code/scheduler-prompts/`. Already self-updating;
+     report it as up to date and change nothing.
+   - **Pasted body** — it matches one of the shipped prompt files (compare
+     against each file's content; the best match at high similarity is the
+     tick it is, whatever it is called). Report it as stale, naming the
+     routine's own name and id **and** which tick it is.
+   - **Neither** — not a ZTN routine. Leave it entirely alone and do not
+     mention it as an action item.
+3. **Check every stale routine for owner customisation before touching it.**
+   Diff its stored prompt against the shipped file it matched. Anything present
+   in theirs and absent from the file is the owner's, and overwriting it is
+   data loss — surface what you found and let them decide.
+
+   The case that must never be got wrong is a **credential in the prompt
+   body**. The engine's own instruction is that `ZTN_ROLES_KEY` belongs in the
+   routine's environment config, but an owner may well have put it in the
+   prompt instead, and a blind replace silently kills every role that reaches
+   an outside service — with nothing in the failure that points back here.
+   So: carry any such line into the new prompt **verbatim**, so the routine
+   keeps working, and then tell the owner it would be safer in the environment
+   config and offer to help move it. Never print the value back to them, into
+   a log, or into a commit — say *that* a credential was found and carried,
+   not what it is.
+
+4. Lead with the offer, not with the mechanics. The owner does not need to
+   know what a loader is: **«your scheduled routines need updating — want me to
+   do it?»** is the whole message, plus which of their routines it touches.
+   Explain the how only if they ask. Changing a live schedule is an external
+   action — act only on an explicit yes.
+5. When switching: replace the prompt content ONLY. Preserve name, cron,
+   enabled, environment, model, tool allowlist, sources, notification settings
+   and the event uuid — send them back unchanged in the update body. Verify by
+   reading the routine back after the write.
+6. Prefer proving it once over switching several at a time: convert the
+   cheapest routine first, trigger a run, read its log, and convert the rest
+   only after that run shows the loader was read and followed.
+
+This procedure is the standing answer for **every** future prompt change, not
+just this one. After a routine holds the loader, step 2 finds it already current
+and there is nothing to ask — which is the whole point of the loader.
 
 ### Step 8 — Stage + propose commit
 

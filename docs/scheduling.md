@@ -10,7 +10,7 @@ Five scheduled jobs.
 
 | Job | Cadence | Skill chain | Prompt source |
 |---|---|---|---|
-| `ztn-process` | ≥ 3× per day | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `finalize-tick.sh scheduler/process` | `integrations/claude-code/scheduler-prompts/process-scheduled.md` |
+| `ztn-process` | ≥ 3× per day | `/ztn:sync-data` → `/ztn:process` → `/ztn:maintain --no-sync-check` → `finalize-tick.sh scheduler/process` | `integrations/claude-code/scheduler-prompts/process-scheduled.md` |
 | `ztn-agent-lens` | 1× nightly (03:00) | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `finalize-tick.sh scheduler/agent-lens` | `integrations/claude-code/scheduler-prompts/agent-lens-nightly.md` |
 | `ztn-lint` | 1× nightly (05:00) | `/ztn:sync-data` → `/ztn:lint` (Step 7.5 dispatches `/ztn:resolve-clarifications --auto-mode` inline) → `finalize-tick.sh scheduler/lint` | `integrations/claude-code/scheduler-prompts/lint-nightly.md` |
 | `ztn-content` | 1× weekly (Tue 06:00) | `/ztn:sync-data` → `/ztn:content --maintain` → `finalize-tick.sh scheduler/content` | `integrations/claude-code/scheduler-prompts/content-tick.md` |
@@ -52,8 +52,10 @@ slot, in order of weight:
 Like agent-lens, one fire ≠ one run per role: the tick runs only the roles whose
 own cadence has elapsed, sequentially, never two at once.
 
-There is no `ztn-maintain` schedule — maintain runs inline as the tail
-of `/ztn:process`. There is no `ztn-resolve-clarifications` schedule —
+There is no `ztn-maintain` schedule — maintain has no cadence of its own
+and runs as Step 4.5 of the process tick, once `/ztn:process` has
+returned and released its lock (the two are mutually exclusive, so the
+integrator cannot run inside the producer). There is no `ztn-resolve-clarifications` schedule —
 the owner reviews the queue manually; that is the human-in-loop hinge
 of the whole system. There is no `ztn-agent-lens-add` schedule — lens
 creation is owner-driven (wizard-style); see
@@ -177,12 +179,12 @@ encrypted on its own, and none is readable without a single key:
 `ZTN_ROLES_KEY`, one 44-character value, one per base.
 
 **The key goes in the environment config of your `ztn-roles` routine and
-nowhere else.** Not in the prompt body — that is text you paste, re-paste
-and share around. Not in the repo — the engine writes it to no file, and
-nothing in the tick prints it.
+nowhere else.** Not in the prompt — that is text you paste and share around.
+Not in the repo — the engine writes it to no file, and nothing in the tick
+prints it.
 
 - **Claude Code `/schedule`** — set it in the routine's environment /
-  secrets configuration, next to the cron line and the prompt body.
+  secrets configuration, next to the cron line and the prompt.
 - **cron, launchd, GitHub Actions** — set it in whatever launches
   `claude`: a wrapper script that exports it, a launchd
   `EnvironmentVariables` entry, a systemd `Environment=` line, or an
@@ -319,54 +321,94 @@ bodies stay thin and identical across the three ticks.
 
 ## Plug-in — Claude Code `/schedule`
 
-The recommended path. Five routines — one per row of the canonical table above:
+The recommended path. Five routines — one per row of the canonical table above.
+
+**Each routine's prompt is a loader, not the tick body.** A scheduler holds
+the prompt text you gave it, verbatim and forever; the tick body lives in this
+repository and changes with every engine update. Pasting the body puts one
+contract in two places, and the copy in the scheduler silently becomes the
+older of the two — a tick then runs last quarter's instructions against this
+quarter's engine, and nothing announces it. So the scheduler holds a pointer
+and the repository holds the contract. Paste each loader once; engine updates
+reach every tick on their own from then on.
 
 ```
 /schedule
   name: ztn-process
   cron: 0 9,14,19 * * *
-  prompt: <paste body of integrations/claude-code/scheduler-prompts/process-scheduled.md>
+  prompt: Read integrations/claude-code/scheduler-prompts/process-scheduled.md
+    in this repository and follow it exactly, from its first step to its last.
+    That file is the entire contract for this run — do nothing it does not
+    authorize, and do not substitute your own judgement for any step. If it
+    cannot be read, stop immediately, change nothing, and report `partial`.
 ```
 
 ```
 /schedule
   name: ztn-agent-lens
   cron: 0 3 * * *
-  prompt: <paste body of integrations/claude-code/scheduler-prompts/agent-lens-nightly.md>
+  prompt: Read integrations/claude-code/scheduler-prompts/agent-lens-nightly.md
+    in this repository and follow it exactly, from its first step to its last.
+    That file is the entire contract for this run — do nothing it does not
+    authorize, and do not substitute your own judgement for any step. If it
+    cannot be read, stop immediately, change nothing, and report `partial`.
 ```
 
 ```
 /schedule
   name: ztn-lint
   cron: 0 5 * * *
-  prompt: <paste body of integrations/claude-code/scheduler-prompts/lint-nightly.md>
+  prompt: Read integrations/claude-code/scheduler-prompts/lint-nightly.md
+    in this repository and follow it exactly, from its first step to its last.
+    That file is the entire contract for this run — do nothing it does not
+    authorize, and do not substitute your own judgement for any step. If it
+    cannot be read, stop immediately, change nothing, and report `partial`.
 ```
 
 ```
 /schedule
   name: ztn-content
   cron: 0 6 * * 2
-  prompt: <paste body of integrations/claude-code/scheduler-prompts/content-tick.md>
+  prompt: Read integrations/claude-code/scheduler-prompts/content-tick.md
+    in this repository and follow it exactly, from its first step to its last.
+    That file is the entire contract for this run — do nothing it does not
+    authorize, and do not substitute your own judgement for any step. If it
+    cannot be read, stop immediately, change nothing, and report `partial`.
 ```
 
 ```
 /schedule
   name: ztn-roles
   cron: 0 7 * * *
-  prompt: <paste body of integrations/claude-code/scheduler-prompts/roles-nightly.md>
+  prompt: Read integrations/claude-code/scheduler-prompts/roles-nightly.md
+    in this repository and follow it exactly, from its first step to its last.
+    That file is the entire contract for this run — do nothing it does not
+    authorize, and do not substitute your own judgement for any step. If it
+    cannot be read, stop immediately, change nothing, and report `partial`.
 ```
 
 If any of your roles reaches an outside service, the `ztn-roles` routine
 also needs `ZTN_ROLES_KEY` in its environment config — see «Credentials for
 the roles tick — ZTN_ROLES_KEY» above.
 
-Each routine runs in a fresh agent — the prompt body is fully
-self-contained, no extra context required.
+Each routine runs in a fresh agent against a fresh clone, so the file it reads
+is the current one — which is what makes the loader safe. The refusal clause is
+load-bearing: a tick that cannot read its contract must do nothing at all, never
+improvise a plausible one.
 
-After a `/ztn:update` that changed any prompt body in
-`integrations/claude-code/scheduler-prompts/`, re-paste the updated
-body into `/schedule`. Claude Code holds the prompt verbatim; engine
-updates do not propagate to running schedules automatically.
+The body stays fully self-contained. Nothing about the loader changes what a
+tick does; it changes only where the tick gets its instructions, so that an
+engine update reaches your schedules without you re-pasting anything.
+
+**Name your routines whatever you like.** `ztn-lint` above is a suggestion, not
+a handle the engine uses — you may well call yours `minder-ztn: lint (nightly)`
+or `ночная уборка`. Nothing reads these names. When a future engine update
+changes a prompt file, `/ztn:update` finds the affected routines by comparing
+what each one's prompt actually says against the shipped files, then tells you
+which of YOUR routines are involved and offers to update them for you. A
+recommendation phrased as «re-paste the prompt» is one you cannot act on
+without first working out which routine it means — so the engine does that
+work instead of handing it to you.
 
 ## Plug-in — non-Claude-Code schedulers
 
@@ -410,7 +452,7 @@ judgement + resolution.
   thinking aid; latency >12h kills the feedback loop.
 - **Per-skill schedules (process, maintain, lint, resolve, agent-lens,
   agent-lens-add, content, roles, role-add).** Tried mentally: maintain has no
-  independent cadence (it tails process); resolve, agent-lens-add and
+  independent cadence (it is a step of the process tick); resolve, agent-lens-add and
   `/ztn:role:{add,edit,list,ask}` must not be autonomous (owner judgement /
   concierge interview). The five scheduled jobs (process / agent-lens / lint /
   content / roles) cover the autonomous surface area; every other skill is

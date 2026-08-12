@@ -200,9 +200,11 @@ Never mix engine and owner-data in one commit — the boundary becomes muddled i
 
 Several skills run unattended via scheduler prompts (`integrations/claude-code/scheduler-prompts/`):
 
-- `/ztn:process` — pre-sync → process → save (3× per day)
+- `/ztn:process` — pre-sync → process → maintain → save (3× per day)
 - `/ztn:lint` — pre-sync → lint → save (nightly)
-- `/ztn:maintain` — after-batch integrator
+- `/ztn:maintain` — after-batch integrator; Step 4.5 of the process tick, which
+  is its only trigger. It cannot run inside `/ztn:process` — the two are
+  mutually exclusive on the cross-skill lock
 - `/ztn:agent-lens --all-due` — pre-sync → lens runs → save (daily; runs the
   `content-synthesis` lens on Mondays)
 - `/ztn:content --maintain` — pre-sync → draft-maintainer → finalize (weekly,

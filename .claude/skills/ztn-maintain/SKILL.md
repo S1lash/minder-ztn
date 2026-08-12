@@ -28,6 +28,12 @@ each unprocessed batch into live state.
 - Best-effort over hard fail. Malformed batch → workaround + CLARIFICATION.
 - LLM-first reasoning with rule-based floor.
 
+**Invocation:** owner-driven, and Step 4.5 of the scheduled process tick
+(`integrations/claude-code/scheduler-prompts/process-scheduled.md`) — which is
+its only autonomous trigger. It is never invoked from *inside* `/ztn:process`:
+the two hold mutually exclusive cross-skill locks, so integration can only
+start once the producer has returned and released `.processing.lock`.
+
 **Contracts:** `_system/docs/ENGINE_DOCTRINE.md` (operating philosophy
 — load first; binding cross-skill rules: surface-don't-decide,
 inclusion-bias-on-capture / curation-on-promotion, idempotency,

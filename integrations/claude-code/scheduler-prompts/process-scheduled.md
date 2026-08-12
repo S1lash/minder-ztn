@@ -3,7 +3,8 @@ no human in this loop. The contract below is load-bearing.
 
 ## Invocation contract (read first)
 
-The ZTN skills in this prompt — `/ztn:sync-data`, `/ztn:process` — are
+The ZTN skills in this prompt — `/ztn:sync-data`, `/ztn:process`,
+`/ztn:maintain` — are
 invoked **as slash commands in this same conversation**. Skills are
 committed to the cloned repo at `.claude/skills/<name>/SKILL.md`, so the
 runtime loads them automatically — write the slash command literally as
@@ -48,8 +49,8 @@ scripts listed below is a contract violation.
   progress. Slash invocations are synchronous; their return IS completion.
 - Do NOT narrate or summarise between steps. After each step returns, the
   next action is the next step's command with no intermediate prose.
-- If the working tree looks "dirty across many categories" after Step 4,
-  that is NORMAL output of `/ztn:process` + inline `/ztn:maintain`. Do
+- If the working tree looks "dirty across many categories" after Steps 4
+  and 4.5, that is NORMAL output of `/ztn:process` + `/ztn:maintain`. Do
   NOT try to "group by theme" or "save progress" — Step 5's
   `finalize-tick.sh` collapses every dirty owner path into one commit.
 
@@ -97,10 +98,11 @@ Then exit `partial` immediately. Do not retry.
      unresolvable conflict → run failure-handling above with cause
      `"sync-data blocked, owner action needed"`, exit `sync-blocked`.
 
-4. `/ztn:process` — exactly ONE invocation. The skill runs the full
-   pipeline including the inline `/ztn:maintain` tail. Per-batch sub-agent
+4. `/ztn:process` — exactly ONE invocation. Per-batch sub-agent
    dispatch fires inside the skill (Step 3) — that is the skill's own
-   architecture and IS preserved.
+   architecture and IS preserved. The skill ends at its own Step 6 report;
+   integration of what it produced is Step 4.5 below, not part of this
+   invocation.
 
    The skill caps its transcript queue per run by default (see
    `/ztn:process` §Arguments `--limit`; metric-day / biometric files are
@@ -110,6 +112,34 @@ Then exit `partial` immediately. Do not retry.
    Do NOT pass `--limit` here — the default is the intended scheduler
    behaviour, and passing a number would duplicate the canonical value.
    - On skill error → run failure-handling, exit `partial`.
+   - When the skill returns, the immediate next action is step 4.5 with
+     no intermediate text.
+
+4.5. `/ztn:maintain --no-sync-check` — exactly ONE invocation, always,
+   whatever Step 4 reported. This is the after-batch integrator, and it
+   is the ONLY thing that runs it: threads, hub linkage, back-references,
+   tier suggestions, `CURRENT_CONTEXT.md`, `CONCEPTS.md` and the weekly
+   biometric / activity workers all live here, and none of them happens
+   inside `/ztn:process`. A tick that skips this step leaves its own
+   batch un-integrated and says nothing — the batch stays in the
+   unprocessed set and the next tick's invocation drains it, which is the
+   only reason a missed step is recoverable at all.
+
+   It runs as its own step rather than inside `/ztn:process` because the
+   two skills are mutually exclusive on the cross-skill lock: process
+   deletes `.processing.lock` on completion, so maintain may take
+   `.maintain.lock` only after the skill has returned.
+
+   `--no-sync-check` is required, not optional: the freshness pre-flight
+   PROMPTS when `origin` is ahead, and a scheduler tick has no human to
+   answer. Step 3 already synced. Do NOT pass `--batch` — the whole
+   unprocessed set is the intended scope, which is what lets a backlog
+   self-drain.
+   - Empty unprocessed set → the skill exits immediately with "nothing to
+     integrate". That is a normal outcome, not an error.
+   - On skill error → run failure-handling, exit `partial`. Step 4's work
+     is not stranded: `ship-failure-note.sh` ships through
+     `finalize-tick.sh`, so the tick still lands its one commit.
    - When the skill returns, the immediate next action is step 5 with
      no intermediate text.
 

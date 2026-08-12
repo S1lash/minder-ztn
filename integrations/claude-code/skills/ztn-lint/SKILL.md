@@ -902,6 +902,35 @@ canonical; its angle, once owner-supplied, is present). Reversible: every
 autofix leaves an Evidence-Trail entry; one edit to `CANON_MAP` + re-run
 re-heals cleanly.
 
+**A.12 Un-integrated batch backstop:**
+
+The one check that watches a pipeline for **not having run**. Every other scan
+reads what a pipeline produced; this one reads the gap where a producer's
+output was never consumed.
+
+- Unprocessed set = `BATCH_LOG.md` rows minus the batch ids in
+  `log_maintenance.md` — the same computation `/ztn:maintain` does in its own
+  Early Exit, deliberately, so the two cannot disagree about what «integrated»
+  means.
+- Surface a `batch-not-integrated` CLARIFICATION when any unprocessed batch is
+  **older than 26 h** (the same 24 h + cron/TZ buffer Scan H uses). One
+  aggregate item naming every stale batch id and the oldest one's age, never
+  one per batch.
+- Under 26 h is normal and silent: a batch produced by tonight's tick is
+  integrated by that same tick, and one produced minutes before this lint run
+  legitimately has not been yet.
+- Never autofixed. Lint does not invoke `/ztn:maintain` — the two hold
+  mutually exclusive locks, and a pipeline that repairs another pipeline's
+  omission hides the omission. Lint's job here is to make silence loud.
+
+Why it exists: `/ztn:maintain` has no cadence of its own — it runs as Step 4.5
+of the process tick and nowhere else, so a tick that skips the step produces a
+batch nobody ever integrates and reports success. Threads, hub linkage,
+back-references and the weekly biometric / activity workers all stop, and every
+individual artefact still looks correct, because what is missing is an event
+rather than a file. Nothing in the corpus is wrong; something simply never
+happened. That is precisely the shape no content scan can see.
+
 ### Scan B — Thread Lifecycle
 
 **B.1 Stale thread detection per-status:**
@@ -2015,7 +2044,7 @@ Output CLARIFICATION:
 Append ONE entry к `_system/state/log_lint.md` (aggregate across all scans + migration):
 
 ```markdown
-## {ISO UTC timestamp} | lint | by: ztn:lint | batch: —
+## {ISO UTC timestamp} | lint | by: ztn:lint | batch: lint-{YYYYMMDD}-{NNN} | manifest: {YYYYMMDD-HHmmss}
 
 ### Scans Executed
 - Scan A (consistency): {N items processed, K auto-fixes, M CLARIFICATIONS}
@@ -2118,6 +2147,66 @@ of one tick wins over a stricter context isolation. The most
 quality-sensitive split — agent-lens vs resolve — IS preserved (lens
 runs are a separate scheduler tick, so resolve never judges its own
 agent's lens body output).
+
+---
+
+## Step 7.6 — Emit the batch manifest
+
+Every engine skill that changes persistent state emits a manifest
+(ENGINE_DOCTRINE §3.8). Lint's is the record that a nightly tick ran and what
+it did — the audit trail a downstream consumer reads without parsing prose.
+
+`batch_id` is `{YYYYMMDD-HHmmss}` of this run's lock acquisition. The manifest
+schema requires that shape (`^YYYYMMDD-HHMMSS(-N)?$`), which is NOT the
+`lint-{YYYYMMDD}-{NNN}` run-id the `log_lint.md` header carries — so the Step 7
+entry names the manifest's `batch_id` alongside its own run-id, and the two
+artefacts stay cross-referable rather than merely adjacent. Lint mints its own
+id (unlike `/ztn:maintain`, which carries across the process batch's) because a
+lint run integrates nothing: it is its own event.
+
+**`stats` shape** — the only required section for `ztn:lint`:
+
+```json
+{
+  "scans_executed": ["A.1", "A.2", "..."],
+  "scans_deferred": ["D.1", "..."],
+  "events_total": N,
+  "autofixes_applied": N,
+  "autofixes_by_fix_id": {"{fix-id-prefix}": N},
+  "files_modified": N,
+  "clarifications_raised": N,
+  "clarifications_pending_in_queue": N,
+  "idempotency_verified": true
+}
+```
+
+**Emission via the helper:**
+
+```bash
+python3 _system/scripts/emit_batch_manifest.py \
+    --input <path-to-temp-json> \
+    --output _system/state/batches/{batch_id}-lint.json
+```
+
+Exit codes per the helper's docstring; treat exit 3 as `/ztn:process` does —
+a `process-compatibility` CLARIFICATION only when the root cause cannot be
+auto-corrected in the assembly.
+
+**Failure semantics:** the manifest is downstream routing, never the
+authoritative artefact — `log_lint.md`, the applied autofixes and the raised
+CLARIFICATIONs are. A failed write is surfaced as one CLARIFICATION and the
+tick continues to Step 7.5; it is never a reason to abort a lint run or to
+roll back a fix already applied. **No BATCH_LOG.md row** — that index belongs
+to `/ztn:process` alone, and a lint run is not a batch to integrate. This is
+also why Scan A.12 must not read lint manifests when computing its unprocessed
+set: only process batches are integrable.
+
+Scan H validates manifests written **before** the current run's baseline
+window, so a manifest this step writes is checked by the NEXT tick rather than
+by the run that produced it. That ordering is deliberate — a producer
+validating its own output in the same breath tests nothing.
+
+---
 
 ---
 

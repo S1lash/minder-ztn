@@ -1,8 +1,12 @@
 # scheduler-prompts/
 
-Copy-paste prompt bodies for the autonomous ZTN loop. Each `.md` file
-in this directory contains **only** the prompt — no headers, no meta,
-no fences. Open the file, select all, paste into your scheduler.
+The tick contracts for the autonomous ZTN loop. Each `.md` file in this
+directory contains **only** the prompt — no headers, no meta, no fences — so a
+tick can be handed the file's whole content as its instructions.
+
+You do not paste them into your scheduler. Each routine holds a one-line
+loader pointing here, and reads the current file at run time; see «Plug-in —
+Claude Code `/schedule`» below for why.
 
 For full design rationale, cadence, and plug-in instructions see
 `docs/scheduling.md`.
@@ -11,7 +15,7 @@ For full design rationale, cadence, and plug-in instructions see
 
 | File | What it runs | Recommended cadence |
 |---|---|---|
-| `process-scheduled.md` | `/ztn:sync-data` → `/ztn:process` (maintain inline) → `finalize-tick.sh scheduler/process` | ≥ 3× per day, e.g. cron `0 9,14,19 * * *` |
+| `process-scheduled.md` | `/ztn:sync-data` → `/ztn:process` → `/ztn:maintain --no-sync-check` → `finalize-tick.sh scheduler/process` | ≥ 3× per day, e.g. cron `0 9,14,19 * * *` |
 | `agent-lens-nightly.md` | `/ztn:sync-data` → `/ztn:agent-lens --all-due` → `finalize-tick.sh scheduler/agent-lens` | 1× nightly, e.g. cron `0 3 * * *` |
 | `lint-nightly.md` | `/ztn:sync-data` → `/ztn:lint` (Step 7.5 dispatches `/ztn:resolve-clarifications --auto-mode` inline) → `finalize-tick.sh scheduler/lint` | 1× nightly, e.g. cron `0 5 * * *` |
 | `content-tick.md` | `/ztn:sync-data` → `/ztn:content --maintain` (draft-maintainer) → `finalize-tick.sh scheduler/content` | 1× weekly Tuesday, e.g. cron `0 6 * * 2` |
@@ -103,8 +107,9 @@ commits per tick (one per "phase" the agent felt like grouping).
 invoke it (slash form or otherwise) and must never call `git commit` /
 `git push` / `git add` / `gh` directly outside the helper scripts.
 
-There is no `maintain` prompt — maintain runs inline at the tail of
-`/ztn:process`. There is no separate `resolve-clarifications` prompt
+There is no `maintain` prompt — maintain has no cadence of its own and
+runs as Step 4.5 of the process tick, right after `/ztn:process` returns
+and releases its lock. There is no separate `resolve-clarifications` prompt
 — `--auto-mode` is dispatched by lint Step 7.5 inline; interactive
 mode is owner-only by design. There is no prompt for
 `/ztn:role:{add,edit,list,ask}` — creating and changing a role is a
@@ -143,7 +148,8 @@ or queues residue for owner.
 `{batch_id}.md` (markdown report) and `{batch_id}.json` (machine-
 parseable JSON manifest for the Minder consumer; schema in
 `minder-project/strategy/ARCHITECTURE.md` §4.5). `/ztn:maintain`
-Step 6.6 writes its own `{batch_id}-maintain.json`. Both files commit
+Step 6.6 writes its own `{batch_id}-maintain.json`, and `/ztn:lint`
+Step 7.6 its own `{batch_id}-lint.json`. All of them commit
 through `finalize-tick.sh` at the tail of the scheduler tick.
 
 **Concept and audience layer is fully autonomous.** Format issues
@@ -156,45 +162,26 @@ guard, not a normal autonomy boundary.
 
 ## Plug-in — Claude Code `/schedule`
 
-The path of least friction. Routines:
+The path of least friction. Five routines — and each one's prompt is a
+**loader**, not the tick body.
 
-```
-/schedule
-  name: ztn-process
-  cron: 0 9,14,19 * * *
-  prompt: <paste body of process-scheduled.md>
-```
+A scheduler holds the prompt text you give it verbatim, forever. Pasting a body
+into it puts one contract in two places, and the scheduler's copy silently
+becomes the older of the two — a tick then runs an old release's instructions
+against a current engine, and nothing announces it. So the scheduler holds a
+pointer and this directory holds the contract.
 
-```
-/schedule
-  name: ztn-agent-lens
-  cron: 0 3 * * *
-  prompt: <paste body of agent-lens-nightly.md>
-```
+The five loaders, with their cron slots, live in `docs/scheduling.md` →
+«Plug-in — Claude Code `/schedule`» (one source, so they cannot drift from the
+cadence table beside them). Each is one sentence: read this directory's file
+for that tick, follow it exactly, and refuse to act at all if it cannot be
+read.
 
-```
-/schedule
-  name: ztn-lint
-  cron: 0 5 * * *
-  prompt: <paste body of lint-nightly.md>
-```
+Paste them once. From then on an engine update reaches every routine on its
+own — including a change to the very files in this directory.
 
-```
-/schedule
-  name: ztn-content
-  cron: 0 6 * * 2
-  prompt: <paste body of content-tick.md>
-```
-
-```
-/schedule
-  name: ztn-roles
-  cron: 0 7 * * *
-  prompt: <paste body of roles-nightly.md>
-```
-
-Each routine runs in a fresh agent — the prompt body is fully
-self-contained, no extra context required.
+Each routine still runs in a fresh agent against a fresh clone, so the body it
+reads is the current one, and the body remains fully self-contained.
 
 ## Plug-in — non-Claude-Code schedulers
 

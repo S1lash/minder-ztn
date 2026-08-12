@@ -2948,18 +2948,24 @@ class LeakScanReadsUndecodableFilesTests(unittest.TestCase):
 # ==========================================================================
 
 class IgnoreConsequenceTests(unittest.TestCase):
-    """`ignore` is the one field on the git surface with a benign author.
+    """An ignore rule is answered by ATTRIBUTION, never by stopping the tick.
 
-    The harness that runs the tick keeps its own runtime entries in
-    `.git/info/exclude`, and the guard may not restore that file — it lives
-    inside `.git/`. Comparing bytes therefore reported the host as an attacker
-    on every scheduled run, which is worse than a missing check: an abort that
-    fires nightly stops being read, and it stops the loop dispatching every
-    role queued behind it.
+    The veto had exactly one job: `git status` omits an ignored path, so a
+    rule added mid-run moved a write outside everything the guard reads. That
+    is a blind spot in attribution — and a blind spot is closed by looking.
+    `newly_hidden` names what went invisible, each path is digested, scanned
+    and reported under the `ignored` label, and hiding therefore buys a role
+    nothing: a hidden write is handled exactly as the same write in plain
+    sight would have been.
 
-    So the question moved from «did the rules change» to «did anything become
-    invisible». These tests hold both halves — the benign change proceeds, the
-    hiding change still aborts.
+    With the gap closed the veto had no remaining job, and it had a real cost.
+    `.git/info/exclude` belongs to the harness hosting the tick, which writes
+    its own runtime files and rules there DURING a role's run — so the abort
+    fired on ordinary nights, and an abort that fires on ordinary nights stops
+    being read while still taking down every role queued behind it.
+
+    These tests hold all of it: nothing hides from the report, nothing is
+    deleted, and every other field on the surface keeps its absolute veto.
     """
 
     STATE = f"{STATE_PREFIX}note.md"
@@ -2989,9 +2995,14 @@ class IgnoreConsequenceTests(unittest.TestCase):
             self.assertEqual(result["ignore_changed"]["hidden"], [])
             self.assertIn(self.STATE, result["in_zone"], "the role's own write still lands")
 
-    def test_hiding_a_path_behind_a_new_rule_still_aborts(self):
+    def test_a_payload_hidden_behind_a_new_rule_is_reported_not_lost(self):
         """SIBLING — the attack the field exists for. A role writes a payload
-        and adds the rule that hides it from `git status` in the same run."""
+        and adds the rule that hides it from `git status` in the same run.
+
+        The tick is not stopped, and that is the point: the payload is named
+        in the report, so hiding it achieved nothing. What a role gains by the
+        rule is exactly what it would have gained by writing the file in plain
+        sight — a `reported_only` entry the owner reads in the morning."""
         with tempfile.TemporaryDirectory() as tmp:
             repo = init_repo(Path(tmp))
             tick, snap = _snap(repo), _snap(repo)
@@ -3000,10 +3011,53 @@ class IgnoreConsequenceTests(unittest.TestCase):
             self._exclude(repo).write_text("payload.txt\n", encoding="utf-8")
 
             result = _check(repo, tick, snap)
-            self.assertTrue(result["git_surface"], "a newly invisible path must abort")
-            self.assertEqual(set(result["git_surface"]), {"ignore"},
-                             "the abort names real git-surface fields, nothing invented")
+            self.assertFalse(result["git_surface"], "attribution replaced the veto")
             self.assertIn("payload.txt", result["ignore_changed"]["hidden"])
+            self.assertIn("payload.txt", _report_paths(result),
+                          "the hidden write must still reach the owner's report")
+            self.assertEqual(
+                [entry["held_by"] for entry in result["reported_only"]
+                 if entry["path"] == "payload.txt"],
+                ["ignored"], "and it must say WHY it was left alone")
+
+    def test_a_hidden_payload_carrying_a_credential_is_still_a_leak(self):
+        """SIBLING, and the one that matters most. Hiding must not buy a role
+        the one thing the guard exists to catch. The file is scanned wherever
+        it is — but it is NOT deleted, because a leak makes a path tempting to
+        remove and this is precisely the path whose author is unknown."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = init_repo(Path(tmp))
+            write_secrets(repo_base(repo), {"NOTION_TOKEN": SECRET_VALUE})
+            tick, snap = _snap(repo), _snap(repo)
+
+            (repo / "stash.txt").write_text(f"{SECRET_VALUE}\n", encoding="utf-8")
+            self._exclude(repo).write_text("stash.txt\n", encoding="utf-8")
+
+            result = _check(repo, tick, snap)
+            self.assertIn("stash.txt", result["secret_leak"])
+            self.assertTrue((repo / "stash.txt").exists(),
+                            "a path the guard cannot attribute is never deleted")
+
+    def test_a_file_the_host_creates_mid_run_does_not_stop_the_tick(self):
+        """REGRESSION, 2026-08-11. The scheduler harness created its own lock
+        file and added the rule for it WHILE the role ran. The file was in no
+        snapshot — nothing could have listed it — so it read as a payload the
+        role had hidden, and the tick stopped dispatching on an ordinary
+        night. Reported, and the loop carries on."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = init_repo(Path(tmp))
+            tick, snap = _snap(repo), _snap(repo)
+
+            write_text(repo_path(repo, self.STATE), "работа роли\n")
+            (repo / "scheduled_tasks.lock").write_text("held\n", encoding="utf-8")
+            self._exclude(repo).write_text("scheduled_tasks.lock\n", encoding="utf-8")
+
+            result = _check(repo, tick, snap)
+            self.assertFalse(result["git_surface"], "an ordinary night must not abort")
+            self.assertIn(self.STATE, result["in_zone"], "the role's own work still lands")
+            self.assertIn("scheduled_tasks.lock", result["ignore_changed"]["hidden"])
+            self.assertTrue((repo / "scheduled_tasks.lock").exists(),
+                            "the host's live lock file must survive the check")
 
     def test_the_guard_never_deletes_the_hosts_exclude_file(self):
         """The other half of the same night. `.git/info/exclude` is absent from

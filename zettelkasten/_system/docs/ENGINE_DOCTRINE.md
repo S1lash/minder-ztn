@@ -550,6 +550,41 @@ This applies to every skill, script, and migration the engine ships, forever.
 
 ---
 
+### 3.10 A contract has one home, and silence has a detector
+
+Two failure shapes recur, and neither announces itself. Both are cheap to
+prevent at design time and expensive to find afterwards, so they are checked
+when a mechanism is built rather than when it breaks.
+
+**One home.** A behavioural contract lives in exactly one place, and everything
+else points at it. A copy — a spec restated in a prompt, a tick body pasted
+into a scheduler, a rule quoted into a second doc — becomes the older of the
+two the moment the original moves, and nothing in the system reports the
+divergence. The reader trusts the copy precisely because it looks authoritative.
+So when a mechanism needs a contract somewhere it cannot import it, it gets a
+POINTER and a refusal clause («if this cannot be read, do nothing»), never a
+duplicate. Applies to prose as much as to code: the class is *the same fact
+stated twice*, whatever the medium.
+
+**A step nothing detects is a step that will stop happening.** Every engine
+behaviour is either enforced by something that fails loudly, or watched by a
+check that notices its absence. A step described in a prompt but implemented
+nowhere is not a weak guarantee — it is no guarantee, and it will run for a
+while on goodwill before quietly stopping, with every produced artefact still
+looking correct because what is missing is an *event*, not a file. Content
+scans cannot see this class; only a check that asks «did the thing that should
+have happened, happen?» can (`/ztn:lint` Scan A.12 is the worked example).
+
+**Whatever a run needs from the world outside the repository, name it and
+carry it.** An owner's scheduler, credentials, routine names and cron slots are
+theirs, not the engine's: never keyed by a name the engine invented, never
+overwritten without diffing for what the owner put there, and a credential
+found in an unexpected place is carried forward intact before anything else is
+discussed. An automated change that silently drops one of these breaks a system
+the engine cannot see and did not build.
+
+---
+
 ## 4. Sacred state
 
 These files are the engine's load-bearing state. Every skill knows

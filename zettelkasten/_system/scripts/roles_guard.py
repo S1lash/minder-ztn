@@ -133,10 +133,15 @@ SETTLE_SECONDS = 0.25
 ROOT_IGNORE = ".gitignore"
 INFO_EXCLUDE = ".git/info/exclude"
 
-# Report-only labels (§3.3). The tick baseline decides which of the two a
-# path gets; neither changes what the guard did to it.
+# Report-only labels (§3.3). The tick baseline decides which of the first two
+# a path gets; none of them changes what the guard did to it, which is nothing.
 OWNER_LABEL = "owner"
 ROLE_LABEL = "earlier-role"
+# A path an ignore rule made invisible during the run. It is reported rather
+# than restored for the same reason as the other two — the guard cannot undo
+# it safely — but the reason is the path's visibility, not its content, so the
+# baseline has no say and the label is assigned directly.
+HIDDEN_LABEL = "ignored"
 
 # Porcelain v1 emits `XY PATH`; a rename or a copy is followed by one more
 # NUL-separated field carrying the original path.
@@ -419,6 +424,11 @@ def newly_hidden(role_snapshot: dict, current: dict) -> list | None:
     all. This answers «did anything become invisible», which is the only
     reason the guard watches the rules in the first place.
 
+    What the caller does with the answer is ATTRIBUTE it — these paths are
+    digested, scanned and reported like any other write. This is a detector
+    feeding attribution, not a tripwire: it exists to close the gap where
+    `git status` stops printing, so nothing here is a verdict about intent.
+
     Ignore rules do not apply to TRACKED files: git reports a modification to
     one whatever any rule says. So the only payload an ignore rule can hide is
     an untracked path — and a path that is ignored now while it was not
@@ -431,16 +441,18 @@ def newly_hidden(role_snapshot: dict, current: dict) -> list | None:
     `.git/info/exclude`, and it is why the harness doing so no longer reads as
     a role attacking the guard.
 
-    A path that was ALREADY VISIBLE when the role started is discounted, and
-    that is not a softening — it is the same question asked precisely. Hiding
-    is only worth anything to a role that hides its OWN payload, and a file
-    already on disk before it ran is not that. `git status -uall` lists every
-    untracked path, so the role snapshot's `entries` is the full record of
-    what was visible; a candidate found there existed first and was hidden
-    afterwards by someone else's rule. This is the case that fires when the
-    host adds its own runtime entries mid-run: its lock file was visible at
-    role start, so it is discounted, while a payload the role created during
-    the run is in no snapshot and survives the filter.
+    A path that was ALREADY VISIBLE when the role started is discounted,
+    because `attribute` already covers it: it is in the role snapshot's
+    `entries`, so it is compared by digest like any other path and reporting
+    it a second time under a different label would say nothing new.
+
+    Everything else is returned, including files the HOST created during the
+    run — its own lock and runtime state, which appear here for the same
+    mechanical reason a role's payload would: they did not exist when the
+    role started, so nothing could have listed them. Telling the two apart is
+    not possible from here and is not attempted; the caller reports both and
+    restores neither, which is the only honest handling of a path whose
+    author the guard does not know.
 
     Returns `None` — «cannot tell» — when either snapshot predates this field,
     so a caller keeps the conservative verdict rather than inferring safety
@@ -625,6 +637,18 @@ def label_reported(tick_baseline: dict, reported_only: list) -> list:
     ]
 
 
+def label_hidden(hidden: list) -> list:
+    """Attach the `ignored` label to each path an ignore rule made invisible.
+
+    Separate from `label_reported` because the baseline cannot answer for
+    these: `owner` and `earlier-role` are read off who had already dirtied
+    the path, and a path that only became INVISIBLE was not necessarily
+    dirtied by anyone. Its label states the one thing that is true of all of
+    them — git can no longer see it, and the guard did not restore it.
+    """
+    return [{"path": path, "held_by": HIDDEN_LABEL} for path in hidden]
+
+
 def secret_values(secrets_file: Path) -> list:
     """Every value in the secrets file, or `[]` when there is no such file."""
     if not secrets_file.is_file():
@@ -754,22 +778,30 @@ def scan_commit(repo: Path, before: str, after: str, values: list) -> list:
 
 
 def _abort(reason_key, reason, repo, in_zone, out_of_zone, tick_baseline,
-           values, also=(), ignore_changed=False) -> dict:
+           values, also=(), ignore_changed=False, hidden=()) -> dict:
     """A report with no mutation performed. Every abort has this shape.
 
     An abort reverts nothing, so EVERYTHING the role wrote is still on disk —
     which is exactly why the scan matters more here, not less. On a
     `git_surface` abort the role has already shown it is attacking the guard;
     leaving its writes unread there would be the worst place to skip.
+
+    `hidden` carries the paths an ignore rule made invisible during the run.
+    They are scanned and reported like any other path, because an abort on a
+    DIFFERENT field must not be the thing that loses them: the guard can see
+    them, so it says so, whatever else went wrong in the same run.
     """
-    leaks = scan_secrets(repo, list(in_zone) + list(out_of_zone), values)
+    hidden_files = [path for path in hidden if not path.endswith("/")]
+    leaks = scan_secrets(
+        repo, list(in_zone) + list(out_of_zone) + hidden_files, values)
     for path in also:
         if path not in leaks:
             leaks.append(path)
     result = {
         "in_zone": in_zone,
         "reverted": [],
-        "reported_only": label_reported(tick_baseline, out_of_zone),
+        "reported_only": label_reported(tick_baseline, out_of_zone)
+        + label_hidden(hidden),
         "secret_leak": leaks,
         "head_moved": False,
         "git_surface": False,
@@ -811,11 +843,20 @@ def check(repo: Path, tick_baseline: dict, role_snapshot: dict,
     reverted first and attribution is re-run from scratch, because a payload
     hidden behind a rule that no longer exists must be attributed normally.
 
-    An ignore change the revert could not undo is then judged by consequence
-    (`newly_hidden`): it aborts when something became invisible, and is
-    reported in `ignore_changed` when nothing did. The distinction is what
-    separates a role hiding its payload from the harness maintaining its own
-    runtime entries in a file the guard is forbidden to write to.
+    An ignore change the revert could not undo does NOT abort. What it hid is
+    recovered instead: `newly_hidden` names every path that went invisible,
+    each is scanned and reported under the `ignored` label, and none is
+    restored. Hiding therefore changes nothing about how a write is handled,
+    which is what makes stopping the tick unnecessary — and stopping it was
+    never free, because `.git/info/exclude` is the harness's own file and the
+    abort fired on ordinary nights.
+
+    The limit, stated rather than implied: a path inside a directory that was
+    ALREADY wholly ignored before the role ran is not covered. Porcelain
+    collapses such a directory to a single entry, so nothing under it is
+    listed on either side and no comparison can be made. That is a real hole,
+    it predates this handling, and no wording here should read as if the
+    guard sees into one.
     """
     _validate_snapshot(role_snapshot, "the role snapshot")
     _validate_snapshot(tick_baseline, "the tick baseline")
@@ -876,33 +917,51 @@ def check(repo: Path, tick_baseline: dict, role_snapshot: dict,
     touched = attribute(role_snapshot, current)
     in_zone, out_of_zone = classify(touched, prefixes)
 
-    # An ignore change that survived the revert is judged by what it DID, not
-    # by the fact that it happened. `ignore` is the one field on this surface
-    # something other than the role legitimately writes: the harness hosting
-    # the tick keeps its own runtime entries in `.git/info/exclude`, which the
-    # guard may not restore because it sits inside `.git/`. Byte-comparison
-    # therefore reported the host as an attacker every night, and an abort
-    # that fires on every ordinary run stops being read at all — while still
-    # costing the loop every role queued behind it.
+    # An ignore change that survived the revert is ATTRIBUTED, not vetoed.
+    #
+    # The veto existed for exactly one reason: `git status` omits an ignored
+    # path, so `attribute` could not see one, so a rule added mid-run moved a
+    # write outside everything the guard reads. That is a blind spot in
+    # attribution, and a blind spot is closed by looking — not by stopping the
+    # tick whenever something might have entered it. `newly_hidden` names the
+    # paths, they are digested, scanned and reported below, and hiding
+    # therefore buys a role nothing at all: a hidden write is treated exactly
+    # as the same write in plain sight would have been.
+    #
+    # With the gap closed the veto had no remaining job, and it had a real
+    # cost. `.git/info/exclude` belongs to the harness hosting the tick, which
+    # writes its own runtime entries there mid-run — so the abort fired on
+    # ordinary nights, and an abort that fires on ordinary nights stops being
+    # read while still taking down every role queued behind it.
     #
     # Every other field on the surface stays absolute. A remote, a hook, an
-    # index flag or `.git/config` has no benign author here.
+    # index flag or `.git/config` has no benign author, and no amount of
+    # looking makes one safe.
+    #
     # The verdict changes; `delta` does not. It carries git-surface FIELDS, and
     # the consequence of an ignore change is not one — a reader handed a
     # `hidden` key beside `remotes` would report a git field that does not
-    # exist. So the evidence goes to its own place, on both branches, and the
-    # abort's fields stay exactly what the surface really holds.
+    # exist. So the evidence goes to its own place, and the abort's fields stay
+    # exactly what the surface really holds.
     ignore_changed: dict | bool = False
-    if delta and set(delta) == {"ignore"}:
-        hidden = newly_hidden(role_snapshot, current)
-        if hidden is not None:
-            ignore_changed = {"fields": delta, "hidden": hidden}
-            if not hidden:
-                delta = {}
+    hidden: list = []
+    if "ignore" in delta:
+        found = newly_hidden(role_snapshot, current)
+        ignore_changed = {"fields": {"ignore": delta["ignore"]}, "hidden": found}
+        if found is None:
+            # «Cannot tell» — one snapshot predates the `ignored` field, so
+            # nothing can be attributed and the conservative verdict stands.
+            # Inferring safety from an absence is the one reading this branch
+            # must never take.
+            return _abort("git_surface", delta, repo, in_zone, out_of_zone,
+                          tick_baseline, values, ignore_changed=ignore_changed)
+        hidden = found
+        delta = {field: pair for field, pair in delta.items() if field != "ignore"}
 
     if delta:
         return _abort("git_surface", delta, repo, in_zone, out_of_zone,
-                      tick_baseline, values, ignore_changed=ignore_changed)
+                      tick_baseline, values, ignore_changed=ignore_changed,
+                      hidden=hidden)
 
     head_moved = (
         False if current["head"] == role_snapshot.get("head")
@@ -921,6 +980,7 @@ def check(repo: Path, tick_baseline: dict, role_snapshot: dict,
             "head_moved", head_moved, repo, in_zone, out_of_zone, tick_baseline,
             values,
             also=scan_commit(repo, head_moved["before"], head_moved["after"], values),
+            ignore_changed=ignore_changed, hidden=hidden,
         )
 
     # CONTENT first, over EVERY path the role touched, while the files are
@@ -929,7 +989,14 @@ def check(repo: Path, tick_baseline: dict, role_snapshot: dict,
     # the value, and a role that wrote a token to disk may equally have sent
     # it somewhere this guard cannot see. That is a rotate-now signal on its
     # own, and `reverted` already carries «it is gone».
-    leaks = scan_secrets(repo, touched, values, names=False)
+    #
+    # A hidden path is scanned here with everything else. It is deliberately
+    # NOT handed to `remedy`: the guard cannot tell a role's hidden payload
+    # from the harness's own runtime file, and «restore» for a path in no
+    # commit means DELETE — which is how a live lock file belonging to the
+    # process running the tick would get removed. Reported, never touched.
+    hidden_files = [path for path in hidden if not path.endswith("/")]
+    leaks = scan_secrets(repo, touched + hidden_files, values, names=False)
 
     applied = remedy(repo, out_of_zone, role_snapshot)
 
@@ -937,7 +1004,7 @@ def check(repo: Path, tick_baseline: dict, role_snapshot: dict,
     # file has been removed is an artefact of the string, not an event; an
     # in-zone file still on disk and NAMED for the credential would ship as
     # a pushed path, so that one is real.
-    survivors = list(in_zone) + list(applied["reported_only"])
+    survivors = list(in_zone) + list(applied["reported_only"]) + hidden_files
     for path in scan_secrets(repo, survivors, values, content=False):
         if path not in leaks:
             leaks.append(path)
@@ -947,7 +1014,14 @@ def check(repo: Path, tick_baseline: dict, role_snapshot: dict,
     # BECAUSE it cannot be restored, so a leak in one is reported and left,
     # and the tick keeps it out of the commit. Reverting it would destroy
     # content the role did not author — the cure worse than the disease.
-    surviving = set(survivors)
+    #
+    # `hidden_files` are excluded from revert eligibility on purpose, and this
+    # is the one place the distinction bites: a leak makes a path MORE
+    # tempting to delete, and a hidden path is precisely the one the guard
+    # cannot attribute to the role. The leak is still reported — that is the
+    # rotate-now signal, and the tick holds the path out of its commit — but
+    # the file itself is left where it is.
+    surviving = set(in_zone) | set(applied["reported_only"])
     revertible = [p for p in leaks
                   if p in surviving and _restorable(role_snapshot, p)]
     reverted_leaks, leak_failures = _revert_all(repo, revertible)
@@ -955,7 +1029,8 @@ def check(repo: Path, tick_baseline: dict, role_snapshot: dict,
     return {
         "in_zone": [path for path in in_zone if path not in removed],
         "reverted": sorted(set(applied["reverted"]) | set(reverted_ignores)),
-        "reported_only": label_reported(tick_baseline, applied["reported_only"]),
+        "reported_only": label_reported(tick_baseline, applied["reported_only"])
+        + label_hidden(hidden),
         "secret_leak": leaks,
         "head_moved": False,
         "git_surface": False,
