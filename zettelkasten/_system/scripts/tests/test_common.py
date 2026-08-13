@@ -1210,5 +1210,223 @@ class FenceHelperRobustnessTests(unittest.TestCase):
             self.assertIn("[[запись]]", body)
 
 
+class ApplyHubTrioTests(unittest.TestCase):
+    """Writing the trio is half the operation, and it had no home.
+
+    `recompute_hub_trio` decided the values; putting them on disk was left to
+    whoever called it, so every run hand-rolled YAML surgery. One such write
+    emitted flow style into a block-style frontmatter and the hub stopped
+    parsing — invisible to every downstream scan, not merely wrong in a field.
+    """
+
+    HUB = """---
+id: hub-x
+title: "Hub: X"
+layer: hub
+origin: work
+audience_tags: []
+is_sensitive: false
+_engine_derived:
+  - origin
+  - audience_tags
+  - is_sensitive
+modified: 2026-08-01
+---
+
+## Body
+
+text
+"""
+
+    def _hub(self, tmp: str) -> Path:
+        path = Path(tmp) / "hub-x.md"
+        path.write_text(self.HUB, encoding="utf-8")
+        return path
+
+    def test_the_written_frontmatter_stays_block_style_and_parses(self):
+        """THE regression. A sensitive member flips `is_sensitive`, which is
+        exactly the write that produced `{is_sensitive: true}` by hand."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._hub(tmp)
+            result = c.apply_hub_trio(
+                path, [{"origin": "work", "audience_tags": [], "is_sensitive": True}]
+            )
+            self.assertTrue(result["changed"])
+            self.assertTrue(result["trio"]["is_sensitive"])
+
+            fence = path.read_text(encoding="utf-8").split("---")[1]
+            self.assertNotIn("{", fence, "flow-style mapping in the frontmatter")
+            self.assertNotIn("[", fence.replace("audience_tags: []", ""),
+                             "flow-style sequence in the frontmatter")
+            self.assertIsNotNone(c.read_frontmatter(path),
+                                 "the hub must still parse after the write")
+
+    def test_an_owner_set_field_is_never_rewritten(self):
+        """SIBLING — the ownership contract survives the writer. A field the
+        owner set (absent from `_engine_derived`) is untouched."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "hub-y.md"
+            path.write_text(self.HUB.replace(
+                "_engine_derived:\n  - origin\n  - audience_tags\n  - is_sensitive\n",
+                "_engine_derived:\n  - origin\n"), encoding="utf-8")
+            c.apply_hub_trio(
+                path, [{"origin": "work", "audience_tags": [], "is_sensitive": True}]
+            )
+            fm, _ = c.read_frontmatter(path)
+            self.assertFalse(fm["is_sensitive"], "owner's value was overwritten")
+
+    def test_a_no_op_recompute_writes_nothing(self):
+        """SIBLING — byte-identical file and no `modified:` churn, so a bumped
+        date always means something really moved."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._hub(tmp)
+            before = path.read_bytes()
+            result = c.apply_hub_trio(
+                path,
+                [{"origin": "work", "audience_tags": [], "is_sensitive": False}],
+                modified="2026-08-13",
+            )
+            self.assertFalse(result["changed"])
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_modified_is_stamped_only_on_a_real_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._hub(tmp)
+            c.apply_hub_trio(
+                path,
+                [{"origin": "work", "audience_tags": [], "is_sensitive": True}],
+                modified="2026-08-13",
+            )
+            fm, _ = c.read_frontmatter(path)
+            self.assertEqual(str(fm["modified"]), "2026-08-13")
+
+    def test_applying_twice_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._hub(tmp)
+            members = [{"origin": "work", "audience_tags": [], "is_sensitive": True}]
+            c.apply_hub_trio(path, members)
+            after_first = path.read_bytes()
+            second = c.apply_hub_trio(path, members)
+            self.assertFalse(second["changed"])
+            self.assertEqual(path.read_bytes(), after_first)
+
+    def test_an_unreadable_hub_is_reported_and_left_alone(self):
+        """SIBLING — a hub whose frontmatter cannot be parsed is exactly the
+        damage this helper exists to prevent. Rewriting it from a guess would
+        destroy whatever is really in there."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "broken.md"
+            path.write_text("---\nid: hub-z\n{is_sensitive: true}\n: :\n---\nbody\n",
+                            encoding="utf-8")
+            before = path.read_bytes()
+            self.assertIsNone(c.apply_hub_trio(path, []))
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_the_body_survives_verbatim(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._hub(tmp)
+            c.apply_hub_trio(
+                path, [{"origin": "work", "audience_tags": [], "is_sensitive": True}]
+            )
+            self.assertIn("## Body", path.read_text(encoding="utf-8"))
+
+
+class AppendFrontmatterListTests(unittest.TestCase):
+    """The other write maintain performs by the hundred — a thread back-ref.
+
+    Hand-rolled it is the same hazard as the trio write: a list built by
+    string concatenation can be built wrong, and a note whose frontmatter
+    stops parsing is invisible to every scan rather than missing a field.
+    """
+
+    NOTE = """---
+id: 20260812-meeting-x
+layer: record
+threads:
+  - thread-a
+modified: 2026-08-01
+---
+
+## Body
+
+text
+"""
+
+    def _note(self, tmp: str, text: str | None = None) -> Path:
+        path = Path(tmp) / "note.md"
+        path.write_text(text if text is not None else self.NOTE, encoding="utf-8")
+        return path
+
+    def test_a_new_value_is_appended_and_the_file_still_parses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._note(tmp)
+            self.assertTrue(
+                c.append_frontmatter_list_value(path, "threads", "thread-b")
+            )
+            fm, body = c.read_frontmatter(path)
+            self.assertEqual(fm["threads"], ["thread-a", "thread-b"])
+            self.assertIn("## Body", body, "body must survive verbatim")
+
+    def test_the_key_is_created_when_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._note(tmp, self.NOTE.replace("threads:\n  - thread-a\n", ""))
+            self.assertTrue(
+                c.append_frontmatter_list_value(path, "threads", "thread-b")
+            )
+            fm, _ = c.read_frontmatter(path)
+            self.assertEqual(fm["threads"], ["thread-b"])
+
+    def test_a_duplicate_writes_nothing_at_all(self):
+        """SIBLING — idempotency without churn. Re-running a batch must not
+        bump `modified:` on every note it already touched."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._note(tmp)
+            before = path.read_bytes()
+            self.assertFalse(
+                c.append_frontmatter_list_value(
+                    path, "threads", "thread-a", modified="2026-08-13")
+            )
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_modified_is_stamped_only_when_something_was_added(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._note(tmp)
+            c.append_frontmatter_list_value(
+                path, "threads", "thread-b", modified="2026-08-13")
+            fm, _ = c.read_frontmatter(path)
+            self.assertEqual(str(fm["modified"]), "2026-08-13")
+
+    def test_a_non_list_value_is_refused_rather_than_coerced(self):
+        """SIBLING — somebody's data in a shape this does not understand.
+        Reshaping it to fit would destroy what it is meant to preserve."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._note(
+                tmp, self.NOTE.replace("threads:\n  - thread-a\n", "threads: thread-a\n"))
+            before = path.read_bytes()
+            self.assertIsNone(
+                c.append_frontmatter_list_value(path, "threads", "thread-b")
+            )
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_an_unparseable_note_is_left_untouched(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._note(tmp, "---\nid: x\n: :\n{a: b}\n---\nbody\n")
+            before = path.read_bytes()
+            self.assertIsNone(
+                c.append_frontmatter_list_value(path, "threads", "thread-b")
+            )
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_the_written_list_is_block_style(self):
+        """SIBLING — the shape that caused the original damage."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._note(tmp)
+            c.append_frontmatter_list_value(path, "threads", "thread-b")
+            fence = path.read_text(encoding="utf-8").split("---")[1]
+            self.assertIn("- thread-b", fence)
+            self.assertNotIn("[", fence)
+            self.assertNotIn("{", fence)
+
+
 if __name__ == "__main__":
     unittest.main()

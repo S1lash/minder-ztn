@@ -2,6 +2,28 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.60.1 — A hub can no longer be broken by the run that maintains it
+
+Found by reading a real nightly run rather than by a failing test.
+
+Your hubs carry three fields the engine derives from their member notes —
+where the material came from, who may see it, whether it is sensitive. Working
+out the values had a proper home in the code; writing them back did not, so
+each run edited the file by hand. One of those hand-edits wrote the values in
+the wrong YAML shape, and the hub stopped being readable at all — not one
+wrong field, but a file every later check silently skipped. The run happened
+to re-read it and repair itself, which is luck rather than a mechanism, and
+nothing damaged reached your repository.
+
+Writing is now the same single call as deriving, so there is nothing left to
+do by hand. A hub whose frontmatter will not parse is reported and left
+exactly as it is, never rewritten from a guess.
+
+The same change stops a quieter waste: the derivation rebuilt an internal
+list in a different order each time, which read as «this hub changed» on
+every run. Hubs are now compared by what the values mean, so a `modified:`
+date that moves means something really moved.
+
 ## 0.60.0 — Removals finally reach you, and a role can admit it half-worked
 
 Three findings from reading real nightly runs, all the same family as the last

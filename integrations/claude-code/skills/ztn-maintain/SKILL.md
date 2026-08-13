@@ -356,12 +356,25 @@ Both groups follow identical write logic:
    - Locate file: scan `_records/meetings/` + `_records/observations/` for record ids, PARA folders
      (`1_projects/`, `2_areas/`, `3_resources/`, `4_archive/`) for knowledge
      note ids. If not found → skip, raise `batch-dangling-reference`.
-   - Open file, parse frontmatter.
-   - If `threads:` key exists → append `{thread-id}` if not already present in
-     the list. Preserve other entries.
-   - If `threads:` key absent → add it as YAML list: `threads:` with single
-     `- {thread-id}` entry.
-   - Write file back. **Body untouched.**
+   - Add the back-reference with the helper — never by editing the YAML:
+
+     ```python
+     import sys; sys.path.insert(0, "_system/scripts")
+     import _common
+     added = _common.append_frontmatter_list_value(
+         path, "threads", thread_id, modified="{YYYY-MM-DD}")
+     ```
+
+     `True` — added. `False` — already present, nothing written and no
+     `modified:` churn. `None` — the frontmatter will not parse, or `threads:`
+     holds something that is not a list; that file is left untouched and
+     counted, never repaired by guesswork. Body is preserved verbatim by
+     construction.
+
+     A list built by hand is a list that can be built wrong, and a note whose
+     frontmatter stops parsing is invisible to every later scan rather than
+     just missing a field. This runs by the hundred per batch, so the odds
+     compound.
 2. Track count `back_refs_written` for Step 8 report. Report split:
    - `N_backrefs_new_threads` (from worklist group A)
    - `N_backrefs_merged_threads` (from worklist group B)
@@ -446,10 +459,28 @@ The helper fills MISSING trio fields from member-note trios:
 - `is_sensitive` (when missing) ← any-member contagion.
 
 **Owner-edit preservation contract.** Trio fields already present
-on the hub frontmatter are NEVER overwritten. Maintain writes the
-helper's output (which only fills gaps) into frontmatter alongside
-`modified:`. Owner manual edits survive across every maintain
-touch. No CLARIFICATIONS, no clobbering.
+on the hub frontmatter are NEVER overwritten. Owner manual edits
+survive across every maintain touch. No CLARIFICATIONS, no clobbering.
+
+**Never hand-edit the frontmatter to apply it.** Read, recompute and write
+are one call:
+
+```python
+import sys; sys.path.insert(0, "_system/scripts")
+import _common
+result = _common.apply_hub_trio(hub_path, member_trios, modified="{YYYY-MM-DD}")
+```
+
+It returns `{"changed", "events", "trio", "_engine_derived"}`, writes only
+when the trio really moved, stamps `modified:` only then, and returns `None`
+for a hub whose frontmatter will not parse — which is left untouched and
+reported, never rewritten from a guess.
+
+Editing the YAML by hand instead is how a hub was written as
+`{is_sensitive: true}` — flow style into a block-style frontmatter — and
+stopped parsing altogether: not one wrong field, but a file invisible to every
+downstream scan. The write is deterministic, so it belongs to a function
+rather than to whoever is running tonight.
 
 **Hub manifest emission for this batch.** When this maintain run
 emits its batch manifest (`_system/state/batches/{ts}-maintain.json`),

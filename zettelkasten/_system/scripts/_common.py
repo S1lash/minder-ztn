@@ -864,6 +864,110 @@ def write_frontmatter(path: Path, fm: dict, body: str) -> None:
     path.write_text(f"---\n{yaml_text}\n---\n{body}", encoding="utf-8")
 
 
+def append_frontmatter_list_value(
+    path: Path, key: str, value, modified: str | None = None,
+) -> bool | None:
+    """Add one value to a frontmatter list, creating the key if absent.
+
+    The other write `/ztn:maintain` performs by the hundred — a thread
+    back-reference into a record's `threads:`. Hand-rolled, it is the same
+    hazard as the trio write next door: a list built by string concatenation
+    is a list that can be built wrong, and a note whose frontmatter stops
+    parsing is invisible to every scan rather than merely missing a field.
+    One run wrote 135 of these and spent a whole step afterwards checking it
+    had not broken anything, which is the tell that the operation wanted a
+    function.
+
+    Returns `True` when the value was added, `False` when it was already
+    there (no write, so no `modified:` churn), and `None` when the
+    frontmatter cannot be read — that file is left exactly as it is.
+
+    An existing non-list value is NOT coerced: it is somebody's data in a
+    shape this function does not understand, and overwriting it to fit would
+    destroy the thing it is meant to preserve. Reported as `None`, same as
+    unreadable.
+    """
+    read = read_frontmatter(path)
+    if read is None:
+        return None
+    fm, body = read
+    current = fm.get(key)
+    if current is None:
+        current = []
+    elif not isinstance(current, list):
+        return None
+    if value in current:
+        return False
+    fm[key] = list(current) + [value]
+    if modified is not None:
+        fm["modified"] = modified
+    write_frontmatter(path, fm, body)
+    return True
+
+
+def apply_hub_trio(
+    path: Path, member_trios: list, modified: str | None = None,
+) -> dict | None:
+    """Recompute a hub's privacy trio and write it back. The ONLY writer.
+
+    `recompute_hub_trio` decides what the trio should be; this puts it on
+    disk. They were separate halves of one operation, and only the deciding
+    half had a home — so every caller re-invented the writing half as ad-hoc
+    YAML surgery, once per run, by hand.
+
+    That is not a stylistic complaint. One such hand-write emitted
+    `{is_sensitive: true}` and `_engine_derived: [a, b, c]` — flow style, into
+    a block-style frontmatter — and the hub stopped parsing entirely: invisible
+    to every downstream scan, not just wrong in one field. The run that did it
+    happened to re-read the file and repair itself, which is luck, not a
+    mechanism. `write_frontmatter` has always serialised block style; nothing
+    was missing except a reason to call it.
+
+    Returns `{"changed", "events", "trio", "_engine_derived"}`, or `None` when
+    the frontmatter cannot be read — an unreadable hub is left untouched and
+    reported, never rewritten from a guess.
+
+    `modified` is stamped ONLY when the trio actually changed, so a no-op
+    recompute does not churn the file and every `modified:` bump means
+    something really moved.
+    """
+    read = read_frontmatter(path)
+    if read is None:
+        return None
+    fm, body = read
+    new_fm, events = recompute_hub_trio(fm, member_trios)
+
+    # Compared by MEANING, not by dict equality. `recompute_hub_trio` rebuilds
+    # `_engine_derived` from a set, so its order can differ from what is on
+    # disk while saying exactly the same thing. Under `!=` that reads as a
+    # change, and then every hub is rewritten on every run — a corpus-wide
+    # `modified:` bump each night that means nothing and buries the ones that
+    # do. Order is not content here, so it does not count as one.
+    def signature(candidate: dict) -> tuple:
+        marker = candidate.get("_engine_derived")
+        return (
+            candidate.get("origin"),
+            tuple(candidate.get("audience_tags") or []),
+            bool(candidate.get("is_sensitive")),
+            frozenset(marker) if isinstance(marker, list) else None,
+        )
+
+    changed = signature(new_fm) != signature(fm)
+    if changed and modified is not None:
+        new_fm["modified"] = modified
+    if changed:
+        write_frontmatter(path, new_fm, body)
+    return {
+        "changed": changed,
+        "events": events,
+        "trio": {
+            key: new_fm.get(key)
+            for key in ("origin", "audience_tags", "is_sensitive")
+        },
+        "_engine_derived": new_fm.get("_engine_derived"),
+    }
+
+
 def frontmatter_closed_before_body(path: Path) -> bool:
     """True when the YAML fence closes before any body ``## `` heading.
 
