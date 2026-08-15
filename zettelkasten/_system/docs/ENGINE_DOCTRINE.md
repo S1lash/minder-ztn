@@ -1,14 +1,10 @@
 # ZTN Engine Doctrine
 
 > **What this is.** The compact, load-bearing operating philosophy of
-> the ZTN engine. Every skill (`/ztn:bootstrap`, `/ztn:process`,
-> `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`, `/ztn:agent-lens-add`,
-> `/ztn:capture-candidate`, `/ztn:check-decision`,
-> `/ztn:regen-constitution`, `/ztn:content`, `/ztn:source-add`,
-> `/ztn:resolve-clarifications`) reads this file as
-> part of Step 1 / Load Context. It is symlinked
-> into `~/.claude/rules/ztn-engine-doctrine.md` by `install.sh` so it
-> auto-loads in every Claude Code session opened in this repo.
+> the ZTN engine. `install.sh` symlinks it into
+> `~/.claude/rules/ztn-engine-doctrine.md`, so it auto-loads in every
+> Claude Code session — every skill runs against it whether or not its
+> own Step 1 / Load Context names it.
 >
 > **What this is NOT.** Not the full spec. Pointers below lead to the
 > authoritative long-form sources. This file is what every skill
@@ -276,56 +272,25 @@ re-open or re-mutate.
 
 ### 3.4 Locks and exclusivity
 
-`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:agent-lens`,
-`/ztn:content` (when writing — `--maintain` / `--draft`) and `/ztn:roles`
-are mutually
-exclusive (cross-skill lock matrix in their SKILL.md); `/ztn:content` matters
-because its maintainer reads `CONTENT_MAP.md` while `/ztn:maintain` rewrites it.
-`/ztn:roles` holds `.roles.lock` across its whole tick because roles write into
-the base like any pipeline — without it a concurrent lint autofix is attributed
-to the running role and reverted by the guard. The reverse duty falls on the
-role: it must not invoke a pipeline skill mid-run, since each aborts on the lock
-its own runner holds. The owner-driven role skills stay out of the matrix:
-`/ztn:role:list` and `/ztn:role:ask` are read-only and take no lock;
-`/ztn:role:add` and `/ztn:role:edit` take `.roles.lock` narrowly and release it
-in a `finally`, each around its own write to `role.md` — so an owner
-conversation never holds it and never lands inside a tick. Neither wraps a
-trial run: `add`'s trial is `/ztn:roles --role {id}`, which takes the lock
-itself, and a caller still holding it would deadlock the skill against its own
-gate.
-`/ztn:bootstrap` is not in the matrix — owner ensures system idle before
-invoking it. `/ztn:capture-candidate` is fire-and-forget, no lock.
-`/ztn:agent-lens-add` does not acquire its own lock but respects
-`/ztn:agent-lens`'s lock at pre-flight (registry would race) and uses
-concurrent-edit detection (snapshot + re-validate) to defend against
-parallel owner-driven invocations of itself.
-`/ztn:resolve-clarifications` runs in two modes — owner-driven
-interactive and `--auto-mode` dispatched by `/ztn:lint` Step 7.5
-inline (the lint nightly tick at 05:00 is the timer; resolve is the
-engine). Both modes take `.resolve.lock`. Interactive mode reads all
-six pipeline locks (process / maintain / lint / agent-lens / content /
-roles)
-at start
-and pre-syncs via `/ztn:sync-data` (Step 0) so multi-device queues
-stay current. **`--auto-mode` exception for `.lint.lock`:** lint holds
-its own lock during dispatch; treating that as competitor would
-deadlock the nightly chain. Auto-mode therefore proceeds when
-`.lint.lock` exists (proof of dispatcher), aborts silently on any
-other pipeline lock, and skips Step 0 pre-sync (the dispatcher
-already synced; lint's autofixes leave the working tree dirty so re-
-syncing would abort). Auto-mode also never writes
-`lens-resolution-history.jsonl` (engine never trains on engine —
-precedent only accretes from owner clicks in interactive mode).
-**Agent-lens runs as a separate nightly scheduler tick at 03:00**,
-not inside the lint tick — agent-lens production and resolve
-consumption stay in different scheduler-agent contexts on purpose,
-so the agent judging proposals in Step A.2/A.3 has not just produced
-lens body output (would be confirmation bias on its own emissions).
-All six pipeline skills read `.resolve.lock` at start and abort on
-it. `/ztn:sync-data` and `/ztn:save` read `.resolve.lock` and refuse
-while a resolve session is in progress; the resolve skill's Step 9.1
-releases the lock before reminding the owner to run save. Stale locks
-> 2 h are surfaced as warnings, never silently deleted.
+The six pipeline skills — `/ztn:process`, `/ztn:maintain`, `/ztn:lint`,
+`/ztn:agent-lens`, `/ztn:content` (when writing) and `/ztn:roles` — are mutually
+exclusive, and each also aborts on `.resolve.lock`. Owner-driven skills sit
+outside the matrix, each for its own reason — but sitting outside it is not
+permission to ignore it: `/ztn:save` and `/ztn:sync-data` take no lock of their
+own and read all seven, because a commit or a rebase moves the tree beneath
+whichever tick is running.
+
+**The matrix itself, lock by lock, is `SYSTEM_CONFIG.md → Cross-skill
+exclusion`** — which skill takes which lock, the `--auto-mode` exception for
+`.lint.lock`, and the nightly tick cadence. It is the one home; nothing restates
+it.
+
+The doctrinal part is why the matrix exists at all: a skill that writes into the
+base while another is mid-run corrupts a diff neither can see. That is also why
+a role must not invoke a pipeline skill from inside its own run — every pipeline
+aborts on the lock the role's own runner is holding. Stale locks > 2 h are
+surfaced as warnings, never silently deleted: a lock deleted on a guess is
+indistinguishable from no lock at all.
 
 ### 3.5 Logs and audit trail
 
@@ -461,12 +426,11 @@ by top-level `processor` field. It carries:
   `constitution.constitution_core_view`, `constitution.soul`)
   - Note: the universal `communication-baseline` (engine behavioral floor at
     `_system/docs/communication-baseline.md`) is part of the Tier-0 behavioral
-    contract an actor needs, but is NOT yet emitted — the owner's deltas reach
+    contract an actor needs, but is NOT emitted — the owner's deltas reach
     actors via `constitution_core_view`, the universal floor does not. When the
-    first actor consumer (OpenClaw / app agentic shell) exists, carry it via
-    `constitution.section_extras.communication_baseline` (a MINOR add). See
-    `platform/BRAIN-EVOLUTION.md` §4 carry-over 6. Deferred-not-dropped:
-    emitting it now, with no consumer, would be speculative plumbing.
+    first actor consumer exists, carry it via
+    `constitution.section_extras.communication_baseline` (a MINOR add).
+    Deferred-not-dropped: emitting it with no consumer is speculative plumbing.
 - Privacy trio per entity: `origin`, `audience_tags`, `is_sensitive`
   (defaults `personal / [] / false`)
 - Format version (`format_version: "MAJOR.MINOR"`) for evolution
@@ -505,21 +469,19 @@ change to integrate. The contract is engine-level, not skill-level.
   `/ztn:maintain` Step 7.9. It is therefore NOT emitted in the maintain
   manifest's `hubs.updated[]` (which tracks concept-cluster hubs touched by
   Step 4 thread-linkage, not this post-loop owner-data projection). A
-  downstream consumer (the future "Your Mind" / DEC-3 screen) projects the
-  hub itself from the principles it already receives — but `cognitive_axes`
-  is not yet carried on `constitution.principles` in the manifest. When the
-  first such consumer exists, add `cognitive_axes` to the principle emission
-  (a MINOR add via `section_extras`). Deferred-not-dropped, same posture as
-  carry-over 6: emitting it now, with no consumer, is speculative plumbing.
+  downstream consumer projects the hub itself from the principles it already
+  receives — but `cognitive_axes` is not carried on `constitution.principles`
+  in the manifest. When the first such consumer exists, add it to the principle
+  emission (a MINOR add via `section_extras`). Same posture as the
+  communication-baseline note above.
 
 > **Canonical schema:** `_system/docs/manifest-schema/v{N}.json` (this
 > repo). Reference doc + consumer integration patterns:
 > `_system/docs/manifest-schema/README.md`. Defence-in-depth lint:
 > `/ztn:lint` Scan H validates every recent batch against the schema
 > and surfaces violations as CLARIFICATIONs (never silently rewrites
-> — manifests are append-only). For one specific downstream consumer's
-> design, see `strategy/ARCHITECTURE.md` §5+ in the minder-project
-> repo; the manifest contract itself is consumer-agnostic.
+> — manifests are append-only). The contract is consumer-agnostic: no
+> engine doc depends on any one consumer's design to be readable.
 
 ### 3.9 Cross-platform — Windows + macOS + Linux (HARD RULE)
 
@@ -599,7 +561,8 @@ buffers) take the writer named here.
 | `_system/SOUL.md` | owner (manual) + `/ztn:bootstrap` (draft) + `regen` (Values zone) | Identity, values, focus, working style |
 | `_system/TASKS.md`, `CALENDAR.md` | `/ztn:process` (derived aggregates; owner owns only the TASKS `## Stale` section) | Aggregated views over note `- [ ]` / `📅` items |
 | `_system/POSTS.md` | owner | Operational layer |
-| `_system/registries/{TAGS,SOURCES}.md` | `/ztn:maintain`, `/ztn:lint` | Tag and source whitelists |
+| `_system/registries/TAGS.md` | `render_tags.py` only (via `/ztn:maintain` Step 7.10 and `regen_all.py`) | Census of the `tags:` axis — managed zone regenerated, never hand-written |
+| `_system/registries/SOURCES.md` | `/ztn:source-add` (rows), `/ztn:lint` (`## Deprecated Sources`) | Inbox source whitelist |
 | `_system/state/OPEN_THREADS.md` | `/ztn:bootstrap`, `/ztn:maintain`, `/ztn:resolve-clarifications` | Strategic open threads (`## Active` opened by maintain / resolve; `/ztn:process` context-only) |
 | `_system/state/CLARIFICATIONS.md` | every skill | Owner-gated resolution queue |
 | `_system/state/principle-candidates.jsonl` | `/ztn:capture-candidate`, `/ztn:bootstrap`, `/ztn:lint` (F.5 archive) | Append-only principle buffer |
@@ -657,7 +620,7 @@ If those three transmission paths drift, the engine drifts.
 | System contract, schemas, hard rules | `_system/docs/SYSTEM_CONFIG.md` |
 | Archive Contract (every archival event captures a reason — Forms A/B/C, enforcement) | `_system/docs/SYSTEM_CONFIG.md → ## Archive Contract` |
 | Documentation style (binding) | `_system/docs/CONVENTIONS.md` |
-| Architecture / multi-user planning | `_system/docs/ARCHITECTURE.md` |
+| Architecture as built — layers, rejected alternatives, system files | `_system/docs/ARCHITECTURE.md` |
 | Constitution protocol (axiom / principle / rule schema, scope, evolution ladder) | `0_constitution/CONSTITUTION.md` |
 | Folder routing | `_system/registries/FOLDERS.md` |
 | Inbox source whitelist | `_system/registries/SOURCES.md` |

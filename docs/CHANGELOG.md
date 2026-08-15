@@ -2,6 +2,95 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.62.0 — The checks that kept telling you everything was fine now actually look
+
+An audit read every engine document against the code behind it. Almost every
+finding was the same shape: something promised, and nothing on the other end.
+None of it announced itself, because what was missing was never a file — it was
+an event that quietly stopped happening while every report still read clean.
+
+**Your tag registry is maintained again.** It said in its own header that the
+nightly integrator regenerated it. Nothing did, and nothing had since May: it
+claimed 448 tags while holding 490 rows, and went on counting names that no
+longer exist anywhere in your base. The index of your hubs had the same hole —
+it named a writer that had no step and no renderer, so when the nightly scan
+told you to regenerate it, the thing it told you to run did not exist. Both
+have a renderer now, and the hub one immediately found the hand-kept index
+disagreeing with the hubs it indexes.
+
+**The freshness check no longer says you are up to date without looking.** In
+three of the four pipelines it loaded its own library from a path one level
+off, swallowed the failure, and reported your base current however far behind
+it actually was. A scan meant to catch un-integrated work had been returning
+nothing at all over a full corpus and reading as clean.
+
+**A retirement that lands in a hub map is now caught.** The scan that proves
+an identity change left nothing behind knew four ways to write a link and
+missed the fifth — the one with an escaped pipe, which is what every hub map
+this engine renders writes, and the most common link form in a mature base. It
+would have reported a hub map full of the old name as clean. Nothing in your
+base was affected; the check was simply narrower than the promise it made.
+
+**Origin is no longer guessed wrong in the unsafe direction.** The capture that
+watches for your principles claimed it could tell work from personal by itself.
+It cannot — and since only personal-origin candidates are eligible to merge
+into your constitution without you, the mistake pointed the wrong way. It now
+says what it actually knows.
+
+**Three files the identity work removed now actually leave your clone.** An
+update copies what the engine has and cannot express what it no longer has, so
+a deletion only reaches you when it is declared. These were not, which would
+have left every clone carrying the project-card template — the one shape the
+new contract abolished, still teaching it — beside a superseded scanner whose
+tests your test run kept collecting.
+
+## 0.61.0 — Renaming something no longer leaves half your notes pointing at the old name
+
+Projects get renamed. Two of them turn out to be one. A project turns out to
+have been a long personal arc all along. That happens, and it should — your
+view changes, and the base is supposed to follow.
+
+What did not follow was everything else. You could record the decision in the
+project registry and the registry would be right, while your notes went on
+naming the old thing: in their tags, in their links, in the folder holding a
+card for something that no longer exists. Only one of those places was ever
+checked, so the rest drifted quietly and nothing said a word.
+
+From this release a change of identity is one operation with a name, and the
+engine holds you to finishing it. Ask to retire or reclassify an identifier
+and every place naming it moves in the same sitting — and the registry entry
+is refused if anything is left behind. Not warned about. Refused.
+
+Four kinds are recognised, because they are not the same job: one thing
+merging into another, a plain rename, something staying alive but changing
+category, and an identifier that turned out to name nothing real. The last
+one has no successor, so its mentions are left frozen where they are rather
+than pointed somewhere false.
+
+Some things are deliberately never rewritten. Your meeting records keep their
+words, your transcripts and logs are left exactly as they were: an old name in
+something written last March is true about last March. What gets corrected is
+the classification the engine itself maintains, never the text you or anyone
+else actually said.
+
+Your own registries gain what they were missing. There is now somewhere to
+record a long-running arc that is not a project, and somewhere to record a
+retirement with who replaced it — before, neither had a home, so a decision
+had nowhere to live but your memory.
+
+And you are now a person in your own base. You were in almost every meeting
+and named in none of them, with no profile and no row, which meant checks
+could flag their own owner as a stray reference. Your profile is assembled
+from what your base already knows about you — your identity notes, the
+principles you actually operate by, the people around you — and it is not
+filled in with anything your files do not say. You are registered, but not
+auto-added to every note: you are in nearly all of them, so it is your
+absence that carries information.
+
+Nothing about this needs anything from you. If your base has drift already,
+the update leaves you a note about it and lets you decide, one identifier at
+a time.
+
 ## 0.60.1 — A hub can no longer be broken by the run that maintains it
 
 Found by reading a real nightly run rather than by a failing test.

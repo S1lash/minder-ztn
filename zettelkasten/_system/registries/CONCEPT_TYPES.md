@@ -30,10 +30,13 @@ truth. ZTN mirrors it for two reasons:
    `IDEA`, `GOAL` vs `VALUE`, `THEME` vs `IDEA`).
 2. **Drift detection.** The `mirror_of:` frontmatter pins this file
    to the upstream Java path. The python pipeline's parity test
-   (`test_common.py::TestConceptTypeMirror`) reads the Java enum at
-   test time and asserts both sets match — any divergence between
-   ZTN's mirror and Java surfaces as a CI failure on the next commit
-   that touches engine code.
+   (`test_common.py::TestConceptTypeMirror`) locates the Java enum by
+   filesystem glob at test time and asserts both sets match. It is a
+   **local** guard, not a CI one: the Java source is only reachable
+   where the Minder repo is checked out alongside this one, and the
+   test skips where it is not — so shared CI, and every friend's
+   clone, verify the shape-invariants (18 / 16 / descriptions cover
+   all) but never the mirror against Java itself.
 
 Owner does NOT edit this file; sync is upstream-only via manual
 re-mirror when Minder's enum changes (no auto-sync — owner makes the

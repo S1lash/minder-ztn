@@ -8,8 +8,8 @@ Two entry points:
   applies migrations in order, surfaces follow-ups (re-run install.sh,
   regen constitution view, run tests).
 - **`scripts/sync_engine.sh`** — non-interactive shell script (CI /
-  power users). Same manifest, no prompts. See «Routine sync (script)»
-  below.
+  power users). Same manifest, no prompts. See «Routine sync (script —
+  CI / power users)» below.
 
 ## One-time setup
 
@@ -53,12 +53,18 @@ What the script does:
    resolved upstream, and `integrations/VERSION` really moved to what
    upstream ships. A run that changed nothing is a broken run, not an
    up-to-date one, and the script refuses to print «done» over it.
-5. Runs any pending migrations through `scripts/run_migrations.py`,
+5. Removes the paths the manifest lists as `retired:`, through
+   `scripts/retire_paths.py`. A sync copies what upstream *has*; it
+   cannot express what upstream no longer has, so without this step a
+   module the engine deleted would sit on your clone forever. It only
+   ever deletes what the manifest names, and refuses outright if a
+   retired path falls inside owner space.
+6. Runs any pending migrations through `scripts/run_migrations.py`,
    which records every attempt in `.engine-migrations.jsonl` (commit
    it). Each migration declares its kind: a `structural` failure stops
    the update, a `heal` failure — a repair of existing data — is
    recorded and retried next time, never blocking.
-6. Prints a recap with the version delta.
+7. Prints a recap with the version delta.
 
 If you have local changes inside any engine path, the script aborts
 with `error: engine paths have uncommitted changes`. Commit or stash
@@ -119,10 +125,19 @@ touch:
   `6_posts/` — your knowledge notes (the PARA layout, except the
   README explainers).
 - `0_constitution/{axiom,principle,rule}/` — your personal principles.
-- `_system/SOUL.md`, `TASKS.md`, `CALENDAR.md`, `POSTS.md`, and the
-  registries (`PEOPLE.md`, `PROJECTS.md`, `TAGS.md`, `SOURCES.md`).
+- `_system/SOUL.md`, `long-form-playbook.md`, `TASKS.md`,
+  `CALENDAR.md`, `POSTS.md`, and the registries (`PEOPLE.md`,
+  `PROJECTS.md`, `TAGS.md`, `SOURCES.md`, `AUDIENCES.md`,
+  `DOMAINS.md`) — each seeded once from its `.template` sibling and
+  yours from then on.
 - `_system/state/` and `_system/views/` — runtime state, regenerated
   by skills.
+- `_system/roles/<id>/` — your roles, their state and their logs
+  (the `_`-prefixed engine files beside them *are* pulled).
+
+The authoritative list is `.engine-manifest.yml`: `engine:` is what a
+sync overwrites, `template:` is what it seeds once and never touches
+again, `exclude:` never ships at all.
 
 If you ever want to reset a `template:` file back to the upstream seed
 (e.g. you blew up `SOUL.md`), do it manually:

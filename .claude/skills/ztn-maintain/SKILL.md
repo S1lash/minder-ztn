@@ -43,6 +43,9 @@ owner-LLM contract), `_system/docs/batch-format.md`,
 linkage and tier-promote judgements against principle 3 Connection
 Awareness, principle 4 Cross-Domain Permeability, principle 7 People).
 
+**Working directory:** the zettelkasten base. Every path and every `python3`
+command in this file is written relative to it.
+
 **Documentation convention:** при любых edits этого SKILL соблюдай `_system/docs/CONVENTIONS.md` — файл описывает current behavior без version/phase/rename-history narratives.
 
 ## Arguments
@@ -76,7 +79,10 @@ if git remote get-url origin >/dev/null 2>&1; then
   # `git_current_branch` (scripts/lib/git.sh) — NOT `rev-parse --abbrev-ref`,
   # which exits 0 and prints the literal string `HEAD` when HEAD is detached,
   # making the comparison ref `origin/HEAD` and the count meaningless.
-  . scripts/lib/git.sh 2>/dev/null || true
+  # Sourced by repo-root path: the run's cwd is the zettelkasten base, one
+  # level below, so a bare `scripts/lib/git.sh` silently resolves to nothing
+  # and leaves the whole check inert.
+  . "$(git rev-parse --show-toplevel)/scripts/lib/git.sh" 2>/dev/null || true
   branch=$(git_current_branch 2>/dev/null || true)
   if [ -n "$branch" ]; then
     remote_ahead=$(git rev-list --count "HEAD..origin/${branch}" 2>/dev/null || echo 0)
@@ -107,15 +113,12 @@ proceeds like any other unavailable-signal case.
 
 **FIRST action — before lock, before context loading.**
 
-**0. Cross-skill lock check.** Read all seven lock files:
-- `_sources/.processing.lock` — exists → abort «`/ztn:process` running, try again later»
-- `_sources/.lint.lock` — exists → abort «`/ztn:lint` running, try again later»
-- `_sources/.agent-lens.lock` — exists → abort «`/ztn:agent-lens` running, try again later»
-- `_sources/.content.lock` — exists → abort «`/ztn:content` running, try again later»
-- `_sources/.resolve.lock` — exists → abort «`/ztn:resolve-clarifications` running, try again later»
-- `_sources/.maintain.lock` — exists → abort «another `/ztn:maintain` run in progress»
-
-All seven skills mutually exclusive. Stale lock (>2 hours) → warn, offer manual removal, do NOT auto-delete.
+**0. Cross-skill lock check.** Read every pipeline lock under `_sources/` and
+abort on any that exists, with «`{holder}` running, try again later» — or, for
+this skill's own `.maintain.lock`, «another `/ztn:maintain` run in progress».
+The lock set is owned whole by `_system/docs/SYSTEM_CONFIG.md` → «Cross-skill
+exclusion»; read it there rather than keeping a second copy that drifts. Stale
+lock (>2 hours) → warn, offer manual removal, do NOT auto-delete.
 
 1. Read `_system/state/BATCH_LOG.md` — all rows.
 2. Read `_system/state/log_maintenance.md` — grep for entries matching
@@ -200,9 +203,8 @@ after Step 7 completes.
 2. Parse YAML frontmatter. Required keys: `batch_id`, `timestamp`, `processor`,
    `format_version`, `sources`, `records`, `notes`, `tasks`, `events`,
    `threads_opened`, `threads_resolved`, `clarifications_raised`,
-   `people_candidates_appended` (added 2026-04-24; batches produced before
-   that date do not carry this key — treat missing as 0, no warning, no
-   `batch-version-unknown` escalation).
+   `people_candidates_appended` (optional — a batch without this key is read
+   as 0: no warning, no `batch-version-unknown` escalation).
 3. Parse body sections by `## Heading` markers (per `_system/docs/batch-format.md` §Sections).
 
 ### Malformed handling (best-effort, never hard-fail)
@@ -513,10 +515,9 @@ subagent) — in both inbox-scan and `--reprocess-corpus` modes.
 python3 _system/scripts/build_concept_registry.py
 ```
 
-No tunables — single flat registry sorted by mentions descending.
-The matcher subagent in `/ztn:process` Step 3.4.5 loads the entire
-file (Sonnet handles it cheaply), so historical Top/Tail splits and
-threshold knobs were dropped as substrate noise.
+No tunables — single flat registry sorted by mentions descending. The
+matcher subagent in `/ztn:process` Step 3.4.5 loads the entire file
+(Sonnet handles it cheaply).
 
 The script is deterministic, idempotent, and pure — no LLM. It walks
 `_records/{meetings,observations}/`, PARA folders, `5_meta/mocs/`,
@@ -752,8 +753,8 @@ Proceed to next batch or, if this was the last, exit the loop.
 
 Alongside `log_maintenance.md`, emit a machine-parseable JSON
 manifest of this maintain batch's state changes. Schema:
-`minder-project/strategy/ARCHITECTURE.md` §4.5 with
-`processor: "ztn:maintain"`. Top-level: `batch_id` (matches the
+`_system/docs/manifest-schema/v{N}.json` (reference doc:
+`manifest-schema/README.md`) with `processor: "ztn:maintain"`. Top-level: `batch_id` (matches the
 upstream /ztn:process batch_id this maintain run integrated),
 `timestamp` (this maintain iteration's UTC start),
 `format_version: "2.1"`, `processor: "ztn:maintain"`, plus the
@@ -1076,7 +1077,8 @@ files are modified.
   the record's `created:` frontmatter or file mtime fallback).
 - The active constitution tree, via
   `python3 _system/scripts/query_constitution.py --compact`
-  (filtered to the current context; `personal` by default).
+  (visible active principles; `--consumer` defaults to `claude-code`,
+  archived and placeholder excluded).
 - The current candidate buffer `_system/state/principle-candidates.jsonl`
   for dedupe.
 
@@ -1109,9 +1111,16 @@ files are modified.
        --suggested-type principle \
        --suggested-domain <inferred-domain-or-unknown> \
        --origin personal \
+       --captured-by ztn:maintain \
        --session-id "maintain-$(date -u +%Y-%m-%d)" \
        --record-ref "[[<most-recent-record-id-of-group>]]"  # any record kind: meeting or observation
    ```
+
+   `--captured-by ztn:maintain` is not decoration: `captured_by` is read at
+   F.5 promotion, and a line this step appended while claiming to come from
+   an in-the-moment capture is a line whose promotion is judged on the wrong
+   evidence. The flag defaults to `ztn:capture-candidate`, so every producer
+   other than that skill names itself.
 
    `suggested_type: principle` is the default — recurring rationale
    rarely qualifies as `axiom` (too fundamental) or `rule` (too
@@ -1311,8 +1320,13 @@ domain hubs) are skipped — their maps stay hand-curated.
 **Invocation.**
 
 ```bash
-python3 _system/scripts/render_hub_maps.py --root . --apply
+python3 _system/scripts/render_hub_maps.py --apply
 ```
+
+Pass no `--root`: the default resolves the base from the script's own
+location, so the command is correct from any working directory. `--root .`
+is only correct when the cwd happens to be the base — from anywhere else it
+scans an empty tree, reports `hubs_total: 0`, exits 0 and reads as clean.
 
 The script is deterministic, idempotent, and pure — no LLM. Re-running
 on unchanged source data yields zero file modifications.
@@ -1324,8 +1338,8 @@ stderr. Capture both for the run report.
 
 **First-run behaviour.** When a hub has no AUTO-GENERATED markers yet,
 the script replaces the existing `## Хронологическая карта` section
-in-place (anchor-based replacement). This is the migration path for
-hubs that pre-date ARCH-B. Subsequent runs use the markers directly.
+in-place (anchor-based replacement, `replace_mode:
+inserted-from-legacy`). Subsequent runs use the markers directly.
 
 **Failure mode.** Same as Step 4.5: surface `derived-hub-map-failed`
 to log_maintenance.md with stderr captured; continue the rest of the
@@ -1410,11 +1424,95 @@ state.
 
 ---
 
+## Step 7.10: Tag Registry Render
+
+Regenerate the managed zone of `_system/registries/TAGS.md` — the census of the
+`tags:` axis. One table per namespace (`category/value` → `category`) with a use
+count per tag, plus the totals. A **pure projection** over `tags:` frontmatter
+across the knowledge layer: every `*.md` except `_records/`, `_sources/`,
+`_system/`, `0_constitution/` and `6_posts/`, minus `*.template.md` engine seeds
+and symlinks. The registry holds no truth of its own — retire an identifier and
+its row drops off on the next run.
+
+Tags are counted as literal labels. Convention drift (`cat/sub` vs `cat-sub`) is
+surfaced by the census, never silently merged. A tag repeated inside one note's
+`tags:` list counts once — a use is a note, not a mention.
+
+**Invocation.**
+
+```bash
+python3 _system/scripts/render_tags.py
+```
+
+Deterministic, idempotent, pure — no LLM. Writes ONLY between the registry's
+`<!-- AUTO-GENERATED: tag-registry -->` markers; the preamble with its
+three-axis table and the `## Notes` section are owner-owned and never touched.
+Re-running on unchanged source performs **no write at all**. Prints a JSON line
+`{"ok", "changed", "unique_tags", "total_uses", "namespaces", "notes_scanned"}`
+to stdout — capture it for the Step 8 log entry.
+
+**First-run behaviour.** On a registry that has no markers yet, the region from
+the `**Total unique tags:**` line to the `## Notes` heading is the generated
+region and is replaced by the marked zone. Subsequent runs use the markers.
+
+**Failure mode.** A missing registry, or a registry with neither markers nor the
+totals anchor → the script prints `{"ok": false, "changed": false, "reason": ...}`
+and exits 0 (best-effort, like Step 7.7/7.8/7.9). Surface
+`tag-registry-render-skipped` to log_maintenance.md with the reason and continue;
+the registry stays in its last good state.
+
+---
+
+## Step 7.11: HUB_INDEX Render
+
+Regenerate the managed zone of `_system/views/HUB_INDEX.md` — the registry of
+every hub file on disk, grouped by `status:`. A **pure projection** over
+`5_meta/mocs/hub-*.md` frontmatter (minus `*.template.md` engine seeds and
+symlinks): `id`, `title` (leading `Hub: ` stripped), `hub_kind`, `modified`,
+`related_notes`, `domains`, `people`. A field a hub does not carry renders as
+`—`; the renderer never invents one and never carries a stale value forward.
+
+This is the rebuild that `/ztn:lint` A.6.2 (`hub-index-incomplete`) sends the
+owner to, and the counterpart of `/ztn:process` §4.3's additive append: create a
+hub mid-run and its row appears immediately; everything else about the index is
+reconciled here.
+
+`active`, `dormant` and `resolved` sections render whether or not any hub is in
+that state. Any other status found on disk gets its own section, so no hub can
+fall out of the index.
+
+**Invocation.**
+
+```bash
+python3 _system/scripts/render_hub_index.py
+```
+
+Deterministic, idempotent, pure — no LLM. Writes ONLY between the view's
+`<!-- AUTO-GENERATED: hub-index -->` markers; the `## Cross-link state` section
+below them is owner-curated rationale and is never touched. Re-running on
+unchanged source performs **no write at all**. Prints a JSON line
+`{"ok", "changed", "hub_count", "sections"}` to stdout — capture it for the
+Step 8 log entry.
+
+**First-run behaviour.** On a view that has no markers yet, everything between
+the `# Hub Index` heading and the `## Cross-link state` heading (or EOF) is the
+generated region and is replaced by the marked zone. Subsequent runs use the
+markers.
+
+**Failure mode.** A missing view, or a view with neither markers nor the
+`# Hub Index` heading → the script prints
+`{"ok": false, "changed": false, "reason": ...}` and exits 0 (best-effort, like
+Step 7.7/7.8/7.9/7.10). Surface `hub-index-render-skipped` to log_maintenance.md
+with the reason and continue; the view stays in its last good state.
+
+---
+
 ## Step 8: Patch last-batch log_maintenance.md entry with regen + pattern-detect confirmation
 
 The per-batch entries were written in Step 6.5 with
 `CURRENT_CONTEXT.md: pending` and `INDEX.md: pending`. After Step 7,
-Step 7.5, Step 7.6, Step 7.7, Step 7.8, and Step 7.9 complete successfully:
+Step 7.5, Step 7.6, Step 7.7, Step 7.8, Step 7.9, Step 7.10, and Step 7.11
+complete successfully:
 
 1. Locate the log_maintenance.md entry for the **last batch** of this run
    (highest batch_id processed).
@@ -1432,6 +1530,13 @@ Step 7.5, Step 7.6, Step 7.7, Step 7.8, and Step 7.9 complete successfully:
    `; dropped {N} unknown slug(s): {principle_id:slug, …}` so the typo is visible
    without waiting for the nightly lint. If Step 7.9 was skipped, write
    `hub-cognitive-model.md: skipped ({reason})`.
+6. Append the Step 7.10 tag-registry render result:
+   `TAGS.md: {changed|no-change} ({U} unique tags, {T} uses, {N} namespaces
+   over {S} notes)`. If Step 7.10 was skipped, write
+   `TAGS.md: skipped ({reason})`.
+7. Append the Step 7.11 hub-index render result:
+   `HUB_INDEX.md: {changed|no-change} ({N} hubs; {status}: {n}, …)`. If Step
+   7.11 was skipped, write `HUB_INDEX.md: skipped ({reason})`.
 
 Earlier batches in the run retain their `pending` notes — readable as
 «covered by the last batch's regen», consistent with invariant that regen
@@ -1599,9 +1704,10 @@ These are structural invariants maintain guarantees:
    log_maintenance.md entry written with zeroed counters. CURRENT_CONTEXT
    and INDEX regen still run post-loop (fresh timestamp even if state
    didn't change).
-9. **Existing threads in the legacy flat format handled gracefully** — threads
-   created by bootstrap without `Related Tasks` or `hub:` fields do not cause
-   errors. Corresponding closure signals are excluded from scoring (Step 5).
+9. **Threads without the optional fields handled gracefully** — a thread
+   carrying no `Related Tasks` or `hub:` field (bootstrap writes them that way)
+   does not cause errors. Its missing closure signals are excluded from scoring
+   (Step 5).
 
 ---
 

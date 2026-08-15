@@ -74,6 +74,10 @@ This mirrors `/ztn:process` convention («язык контента = язык
 conversation tone). All ZTN skills follow the same shape: user-facing
 in user's language, machine state in English.
 
+**Working directory:** the zettelkasten base. Every path and every `python3`
+command in this file is written relative to it; `scripts/` (the shared shell
+libraries) sits one level above, at the repo root.
+
 **Documentation convention:** при любых edits этого SKILL соблюдай
 `_system/docs/CONVENTIONS.md` — файл описывает current behavior без
 version/phase/rename-history narratives.
@@ -138,7 +142,10 @@ if git remote get-url origin >/dev/null 2>&1; then
   # `git_current_branch` (scripts/lib/git.sh) — NOT `rev-parse --abbrev-ref`,
   # which exits 0 and prints the literal string `HEAD` when HEAD is detached,
   # making the comparison ref `origin/HEAD` and the count meaningless.
-  . scripts/lib/git.sh 2>/dev/null || true
+  # Sourced by repo-root path: the run's cwd is the zettelkasten base, one
+  # level below, so a bare `scripts/lib/git.sh` silently resolves to nothing
+  # and leaves the whole check inert.
+  . "$(git rev-parse --show-toplevel)/scripts/lib/git.sh" 2>/dev/null || true
   branch=$(git_current_branch 2>/dev/null || true)
   if [ -n "$branch" ]; then
     remote_ahead=$(git rev-list --count "HEAD..origin/${branch}" 2>/dev/null || echo 0)
@@ -219,15 +226,11 @@ since most lenses have weekly+ cadence).
 
 ### 0.2 Cross-skill lock check (HARD contract — symmetric mutual exclusion)
 
-Read all seven lock files in order:
-1. `_sources/.processing.lock` — exists → abort с `"/ztn:process running, try again later"`
-2. `_sources/.maintain.lock` — exists → abort с `"/ztn:maintain running, try again later"`
-3. `_sources/.lint.lock` — exists → abort с `"/ztn:lint running, try again later"`
-4. `_sources/.content.lock` — exists → abort с `"/ztn:content running, try again later"`
-5. `_sources/.resolve.lock` — exists → abort с `"/ztn:resolve-clarifications running, try again later"`
-6. `_sources/.agent-lens.lock` — exists → abort с `"another /ztn:agent-lens run in progress"`
-
-All six skills mutually exclusive (matches doctrine §3.4).
+Read every pipeline lock under `_sources/` and abort on any that exists,
+with `"{holder} running, try again later"` — or, for this skill's own
+`.agent-lens.lock`, `"another /ztn:agent-lens run in progress"`. The lock
+set is owned whole by `_system/docs/SYSTEM_CONFIG.md` → «Cross-skill
+exclusion»; read it there rather than keeping a second copy that drifts.
 
 Stale lock (>2h old, parse ISO timestamp from file content) → warn,
 report PID if present, **offer manual removal, do NOT auto-delete.**
@@ -584,6 +587,13 @@ the schema branches: `_common.frontmatter_closed_before_body(path)` must be True
 validator **Fail** (save to rejected, do not write to `_system/agent-lens/`) — never
 ship an unparseable observation file. Deterministic, no LLM.
 
+The fence check above is the only part backed by a helper. The schema
+branches below ship no validator script — the runner performs them itself
+against `_frame.md` §«Stage 3 — Validator (structural, deterministic)», so
+«deterministic» describes the rules, not an enforcing process. Nothing
+downstream re-checks a shipped observation file; a branch skipped here is a
+branch that never ran.
+
 Then apply the branch matching the lens's `output_schema`:
 
 - `output_schema: standard` → full canonical-schema validation
@@ -660,7 +670,8 @@ notes.
 
 ## Step 5.95 — Emit batch manifest (universal contract)
 
-Per ENGINE_DOCTRINE §3.8 and ARCHITECTURE.md §8.11.1, every ZTN engine
+Per ENGINE_DOCTRINE §3.8 and the canonical schema at
+`_system/docs/manifest-schema/v{N}.json`, every ZTN engine
 skill that produces persistent state changes emits a JSON manifest at
 `_system/state/batches/{batch_id}-{skill}.json`. The
 `agent-lens-runs.jsonl` log stays as audit trail, but downstream
@@ -744,6 +755,27 @@ codes per `emit_batch_manifest.py` docstring; treat exit 3 the same
 way `/ztn:process` does — surface as a `process-compatibility`
 CLARIFICATION ONLY if root cause cannot be auto-corrected in the
 accumulator assembly.
+
+**Then verify what actually landed — in this tick, not tonight.**
+
+```bash
+python3 _system/scripts/lint_manifest_schema.py \
+    --batches-dir _system/state/batches --schemas-dir _system/docs/manifest-schema --all \
+  | grep '"batch": "{batch_id}-agent-lens.json"'
+```
+
+A `"kind": "violation"` line here means the file on disk does not honour the
+manifest contract. Treat it exactly as an emitter `exit 3`: the manifest is not
+valid, so surface it in the run report and in `log_agent_lens.md`, and leave the
+observation files and `agent-lens-runs.jsonl` entries alone (see failure
+semantics below — the observations are the authoritative artefact).
+
+This check exists because the emitter can only refuse what it is given. A tick
+that assembles the JSON and writes it to `batches/` **without invoking the
+emitter** bypasses every guarantee above, and the only thing that notices is the
+nightly lint — a full day later, on a manifest a downstream consumer may already
+have read. Verifying the artefact rather than trusting the procedure closes that
+gap whatever its cause. Same check, same shape, as `/ztn:maintain` Step 6.6.
 
 **Failure semantics:** if the JSON write fails, KEEP the
 `agent-lens-runs.jsonl` entries already written and the

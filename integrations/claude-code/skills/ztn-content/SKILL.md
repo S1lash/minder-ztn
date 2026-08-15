@@ -34,13 +34,18 @@ publishes manually (Telegram / LinkedIn — a separate vector, out of scope).
 
 ---
 
+**Working directory:** the zettelkasten base. Every path and every `python3`
+command in this file is written relative to it; `scripts/` (the scheduler
+helpers) sits one level above, at the repo root.
+
 ## Cross-skill lock (writing modes only)
 
 `--maintain` and `--draft` write owner data (drafts + ledger) and read
 `CONTENT_MAP.md` while `/ztn:maintain` Step 7.8 may be rewriting it. So at the
-start of a writing run, read the pipeline locks under `_sources/`
-(`.processing.lock`, `.maintain.lock`, `.lint.lock`, `.agent-lens.lock`,
-`.resolve.lock`) — abort if any is recent (<2h) — then acquire `.content.lock`
+start of a writing run, read every pipeline lock under `_sources/` (the set is
+owned whole by `_system/docs/SYSTEM_CONFIG.md` → «Cross-skill exclusion»; read
+it there rather than keeping a second copy that drifts) — abort if any is
+recent (<2h) — then acquire `.content.lock`
 (touch it), and remove it when done. The default **status** mode is read-only and
 takes no lock. (Scheduler ticks run `lock-check.sh` before invoking the skill;
 this guard also covers interactive runs.)
@@ -225,8 +230,8 @@ entry), do NOT overwrite and do NOT trust it as pristine — you cannot prove th
 owner hasn't edited it since. Adopt it **conservatively as `owner-editing`**
 (`owner_touched: true`, `last_auto_hash` = its current hash) so the maintainer
 only flags it thereafter, never rewrites. This loses no owner edit. On a large
-first run (cold-start) this resumability is the safeguard the old top-N cap used
-to provide.
+first run (cold-start) resumability is the whole safeguard — there is no cap
+behind it.
 
 ### Self-surface
 

@@ -20,6 +20,11 @@ Process new source files from `_sources/inbox/` into the ZTN three-layer archite
 **Philosophy:** Inclusion-biased. Better to over-capture than to miss a fact.
 Per-batch full-pipeline subagent (Step 3) + producer self-review (Step 3.7) guarantee trustworthiness.
 
+**Working directory: the zettelkasten base.** Every path in this SKILL — reads,
+writes, and the `python3 _system/scripts/…` invocations — is relative to it. A
+path prefixed `zettelkasten/` is a *repo-relative value written into a file* (the
+PROCESSED.md note column, §3.9), never a path to open.
+
 **Documentation convention:** при любых edits этого SKILL соблюдай `_system/docs/CONVENTIONS.md` — файл описывает current behavior без version/phase/rename-history narratives.
 
 > **Schema expectations.** Skill polagaется на наличие системных файлов: `SOUL.md`,
@@ -85,7 +90,7 @@ Per-batch full-pipeline subagent (Step 3) + producer self-review (Step 3.7) guar
 
 A single flag that re-routes the same pipeline at four well-defined points
 so that the historical corpus can be re-extracted for `concepts:` (and
-`domain_corrections[]`) without recreating any record or knowledge note.
+`domain_resolutions[]`) without recreating any record or knowledge note.
 Reuses every other guarantee of `/ztn:process` — the same matcher
 subagent, the same registry-aware vocabulary, the same batch manifest
 emission with `concepts.upserts[]` carrying types.
@@ -113,7 +118,7 @@ mental model.
 | Step 3.3 Semantic Context Loading | Same as default mode (hubs / related notes loaded for matcher grounding). |
 | Step 3.4 LLM Classification | **Unchanged.** All 16 questions still run; Q15 (concepts) and Q16 (privacy) carry the load. Q1-Q14 outputs are accepted but not consumed by Step 3.5 in this mode (they remain available to the manifest for completeness). |
 | Step 3.4.5 Concept Matcher Subagent | **Unchanged.** Sees the populated CONCEPTS.md, prefers existing canonical names verbatim, coins new ones with type assignment. Idempotent on a clean state. |
-| Step 3.5 Create Outputs | **Branch:** UPDATE existing files. For each note, replace the `concepts:` array verbatim with the matcher output (post-`normalize_concept_name`). Apply `domain_corrections[]` (`drop` / `remap` per the same contract). Preserve every other frontmatter field verbatim; never touch the body. NO new records, NO new knowledge notes, NO hub creation, NO `Evidence Trail` mutation. |
+| Step 3.5 Create Outputs | **Branch:** UPDATE existing files. For each note, replace the `concepts:` array verbatim with the matcher output (post-`normalize_concept_name`). Apply `domain_resolutions[]` (`drop` / `remap` per the same contract). Preserve every other frontmatter field verbatim; never touch the body. NO new records, NO new knowledge notes, NO hub creation, NO `Evidence Trail` mutation. |
 | Step 3.6 Structural Verification | Runs the same checks against the updated frontmatter. |
 | Step 3.7 Self-Review | Skipped. Self-review's coverage manifest assumes new extraction; reprocess re-uses prior atomization decisions. |
 | Step 3.7.5 Constitution Alignment | Skipped (extraction-time concern). |
@@ -144,8 +149,7 @@ because it sees the current registry). Owner reviews; the buffer makes
 the decision recoverable.
 
 **Lock matrix.** Reprocess-corpus takes the same `_sources/.processing.lock`
-as default mode. Mutually exclusive with `/ztn:maintain`, `/ztn:lint`,
-`/ztn:agent-lens` (matrix unchanged).
+as default mode, and reads the same seven lock files (see **Concurrency Lock**).
 
 ---
 
@@ -165,7 +169,10 @@ if git remote get-url origin >/dev/null 2>&1; then
   # `git_current_branch` (scripts/lib/git.sh) — NOT `rev-parse --abbrev-ref`,
   # which exits 0 and prints the literal string `HEAD` when HEAD is detached,
   # making the comparison ref `origin/HEAD` and the count meaningless.
-  . scripts/lib/git.sh 2>/dev/null || true
+  # Sourced by repo-root path: the run's cwd is the zettelkasten base, one
+  # level below, so a bare `scripts/lib/git.sh` silently resolves to nothing
+  # and leaves the whole check inert.
+  . "$(git rev-parse --show-toplevel)/scripts/lib/git.sh" 2>/dev/null || true
   branch=$(git_current_branch 2>/dev/null || true)
   if [ -n "$branch" ]; then
     remote_ahead=$(git rev-list --count "HEAD..origin/${branch}" 2>/dev/null || echo 0)
@@ -225,10 +232,11 @@ Runs only when Early Exit Check found files to process.
 - `_sources/.lint.lock` — exists → abort «`/ztn:lint` running, try again later»
 - `_sources/.agent-lens.lock` — exists → abort «`/ztn:agent-lens` running, try again later»
 - `_sources/.content.lock` — exists → abort «`/ztn:content` running, try again later»
+- `_sources/.roles.lock` — exists → abort «`/ztn:roles` tick running, try again later»
 - `_sources/.resolve.lock` — exists → abort «`/ztn:resolve-clarifications` running, try again later»
 - `_sources/.processing.lock` — exists → abort «another `/ztn:process` run in progress»
 
-All seven skills mutually exclusive.
+All seven skills mutually exclusive — the matrix is `_system/docs/SYSTEM_CONFIG.md`.
 
 1. After cross-skill checks pass, create `_sources/.processing.lock` with content: `{ISO timestamp} — {session info}`
 2. On completion (success or failure): **DELETE** `_sources/.processing.lock`
@@ -319,7 +327,7 @@ BEFORE anything reads or references the path guarantees every downstream
 artefact (pre-scan briefing, `source:` frontmatter, `**Transcript:**`
 lines, PROCESSED.md, manifests) is born with the safe name — nothing ever
 needs rewriting. Spec: `_system/registries/SOURCES.md` →
-«Portable names».
+«Portable names (Windows compatibility)».
 
 Rules:
 
@@ -400,22 +408,22 @@ This guides context loading in Step 3.3 — load only relevant hubs, not all of 
 
 Read these system files (in parallel where possible):
 
-0. `zettelkasten/_system/docs/ENGINE_DOCTRINE.md` — operating philosophy (load FIRST; binding frame for every step). Cross-skill rules from §3 govern: surface-don't-decide, inclusion-bias-on-capture / curation-on-promotion, idempotency, the owner-LLM contract.
-1. `zettelkasten/_system/docs/SYSTEM_CONFIG.md` — note formats, routing rules, naming
-2. `zettelkasten/5_meta/PROCESSING_PRINCIPLES.md` — 8 principles + values profile
-3. `zettelkasten/_system/SOUL.md` — identity + current focus + working style (context only)
-4. `zettelkasten/_system/views/CURRENT_CONTEXT.md` — live state snapshot (context only)
-5. `zettelkasten/_system/state/OPEN_THREADS.md` — open strategic threads (context only)
-6. `zettelkasten/3_resources/people/PEOPLE.md` — people registry. Schema: `ID | Name | Role | Org | Profile | Tier | Mentions | Last`. Preserve all columns when writing
-7. `zettelkasten/1_projects/PROJECTS.md` — project registry
-8. `zettelkasten/_system/registries/TAGS.md` — tag registry (`tags:` namespace labels)
-9. `zettelkasten/_system/registries/CONCEPT_NAMING.md` — canonical concept-name format. **Autonomous-pipeline policy:** the engine resolves all concept-name format issues with deterministic heuristics — never raises CLARIFICATIONs, never blocks owner. `_system/scripts/_common.py::normalize_concept_name()` is the single source of truth: normalisation algorithm + drop-on-impossibility (returns `None` to signal skip when non-ASCII residue or empty-after-strip). For non-English source terms, translate semantically to English; if genuinely untranslatable, drop the entry rather than transliterate (transliteration splits graph identity).
-10. `zettelkasten/_system/registries/AUDIENCES.md` — `audience_tags` whitelist (canonical five + tenant Extensions). **Autonomous-pipeline policy:** unknown / non-canonical / non-whitelisted tags are silently dropped (entity stays `[]`, owner-only). Helper: `_system/scripts/_common.py::normalize_audience_tag()`. The fail-closed default (`[]`) is the right outcome on any uncertainty — false-positive sharing leaks; false-negative just keeps content owner-only.
-11. `zettelkasten/_system/registries/DOMAINS.md` — `domains:` (plural — notes / hubs / typed objects) and `domain:` (singular — constitution principles) whitelist (canonical thirteen ∪ tenant Extensions). **Autonomous-pipeline policy (cascade):** (1) deterministic normalisation via `_system/scripts/_common.py::normalize_domain()` (case + separator drift autofixes to canonical); (2) slash-syntax (`work/learning`, `personal/psychology`) is split via `expand_domain_entry()` and each part is filtered against the accept set independently — `work/learning` keeps both, `work/process` keeps `work` and drops `process`; (3) residuals that survive (1) and (2) but miss the whitelist enter the concept-matcher subagent (Step 3.4.5) which runs an LLM remap-or-judge pass and emits `domain_resolutions[]` with `keep | remap | drop | clarify`; (4) `clarify` verdicts surface as `domain-resolution` CLARIFICATIONs with the conservative default (drop the value). Canonical set lives in `ALLOWED_DOMAINS`. Domains answer "which life area" — keep them coarse and structural; concrete topics belong in `concepts:`, categorical buckets in `tags:`.
-12. `zettelkasten/_system/registries/SOURCES.md` — inbox source whitelist (consumed by Step 2.1)
-13. `zettelkasten/_system/views/HUB_INDEX.md` — hub index (if not loaded in Step 0)
-14. `zettelkasten/_system/state/PROCESSED.md` — already processed files
-15. `zettelkasten/_system/state/CLARIFICATIONS.md` — pending clarifications.
+0. `_system/docs/ENGINE_DOCTRINE.md` — operating philosophy (load FIRST; binding frame for every step). Cross-skill rules from §3 govern: surface-don't-decide, inclusion-bias-on-capture / curation-on-promotion, idempotency, the owner-LLM contract.
+1. `_system/docs/SYSTEM_CONFIG.md` — note formats, routing rules, naming
+2. `5_meta/PROCESSING_PRINCIPLES.md` — 8 principles + values profile
+3. `_system/SOUL.md` — identity + current focus + working style (context only)
+4. `_system/views/CURRENT_CONTEXT.md` — live state snapshot (context only)
+5. `_system/state/OPEN_THREADS.md` — open strategic threads (context only)
+6. `3_resources/people/PEOPLE.md` — people registry. Schema: `ID | Name | Role | Org | Profile | Tier | Mentions | Last`. Preserve all columns when writing
+7. `1_projects/PROJECTS.md` — project registry
+8. `_system/registries/TAGS.md` — `tags:` namespace labels. **Read-only:** its tables are an AUTO-GENERATED census `render_tags.py` derives from note frontmatter; nothing in this pipeline writes there
+9. `_system/registries/CONCEPT_NAMING.md` — canonical concept-name format. **Autonomous-pipeline policy:** the engine resolves all concept-name format issues with deterministic heuristics — never raises CLARIFICATIONs, never blocks owner. `_system/scripts/_common.py::normalize_concept_name()` is the single source of truth: normalisation algorithm + drop-on-impossibility (returns `None` to signal skip when non-ASCII residue or empty-after-strip). For non-English source terms, translate semantically to English; if genuinely untranslatable, drop the entry rather than transliterate (transliteration splits graph identity).
+10. `_system/registries/AUDIENCES.md` — `audience_tags` whitelist (canonical five + tenant Extensions). **Autonomous-pipeline policy:** unknown / non-canonical / non-whitelisted tags are silently dropped (entity stays `[]`, owner-only). Helper: `_system/scripts/_common.py::normalize_audience_tag()`. The fail-closed default (`[]`) is the right outcome on any uncertainty — false-positive sharing leaks; false-negative just keeps content owner-only.
+11. `_system/registries/DOMAINS.md` — `domains:` (plural — notes / hubs / typed objects) and `domain:` (singular — constitution principles) whitelist (canonical thirteen ∪ tenant Extensions). **Autonomous-pipeline policy (cascade):** (1) deterministic normalisation via `_system/scripts/_common.py::normalize_domain()` (case + separator drift autofixes to canonical); (2) slash-syntax (`work/learning`, `personal/psychology`) is split via `expand_domain_entry()` and each part is filtered against the accept set independently — `work/learning` keeps both, `work/process` keeps `work` and drops `process`; (3) residuals that survive (1) and (2) but miss the whitelist enter the concept-matcher subagent (Step 3.4.5) which runs an LLM remap-or-judge pass and emits `domain_resolutions[]` with `keep | remap | drop | clarify`; (4) `clarify` verdicts surface as `domain-resolution` CLARIFICATIONs with the conservative default (drop the value). Canonical set lives in `ALLOWED_DOMAINS`. Domains answer "which life area" — keep them coarse and structural; concrete topics belong in `concepts:`, categorical buckets in `tags:`.
+12. `_system/registries/SOURCES.md` — inbox source whitelist (consumed by Step 2.1)
+13. `_system/views/HUB_INDEX.md` — hub index (if not loaded in Step 0)
+14. `_system/state/PROCESSED.md` — already processed files
+15. `_system/state/CLARIFICATIONS.md` — pending clarifications.
     Also scan **Resolved Archive** table: previously resolved name variants (e.g.,
     «Нуара» = Лара Громова, «Трафт» = Петров). Use these to auto-resolve
     transcription artifacts in new transcripts without re-creating ambiguities.
@@ -456,8 +464,9 @@ skill. Используются для лучшего понимания priorit
 > and contiguous along the timeline.
 
 Load `_system/registries/SOURCES.md` — the whitelist of inbox source types.
-SOURCES.md is the **only** place where source-specific behaviour lives; this
-SKILL never names individual source IDs.
+Every source-specific behaviour is declared there, in the row's columns; this
+SKILL branches on the columns (`Family`, `Layout`, `Skip Subdirs`), never on a
+source ID. Source IDs appear below only as illustrations of a column value.
 
 Iterate over rows in `## Active Sources` and `## Reserved Sources` (skip
 `## Deprecated Sources` rows entirely). For each row, scan `Inbox Path`
@@ -469,29 +478,11 @@ according to the row's `Layout` column:
 | `dir-per-item` | For every immediate subfolder of `Inbox Path`, pick exactly one file with this priority: (1) `transcript.md` if present, (2) the single `*.md` file in the subfolder otherwise. If multiple `*.md` files exist with no `transcript.md`, surface a `source-format-anomaly` CLARIFICATION (genuine ambiguity — picking the wrong file degrades downstream quality). Zero `*.md` → skip silently (empty subfolder). |
 | `dir-with-summary` | For every immediate subfolder of `Inbox Path`, pick exactly one file with this priority: (1) `transcript_with_summary.md` if present (combined raw+summary, see §3.1 delimiter contract), (2) `transcript.md` otherwise, (3) the single `*.md` file in the subfolder otherwise. A folder with no `*.md` at all is skipped silently (empty / partial export). A folder with multiple `*.md` files but no `transcript_with_summary.md` / `transcript.md` surfaces a `source-format-anomaly` CLARIFICATION (ambiguity). A folder that has BOTH `transcript_with_summary.md` and `transcript.md` never reads `transcript.md` — the combined file is canonical. |
 
-> **Naming tolerance — universal across all source-types.** Folders inside any
-> `_sources/inbox/{id}/` may be created by the owner manually (drag-drop, ad-hoc
-> capture) or by various producer tools (Claude Code `/ztn-recap`, voice recorders
-> exporting under different versions). The engine treats folder-name and
-> contained-filename layout as **best-effort hints**, not contracts. Concretely:
->
-> 1. A folder whose name doesn't parse against any of the patterns in §2.3 falls
->    back to file mtime silently — no CLARIFICATION. mtime is a safe lower bound
->    for chronological order (the file existed by then).
-> 2. A subfolder containing a single `*.md` with a non-canonical name (anything
->    other than `transcript.md` / `transcript_with_summary.md`) is taken as-is,
->    no CLARIFICATION. Owner-driven naming is a normal flow, not an anomaly.
-> 3. CLARIFICATIONs are reserved for cases where the engine would otherwise have
->    to **guess at the cost of quality**: multiple `*.md` files without a canonical
->    name (which file is the real transcript?), missing summary-delimiter inside
->    a file named `transcript_with_summary.md` (summary contract violation —
->    downstream consumers rely on it), or a folder name that parses but contradicts
->    obvious file metadata in a way mtime can't resolve.
->
-> Producer-controlled source-types (`plaud`, `garmin`) typically emit canonical
-> names; deviations may signal a producer bug but are still tolerated at the
-> processor level. The right place to catch producer drift is `/ztn:lint` heuristics
-> on the source itself, not the inbox scanner.
+> **Naming tolerance.** Folder names and contained filenames are best-effort
+> hints, never contracts — the engine never blocks on naming. The binding rules
+> (what falls back to mtime, what is taken as-is, and the three cases that do
+> earn a CLARIFICATION) are `_system/registries/SOURCES.md` →
+> «Naming tolerance (universal across all source-types)», already loaded above.
 
 For every layout, honour the row's `Skip Subdirs` column — any subdirectory
 whose name matches an entry in that comma-separated list is skipped without
@@ -613,9 +604,7 @@ SOURCES.md `Family` column before Step 3 dispatch:
 - `Family: recap` → reserved; falls back to `transcript` until the
   reserved branch ships.
 
-Default for rows lacking the `Family` column → `transcript`. Migration
-`scripts/migrations/002-sources-family-column.sh` populates the column
-on existing registries.
+Default for rows lacking the `Family` column → `transcript`.
 
 ### 2.5.1 Metric-day branch contract
 
@@ -677,7 +666,7 @@ For each file in the metric-day partition, in chronological order
 
 On the very first metric-day file processed for a source (when
 `_system/state/<family>/<source-id>/baselines.json` does not exist),
-the orchestrator emits an informational `<profile>-baseline-cold-start`
+`process_metric_day.run` emits an informational `<profile>-baseline-cold-start`
 CLARIFICATION (`biometric-baseline-cold-start` / `activity-baseline-cold-start`).
 Resolution: dismiss as resolved with note "expected cold-start". One-time
 per source, expected, not actionable.
@@ -784,6 +773,15 @@ subagent context, not summaries).
   - **Briefing (verbatim):** pre-scan results from Step 0 — PEOPLE.md,
     PROJECTS.md, HUB_INDEX.md, OPEN_THREADS, principle-candidates buffer
     state. Identical across all subagents in the same run.
+  - **Retired identifiers, as prohibitions (verbatim):** the orchestrator
+    turns every row of the registry's `## Retired Identifiers` and
+    `## Trajectories` sections into one imperative line — never a table the
+    subagent has to interpret. Retirement row → `never write project/{old}
+    or [[{old}]]; that identifier is retired — write {successor} instead`.
+    Trajectory row → `never put {id} in projects:; it is a trajectory — use
+    tags: [trajectory/{id}]`. Nothing to emit when both sections are empty.
+    Whole-identifier match only: a longer id that contains a retired one is
+    a different identity, left alone.
   - **Batch transcripts:** ordered list of absolute paths to source files
     in `_sources/processed/...`, in chronological order.
   - **Pipeline spec:** instruction to execute Steps 3.1–3.7 for every
@@ -914,39 +912,23 @@ Before classification, load relevant context for THIS specific transcript:
      Read frontmatter only — enough to count and detect evolution.
    - Purpose: detect evolution, avoid redundancy, enable accurate hub threshold checks
 
-4. **Resolve projects** against PROJECTS.md registry — **primary-topic semantic**.
+4. **Resolve projects** against the registry — **primary-topic semantic**.
 
-   `projects:` frontmatter array carries the record's **primary topic**, NOT
-   umbrella context, NOT peripheral relevance. Definition test:
+   For every project candidate the transcript suggests, **open
+   `1_projects/PROJECTS.md` and look the identifier up** — none of the three
+   outcomes is «write it anyway». Active project → eligible for `projects:`.
+   Trajectory, or consolidated / superseded → not eligible; route per the
+   retirement prohibitions in the briefing (§3.0.3). Absent from the registry
+   → do not invent a project id; carry the signal as `tags:` / `concepts:` /
+   `[[wikilink]]` and let Step 3.8 surface it.
 
-   > «If references to project X were removed from this record — would
-   > the record lose its core meaning?»
-   > — yes → primary, include in `projects:`
-   > — no → not primary; signal goes elsewhere (`tags: [project/X]` for
-   > umbrella context, `concepts:` for topical, `[[wikilink]]` for graph)
+   Which identifiers may occupy the axis at all is the Identity Contract in
+   `_system/docs/SYSTEM_CONFIG.md`; the judgment half — primary-topic test,
+   cardinality, where a non-primary signal goes instead — is
+   `5_meta/PROCESSING_PRINCIPLES.md` → «Project Tagging — Primary-Topic Only». Apply both; re-derive
+   neither from memory.
 
-   **Cardinality:**
-   - default 1 entry
-   - boundary case 2 entries ONLY for genuine cross-project records
-     (joint roadmap reviews, integration decisions touching two projects
-     equally as primary)
-   - 3+ entries — never. If you're tempted by 3, the record is
-     organisation/process-level; it belongs to a hub directly via
-     wikilinks, not via project membership.
-
-   **Hub kinds — what is NOT a project:**
-
-   `hub_kind: trajectory` (e.g., `learning-goal`, `learning-ai-pm`) and
-   `hub_kind: domain` (e.g., `system-uptime`, `team-communication`)
-   are NOT eligible for `projects:` membership. Records use
-   `tags: [trajectory/{slug}]` or `domains: [...]` for these. Only
-   `hub_kind: project` IDs (the actual deliverable-bearing projects in
-   PROJECTS.md) belong in the `projects:` axis.
-
-   See `5_meta/PROCESSING_PRINCIPLES.md` §9 for full definition + migration
-   notes.
-
-5. **Leverage existing ZTN knowledge** (ADR-017):
+5. **Leverage existing ZTN knowledge:**
    For each topic, consider:
    - Is this NEW information?
    - Is this CONFIRMATION of existing knowledge?
@@ -1363,8 +1345,8 @@ ONE Sonnet matcher subagent per source/transcript-cluster against
 the loaded concept registry. This step exists to (a) reuse existing
 canonical names verbatim instead of coining near-duplicates, (b)
 type-tag genuinely-new concepts via the Minder ConceptType emit set,
-and (c) close out unmatched domain values via the Phase-1 LLM
-cascade documented in `DOMAINS.md` §"On violation".
+and (c) close out unmatched domain values via the
+cascade in `DOMAINS.md` → «On violation — autonomous resolution».
 
 **Why a subagent rather than expanding the classification prompt.**
 The classifier subagent already runs against a per-file context
@@ -1413,9 +1395,9 @@ REGISTRY (authoritative — prefer existing names verbatim):
 <contents of _system/registries/CONCEPTS.md>
 
 CONCEPT TYPES (assignable values — 16):
-<contents of CONCEPT_TYPES.md «Mirror vs emit gate» note + the 16
-emit codes with descriptions; explicitly forbid `person` and
-`project`>
+<from `_system/registries/CONCEPT_TYPES.md`: the «Mirror vs emit gate»
+section + the 16 emit codes with descriptions; explicitly forbid
+`person` and `project`>
 
 DOMAINS (canonical 13 + active extensions):
 <contents of _system/registries/DOMAINS.md canonical block + Extensions table>
@@ -1514,7 +1496,7 @@ If the subagent fails to return parseable JSON, retry once. Second
 failure: fall through to the deterministic substrate as if Step
 3.4.5 did not run — Q15 raw output passes through `normalize_concept_list`
 unchanged at frontmatter write, unmatched domains drop silently per
-the Phase-1 substrate, and a `concept-matcher-failed` log entry is
+the deterministic substrate, and a `concept-matcher-failed` log entry is
 emitted to `log_process.md` for the batch. No CLARIFICATION; the
 SKILL contract is non-blocking.
 
@@ -1531,10 +1513,10 @@ SKILL contract is non-blocking.
 >    `_common.py::read_frontmatter`.
 > 2. Replace the `concepts:` array verbatim with the matcher output
 >    (each entry already passed through `normalize_concept_name`).
-> 3. Apply `domain_corrections[]` against the note's `domains:` list:
+> 3. Apply `domain_resolutions[]` against the note's `domains:` list:
 >    `action: drop` → remove the value; `action: remap` + valid
 >    `target` → replace; other actions → log
->    `domain-correction-unknown-action`, leave the value.
+>    `domain-resolution-unknown-action`, leave the value.
 > 4. Preserve every other frontmatter key verbatim. NEVER touch the
 >    body. NEVER mutate Evidence Trail. NEVER create new files. NEVER
 >    update hubs (corpus already drove hub creation in original run).
@@ -1557,7 +1539,7 @@ Create exactly one record per transcript. Two kinds:
 ##### A1) Work meetings → `_records/meetings/`
 
 Filename: `YYYYMMDD-meeting-{main-participant}-{topic-slug}.md`
-Template: `zettelkasten/5_meta/templates/record-template.md`
+Template: `5_meta/templates/record-template.md`
 
 Frontmatter: `layer: record`, `kind: meeting` (omit `kind` for backward compat —
 absence implies meeting; new records SHOULD include it explicitly).
@@ -1597,7 +1579,7 @@ canonical anchor for any knowledge notes extracted from this transcript — it
 is what their `extracted_from:` and `## Evidence Trail` wikilink points to.
 
 Filename: `YYYYMMDD-observation-{topic-slug}.md`
-Template: `zettelkasten/5_meta/templates/observation-record-template.md`
+Template: `5_meta/templates/observation-record-template.md`
 
 Frontmatter:
 ```yaml
@@ -1614,7 +1596,7 @@ speaker: {person-id of the owner from SOUL.md Identity; "unknown" if ambiguous}
 people:
   - {anyone mentioned by name}
 projects:
-  - {primary-topic project only — see §3.3 step 4 + PROCESSING_PRINCIPLES §9; default 1, boundary 2 with annotation, never 3+}
+  - {primary-topic project only — resolved against the registry per §3.3 step 4}
 concepts:
   - {snake_case concept name from Q15 — translated, normalised, selective}
 origin: {personal | work | external — from Q16; default personal for solo capture}
@@ -1658,7 +1640,7 @@ Filename mapping by primary type:
 - technical → `YYYYMMDD-technical-{topic}.md`
 
 Folder: use routing logic from SYSTEM_CONFIG.md (Folder Routing Logic section).
-Template: `zettelkasten/5_meta/templates/note-template.md`
+Template: `5_meta/templates/note-template.md`
 
 Frontmatter MUST include `layer: knowledge`.
 If extracted from a record: add `extracted_from: {record-id}` to frontmatter.
@@ -1706,7 +1688,7 @@ If Q14 determined content_potential for this knowledge stream:
   - Add `content_angle:` — ALWAYS a YAML list (single angle = a 1-element list)
   - All three fields are OPTIONAL — omit entirely if Q14 found no public value
 
-Decision notes (ADR-013 enhanced):
+Decision notes:
 - Body includes: what was decided, alternatives considered, reasoning, who decided, scope
 - If superseding a previous decision: add `supersedes: {previous-note-id}` to frontmatter
 - The superseded note is NOT modified — both versions persist (Principle 5: Evolution Tracking)
@@ -1846,7 +1828,13 @@ For each matching hub (from Q11):
    hub's full membership) is a periodic action surfaced by `/ztn:lint` D.4
    (`hub-stale-vs-material` — the synthesis layer is never auto-rewritten), not a
    per-batch overwrite. Process must not bypass that gate with a destructive rewrite.
-3. ADD row to "Хронологическая карта" — date, `[[note-ref|title]]`, type, what happened
+3. ADD row to "Хронологическая карта" — date, `[[note-ref|title]]`, type, what
+   happened — **only when the hub's frontmatter `chronological_map_mode` is
+   `curated` or absent.** A hub declaring `chronological_map_mode: derived`
+   renders that section inside an `<!-- AUTO-GENERATED by render_hub_maps.py -->`
+   managed zone from the notes whose `projects:` carry the hub's id: a hand-added
+   row there is discarded by the next render, so do not write one. The note this
+   batch created is what feeds it — nothing further is needed.
 4. ADD entries to "Связанные знания" — decisions, insights, cross-domain links
 5. ADD entry to "Changelog" (newest first) — date + what shifted in understanding
 6. Update `modified` date in frontmatter
@@ -1899,9 +1887,12 @@ values verbatim. No CLARIFICATIONs at any point.
 #### D) New hub creation → CREATE in `5_meta/mocs/`
 
 When a topic reaches 3+ KNOWLEDGE notes (Q12):
-1. Use template: `zettelkasten/5_meta/templates/hub-template.md`
+1. Use template: `5_meta/templates/hub-template.md`
 2. Fill "Текущее понимание" — synthesize from all related notes
-3. BACKFILL "Хронологическая карта" — rows for ALL existing related notes
+3. BACKFILL "Хронологическая карта" — rows for ALL existing related notes. A new
+   hub is `curated` by default (the field is absent), so the map is hand-written
+   here; `chronological_map_mode: derived` is an owner opt-in, never set by this
+   step
 4. Fill "Связанные знания" — decisions, insights, questions
 5. Fill "Changelog" — initial entry
 6. Add to `_system/views/HUB_INDEX.md`
@@ -1934,7 +1925,7 @@ After creating EACH file with frontmatter + body that the subagent writes (recor
 - [ ] Frontmatter has all required fields present
 - [ ] `layer:` field is correct — `record` for records, `knowledge` for knowledge notes
 - [ ] People IDs in `people:` exist in PEOPLE.md OR will be created in Step 3.8
-- [ ] Project IDs in `projects:` exist in PROJECTS.md AND are `hub_kind: project` (NOT trajectory/domain hubs); array length ≤ 2 with boundary annotation if 2; default length 1. See §3.3 step 4 / PROCESSING_PRINCIPLES §9.
+- [ ] Every id in `projects:` is eligible for the axis per the Identity Contract in `_system/docs/SYSTEM_CONFIG.md` — looked up in `1_projects/PROJECTS.md`, not recalled; a retired or reclassified id is a fail, not a warning. Cardinality per `5_meta/PROCESSING_PRINCIPLES.md` → «Project Tagging — Primary-Topic Only».
 - [ ] Tags follow conventions from TAGS.md (format: `type/xxx`, `domain/xxx`, etc.)
 - [ ] File placed in correct PARA folder per SYSTEM_CONFIG.md routing rules
 - [ ] `source:` points to a real file path in `_sources/processed/`
@@ -2151,7 +2142,7 @@ Applicable rules (all mandatory, no silent compromise):
    - Do NOT apply "central to note" heuristic — it is subjective and a source of gaps.
    - **Bare first name** (AMBIGUOUS and cannot be resolved to a `firstname-lastname` ID) → do NOT add to `people:`. Default path: **append to `_system/state/people-candidates.jsonl`** via `python3 _system/scripts/append_person_candidate.py` (one entry per distinct mention — if the same bare name appears in N different transcripts in a batch, that's N appends). The buffer is aggregated weekly by `/ztn:lint` Scan C.5, which promotes recurring / information-rich candidates to CLARIFICATIONS. This keeps one-off mentions out of the user's resolution queue.
 
-     **High-importance escape hatch.** Bypass the buffer and raise a CLARIFICATION immediately (the pre-2026-04-24 behaviour) ONLY when ANY of these signals are present:
+     **High-importance escape hatch.** Bypass the buffer and raise a CLARIFICATION immediately ONLY when ANY of these signals are present:
      - Bare name belongs to an external/client meeting (transcript contains `meeting` + `external` markers, or the session is clearly a 1:1 with an outside party).
      - Full surname is present elsewhere in the same transcript but wasn't matched due to STT artifacts (you have enough info to resolve NOW).
      - Explicit user tagging `@resolve-now` in transcript or inbox override file.
@@ -2175,7 +2166,9 @@ Applicable rules (all mandatory, no silent compromise):
 
      Quote + role_hint + related_people are optional but strongly encouraged — they make weekly aggregation + promotion decisions deterministic (lint reads the buffer, never re-reads transcripts).
 
-**CLARIFICATION item formatting requirement (person-identity / people-bare-name / people-identity).**
+**CLARIFICATION item formatting requirement (`people-bare-name` / `person-identity`).**
+
+> The two canonical type strings, and the only two this step emits. `people-bare-name` is a mention whose name resolves to nobody in `PEOPLE.md`; `person-identity` is a mention that needs an identity decided — a new profile, or a choice between candidates. Never write a third spelling: the type string is the key the resolve queue clusters and filters on, so a variant makes an item invisible to the batch it belongs in.
 
 > Applies ONLY when the high-importance escape hatch (above) triggers. For routine one-off bare names — append to the candidates buffer instead; `/ztn:lint` Scan C.5 will emit the CLARIFICATION on aggregation if promotion rules fire.
 
@@ -2246,7 +2239,7 @@ For each person mentioned in the transcript (using the People Resolution Map):
 
 2. **If NEW (from People Resolution Map or discovered during audit):**
    - Create profile in `3_resources/people/{id}.md` using
-     `zettelkasten/5_meta/templates/person-template.md`
+     `5_meta/templates/person-template.md`
    - **Privacy trio (mandatory).** Set in profile frontmatter:
      - `origin` — inherit from the **creating record's `origin`** (the
        record that first surfaced this person in the current batch).
@@ -2263,10 +2256,16 @@ For each person mentioned in the transcript (using the People Resolution Map):
    - Add row to `3_resources/people/PEOPLE.md`. Все 8 колонок обязательны:
      - `ID`, `Name`, `Role`, `Org` — из extracted context
      - `Profile` — `[[{id}]]` (wikilink)
-     - `Tier` — `1` если профиль создан (auto-Tier-1 правило SDD); иначе `3`
+     - `Tier` — `1` если профиль создан (profile created ⇒ Tier 1); иначе `3`
      - `Mentions` — `1`
      - `Last` — note's `created` date
-   - Add `person/{id}` tag to `_system/registries/TAGS.md`
+   - Carry `person/{id}` in the profile's own `tags:` frontmatter. Nothing is
+     written to `_system/registries/TAGS.md`: its tables are a census rendered
+     by `_system/scripts/render_tags.py` from the `tags:` frontmatter of the
+     knowledge layer, inside an `AUTO-GENERATED: tag-registry` managed zone. A
+     tag appears there because a note carries it and the census counts it, so
+     anything written into that zone by hand is discarded by the next render —
+     which is Step 0.0 of this very run.
    - Add person to the People Resolution Map (for subsequent files)
 
 3. **If identity uncertain:**
@@ -2393,8 +2392,7 @@ Source of truth for section names, classification rules, header format, and stre
 7. **Update header** — recompute `Last Updated`, per-section counts, `Total unique`.
 
 8. **Completeness gate (deterministic backstop — the load-bearing anti-drop check).**
-   Run `python3 _system/scripts/reconcile_tasks.py --base . --report --json` (paths are
-   relative to the zettelkasten base, the working directory for the run).
+   Run `python3 _system/scripts/reconcile_tasks.py --base . --report --json`.
    It walks ALL notes (cheap, unbounded, no LLM) and reports `orphan_count` — task-ids
    present in notes but in no active/Stale section of TASKS.md. If `orphan_count > 0`,
    the incremental pass left tasks un-aggregated (tasks in notes not touched this
@@ -2452,7 +2450,20 @@ coarse check's reach (report that honestly rather than looping).
 
 > **Reprocess-corpus mode:** skip (no new hubs created).
 
-Rebuild the hub index table from all hub files in `5_meta/mocs/`.
+**Additive only.** Append a `[[hub-*]]` row for each hub this run CREATED (§3.5 D).
+Rows for hubs this run merely updated need no touch.
+
+**The row goes INSIDE the managed zone** — into the section matching the hub's
+`status:`, between `<!-- AUTO-GENERATED: hub-index -->` and its `END` marker,
+matching the columns already there. A row written below the `END` marker lands
+in the owner's `## Cross-link state` region, where no rebuild can ever reconcile
+or remove it: `/ztn:maintain` Step 7.11 rewrites the zone and nothing else.
+
+The full rebuild belongs to
+`/ztn:maintain` Step 7.11 (`render_hub_index.py`) per the Skill Write Territory in `_system/docs/SYSTEM_CONFIG.md`;
+index-vs-disk drift is caught deterministically by `/ztn:lint` A.6.2
+(`hub-index-incomplete`), which routes the owner back to maintain. A rebuild
+here would overwrite maintain's curation from a single-batch view.
 
 ### 4.4 Content Potential Verification
 
@@ -2520,7 +2531,11 @@ Accumulate:
 - **`batch_id`** = UTC timestamp of run start, format `YYYYMMDD-HHmmss`. Fixed at the moment the concurrency lock was acquired and stable for the rest of the run. On collision (theoretical, due to concurrency lock this should not happen) — append suffix `-1`, `-2`.
 - **`timestamp`** = ISO 8601 UTC with trailing `Z` (run start).
 - **`processor`** = `ztn:process`.
-- **`format_version`** = per `_system/docs/batch-format.md` current spec version (currently `2.1`).
+- **`format_version`** = `2.1`. The markdown report mirrors the JSON manifest's
+  top-level `format_version`; the contract that owns the value is
+  `_system/docs/manifest-schema/` (`v{MAJOR}.json` + its README's SemVer rules),
+  NOT `batch-format.md`'s own `version:` frontmatter field, which versions that
+  document rather than the manifest.
 - **Counts:** `sources`, `records`, `notes`, `tasks`, `events`, `threads_opened = 0`, `threads_resolved = 0`, `clarifications_raised`, `people_candidates_appended`, `concepts_upserted`, `sensitive_entities`, `concept_type_conflicts`, `concept_translations_dropped` (see counter mechanics below).
 - **Lists for each section of the batch report:** Sources Processed (with source type ID), Records Created (id + title + people + projects), Knowledge Notes Created (id + title + types + domains + Evidence Trail status), Tasks Extracted (task-id + description + deadline + priority + from-note), Events Extracted (datetime + description + participants + from-note), People Updates (id + change type + mentions delta + tier note), Hubs Updated (id list), CLARIFICATIONS Raised (type + summary per item), Concepts Upserted (name + type + subtype + related_concepts), Sensitive Entities (path + kind + audience_tags).
 
@@ -2592,7 +2607,7 @@ text[] NOT NULL DEFAULT '{}'` columns without re-parsing markdown.
 **`clarifications_raised` counter mechanics:**
 
 - The skill maintains an in-memory integer counter across the entire run. Reset to **0** at run start.
-- Every time the skill appends an item under `## Open Items` in `_system/state/CLARIFICATIONS.md` — regardless of type (`process-compatibility`, `people-bare-name`, `people-identity`, `idea-ambiguous-match`, `evidence-trail-anomaly`, etc.) — the counter increments by exactly **1**.
+- Every time the skill appends an item under `## Open Items` in `_system/state/CLARIFICATIONS.md` — regardless of type (`process-compatibility`, `people-bare-name`, `person-identity`, `idea-ambiguous-match`, `evidence-trail-anomaly`, etc.) — the counter increments by exactly **1**.
 - The final counter value is recorded in batch frontmatter as `clarifications_raised:`.
 - The counter is **not** persisted between runs.
 
@@ -2621,13 +2636,14 @@ If any item is incomplete, go back and complete it. No deferring as "follow-up."
 - [ ] Per-note structural verification passed (Step 3.6, inside subagent)
 - [ ] People profiles: new people added to PEOPLE.md + profile files created in `3_resources/people/`
 - [ ] People profiles: existing people's `## Упоминания` updated with new mentions
-- [ ] Tags: new `person/{id}` tags added to TAGS.md for new people
+- [ ] Tags: every new person's profile carries `person/{id}` in its own `tags:` frontmatter. Nothing is checked in `_system/registries/TAGS.md` — its tables are a census `render_tags.py` derives from that frontmatter, so a tag arrives there by being carried, never by being added
 - [ ] Hubs: existing hubs updated **non-destructively** (integrate into "Текущее понимание" preserving prior synthesis — never full-rewrite; add to chronological map, changelog)
 - [ ] Hubs: new hubs CREATED for topics reaching 3+ knowledge notes threshold
-- [ ] HUB_INDEX.md rebuilt **AND every on-disk `5_meta/mocs/hub-*.md` appears as a `[[hub-*]]` row** (deterministic completeness — the same check as lint A.6.2; count hub files vs listed ids, not a self-certified checkbox)
+- [ ] HUB_INDEX.md carries a `[[hub-*]]` row for **every hub this run created** (additive; §4.3). Whole-index completeness is `/ztn:maintain`'s rebuild and lint A.6.2's check, not this gate's
 - [ ] PROCESSED.md updated for all processed source paths
 - [ ] log_process.md entry added (newest first)
 - [ ] TASKS.md updated (header counts refreshed; Stale section preserved from previous TASKS.md; classification Action/Waiting/Delegate applied per SYSTEM_CONFIG rules) **AND `reconcile_tasks.py --report` returns `consistent: true` (orphan_count 0)** — the deterministic anti-drop invariant, not a self-certified checkbox
+- [ ] **Identity residue is zero.** Run `python3 _system/scripts/identity_audit.py --report --fail-on-residue` and record its `live residue` count in the batch report. It resolves every identifier surface against `1_projects/PROJECTS.md` — the deterministic anti-drift invariant, not a self-certified checkbox. Read the compact `--report` summary, not `--json`: the full finding stream runs to a hundred kilobytes and belongs in an investigation, not in every tick's context. A non-zero exit has two causes and the report names which: **live residue** — this run put a retired identifier back on a live surface, so fix it in the notes this run wrote and re-run the audit; or **an unclassified region** — a path no classification rule claims, which is what a new top-level folder looks like on its first run and is not something this batch did wrong. The second is a `process-compatibility` CLARIFICATION naming the region, not a defect to hunt in this run's notes. Either way, do not tick this gate around it.
 - [ ] CALENDAR.md updated (Past section pruned to last 2 weeks; Deadlines have `@person-id` prefix); `reconcile_calendar.py --report` run as a **best-effort** assist (it catches only `📅`-anchored future-event drops — the nightly lint A.6.3 scan is the durable check)
 - [ ] Content potential fields verified (content_potential + content_type + content_angle)
 - [ ] Knowledge notes placed in correct PARA folder (NOT in deprecated `2_areas/work/meetings/`)
@@ -2718,11 +2734,13 @@ concept_translations_dropped: N
 > which `/ztn:maintain` Step 4.5 picks up types into `CONCEPTS.md`.
 
 Emit the machine-parseable JSON manifest alongside the markdown
-report. Schema: `minder-project/strategy/ARCHITECTURE.md` §4.5
-(downstream consumer = Minder dispatch worker).
+report. Canonical schema: `_system/docs/manifest-schema/v{MAJOR}.json`
+in this repo, reference doc `manifest-schema/README.md`. (Any one
+downstream consumer's own design doc is a consumer, not the contract —
+a friend's clone has no such repo.)
 
 Assemble the JSON dict in memory from the in-memory accumulator
-(§4.7) — top-level keys per ARCHITECTURE.md §4.5 (`batch_id`,
+(§4.7) — top-level keys per that schema (`batch_id`,
 `timestamp`, `format_version: "2.1"`, `processor: "ztn:process"`,
 `sources_processed[]`, `records.{created,updated}[]`,
 `knowledge_notes.{created,updated}[]`, `hubs.{created,updated}[]`,
@@ -2771,20 +2789,18 @@ A `"kind": "violation"` line here means the file on disk does not honour the
 manifest contract. Treat it exactly as an emitter `exit 3`: the manifest is not
 valid, so do NOT append the BATCH_LOG row, and surface it in the run report.
 
-This check exists because the emitter can only refuse what it is given. A tick
-that assembles the JSON and writes it to `batches/` **without invoking the
-emitter** bypasses every guarantee above, and the only thing that noticed was
-the nightly lint — a full day later, on a manifest a downstream consumer may
-already have read. It has happened: a tick invented `batch_id: 20260807-processtick`
-where the format is `YYYYMMDD-HHMMSS`. Verifying the artefact rather than
-trusting the procedure closes that gap whatever its cause.
+The emitter can only refuse what it is given: a tick that assembles the JSON and
+writes it to `batches/` **without invoking the emitter** bypasses every guarantee
+above, and nothing would notice until the nightly lint — a day later, on a
+manifest a downstream consumer may already have read. Verify the artefact rather
+than trust the procedure.
 
 If exit `3` fires: the in-memory accumulator is malformed (missing
 section the SKILL forgot to populate, or wrong processor enum). Do
 NOT retry blindly — read stderr message, fix the accumulator
 assembly, re-emit. Surface to owner as a `process-compatibility`
 CLARIFICATION ONLY if root cause cannot be auto-corrected (e.g.
-ARCHITECTURE.md spec changed and SKILL contract drifted).
+the manifest schema changed and this SKILL's assembly drifted from it).
 
 ### 5.5.2 Append row to `_system/state/BATCH_LOG.md`
 
@@ -2882,6 +2898,7 @@ Output to user:
 - [x] People profiles created/updated
 - [x] Hubs created/updated
 - [x] System aggregates updated (TASKS, CALENDAR, HUB_INDEX)
+- [x] Identity residue: {N} live
 - [x] PROCESSED.md + log_process.md updated
 - [x] Batch verification passed
 - [x] Evidence Trail present in every new knowledge note
@@ -2891,7 +2908,7 @@ Output to user:
 ### Batch Artifact
 - **batch_id:** {YYYYMMDD-HHmmss}
 - **Markdown report:** `_system/state/batches/{batch-id}-process.md`
-- **JSON manifest:** `_system/state/batches/{batch-id}-process.json` (canonical contract — schema in `_system/docs/manifest-schema/v2.json`, reference doc in `_system/docs/manifest-schema/README.md`; one specific consumer (Minder) documented in `minder-project/strategy/ARCHITECTURE.md` §5+)
+- **JSON manifest:** `_system/state/batches/{batch-id}-process.json` (canonical contract — schema in `_system/docs/manifest-schema/v2.json`, reference doc in `_system/docs/manifest-schema/README.md`)
 - **BATCH_LOG:** +1 row (threads_open/close = 0)
 - **clarifications_raised:** {N}
 - **concepts_upserted:** {N}
@@ -2899,7 +2916,7 @@ Output to user:
 
 ### Health Indicators
 - Open tasks: {N} (oldest: {date}, {age} ago)
-  {if age > 60 days}: ⚠️ Consider running `/ztn:sweep-tasks` (future skill)
+  {if age > 60 days}: ⚠️ Flag for owner review — stale tasks accumulating
 - Content candidates: {N} notes with content_potential (high: {N}, medium: {N})
   {if high > 3 and no published in last 30 days}: 💡 Run `/ztn:content` to review and draft
 - People profiles: {N} total, {N} with empty Контекст section

@@ -5,7 +5,7 @@ Two coupled install requirements per machine so that:
 1. The global constitution-capture hook fires in every Claude Code session.
 2. The skills the hook invokes (`/ztn:capture-candidate`,
    `/ztn:check-decision`, `/ztn:regen-constitution`) and the ambient ZTN
-   commands (`/ztn:search`, `/ztn:recap`) are discoverable outside this
+   commands (`/ztn-search`, `/ztn-recap`) are discoverable outside this
    repo too (work-project sessions, HQ sessions, scheduler).
 
 All install steps are automated by `integrations/claude-code/install.sh`
@@ -25,7 +25,7 @@ stable local path:
 | `~/.claude/rules/constitution-core.md` | `zettelkasten/_system/views/constitution-core.md` |
 | `~/.claude/rules/communication-baseline.md` | `zettelkasten/_system/docs/communication-baseline.md` |
 | `~/.claude/rules/ztn-engine-doctrine.md` | `zettelkasten/_system/docs/ENGINE_DOCTRINE.md` |
-| `~/.claude/skills/ztn-*` (15 dirs) | `integrations/claude-code/skills/ztn-*` (direct, no render step) |
+| `~/.claude/skills/ztn-*` (one per skill dir) | `integrations/claude-code/skills/ztn-*` (direct, no render step) |
 | `~/.claude/commands/ztn-recap.md`, `ztn-search.md` | `integrations/claude-code/built/commands/*.md` (rendered) |
 
 `built/` is gitignored. The installer renders **rules and commands**
@@ -83,8 +83,8 @@ The installer is idempotent and non-interactive. In a fresh container:
   because they reference `{{MINDER_ZTN_BASE}}` for things the user-
   level layer must resolve from any CWD. `built/` is the rendered
   output (gitignored, machine-local); symlinks point to it.
-- **Skills** were de-templatized to use repo-relative `zettelkasten/...`
-  paths because (a) the same source must be discoverable by cloud
+- **Skills** use repo-relative `zettelkasten/...` paths because (a) the
+  same source must be discoverable by cloud
   Routines via committed `.claude/skills/` symlinks at the repo root,
   and (b) all engine pipeline skills (process / lint / agent-lens /
   bootstrap / etc.) inherently run inside the repo CWD, so the

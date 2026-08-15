@@ -41,20 +41,23 @@ discussions without explicit recall signal.
 1. **Resolve entities** when searching by person/project/concept:
    - `3_resources/people/PEOPLE.md` — name → ID
    - `1_projects/PROJECTS.md` — project → ID
-   - `_system/registries/TAGS.md` — available tags (`tags:` axis)
-   - `_system/registries/CONCEPT_NAMING.md` — concept-name format
-     (`concepts:` axis: snake_case ASCII, English-only). Concepts are
-     a separate axis from tags.
+   - `_system/registries/TAGS.md` — census of the `tags:` axis
+   - `_system/registries/CONCEPTS.md` — census of the `concepts:` axis;
+     `_system/registries/CONCEPT_NAMING.md` — its name format (snake_case
+     ASCII, English-only). Concepts are a separate axis from tags.
+   - `_system/registries/DOMAINS.md` — `domains:` whitelist
    - `_system/registries/AUDIENCES.md` — `audience_tags` whitelist
      (canonical 5 + active extensions)
 
 2. **Search** (Grep/Glob, parallel):
+   - **Catalog:** `_system/views/INDEX.md` — one line per knowledge, archive,
+     constitution and hub entry; the fastest way to locate a topic
    - **Records:** `_records/meetings/`, `_records/observations/`
    - **Knowledge:** PARA folders (`1_projects/` … `4_archive/`)
-   - **Hubs:** `5_meta/mocs/`; `_system/HUB_INDEX.md` for topic overview
+   - **Hubs:** `5_meta/mocs/`; `_system/views/HUB_INDEX.md` for topic overview
    - **Sources:** `_sources/` for full-text on raw transcripts when ZTN notes
      lack detail
-   - Frontmatter grep: person ID, project ID, tags, types, concepts,
+   - Frontmatter grep: person ID, project ID, tags, domains, types, concepts,
      audience_tags, is_sensitive, origin
    - System indexes: `_system/TASKS.md` (todos), `_system/CALENDAR.md` (events)
 

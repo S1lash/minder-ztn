@@ -14,12 +14,12 @@
 
 **Применяется (timeless description required):**
 
-- `.claude/skills/**/*.md` — SKILL.md + adjacent reference docs
+- `integrations/claude-code/skills/**/*.md` — SKILL.md + adjacent reference docs (the authoring home; `.claude/skills/` and `~/.claude/skills/` are symlinks into it)
 - `zettelkasten/_system/docs/SYSTEM_CONFIG.md`
 - `zettelkasten/_system/docs/batch-format.md`
 - Frontmatter (`description`, `owned_by`, `read_by` fields) of `_system/state/log_*.md`
 - `zettelkasten/5_skills/CLAUDE_ZETTELKASTEN.md`
-- `zettelkasten/_system/docs/ARCHITECTURE.md` — системный дизайн
+- `zettelkasten/_system/docs/ARCHITECTURE.md` — системный дизайн как построен
 - `zettelkasten/_system/docs/CONVENTIONS.md` (этот файл)
 - Note templates в `5_meta/templates/`
 
@@ -27,7 +27,7 @@
 
 - `_system/state/log_*.md` body entries — append-only audit trail, исторические записи
   суть и есть содержимое (operational facts of past runs)
-- `_system/state/CLARIFICATIONS_ARCHIVE.md` — historical resolutions (split from CLARIFICATIONS.md on 2026-04-26 to keep active queue lean)
+- `_system/state/CLARIFICATIONS_ARCHIVE.md` — historical resolutions
 - Per-instance deployment journals (e.g., a `platform/` folder owners may keep
   alongside the engine) — phases are the content; such folders are out of the
   engine and not shipped to the skeleton
@@ -65,7 +65,7 @@ skill's responsibility — используй skill name (`/ztn:lint territory`,
 `/ztn:maintain responsibility`). Если cross-ref к contract — использу канонич.
 ссылку на SYSTEM_CONFIG или file path, не phase/section number.
 
-**Исключение:** файлы в scope «NOT applies» выше (SDD, ROADMAP, SESSION-HANDOFF).
+**Исключение:** файлы в scope «НЕ применяется» выше — в частности per-instance deployment journals, где фазы и есть содержимое.
 
 ### 3. Rename / migration history
 
@@ -118,9 +118,7 @@ territory.
 **Правило:** называй правило **кратко** в каждой точке; «почему» — **один раз**, в
 доме факта (SoT), и ссылка. Не пере-обосновывай и не пересказывай баг на каждом
 месте — это рубцовая ткань (топит сигнал + протаскивает историю в present-tense).
-Если правило требует громкой защиты повсюду — чини дизайн, не доку. Универсальная
-формулировка — `harness-kit/UNIVERSAL-HARNESS-TEMPLATE` §2.6 item 21 («Fix the design,
-not its scar tissue»); этот пункт — её локальный энфорсмент для ZTN engine-доков и SKILLs.
+Если правило требует громкой защиты повсюду — чини дизайн, не доку.
 
 ---
 
@@ -140,9 +138,12 @@ not its scar tissue»); этот пункт — её локальный энфо
 
 ### 3. Spec-file version references (only in that spec itself)
 
-- ✓ `batch-format.md` carries `version: N.M` в frontmatter + Version History section
-  (this is the one place version-bump rules are appropriate — spec evolution is
-  the document's own metadata; everywhere else describe behaviour, not version)
+Two spec files, and only these two, carry their own version log — spec evolution
+is the document's own metadata. Everywhere else describe behaviour, not version.
+
+- ✓ `batch-format.md` — `version: N.M` в frontmatter + `## Version History`
+- ✓ `manifest-schema/README.md` — `## SemVer log`, so a consumer can decide
+  whether to update against a schema change
 
 ### 4. Operational historical data в logs
 
@@ -166,8 +167,9 @@ Formulate as timeless rule, не как «decided in Phase 3 after the owner's f
 Before committing, grep свежеизменённые места:
 
 ```bash
-# Must return 0 hits in in-scope files (except SDDs/logs-body per scope):
-grep -n "Phase [0-9]\|§Q[0-9]\|v4\.[0-9]\|post-V[0-9]\|per PHASE-\|renamed from\|Supersedes:\|Status:.*Draft"
+# Must return 0 hits in the files you just changed (SDDs and log bodies are
+# out of scope per the scope table above — do not pass them in):
+grep -n "Phase [0-9]\|§Q[0-9]\|v4\.[0-9]\|post-V[0-9]\|per PHASE-\|renamed from\|Supersedes:\|Status:.*Draft" <файлы, которые правил>
 ```
 
 Если hit found — переформулируй в timeless описание current behavior. Если
@@ -193,8 +195,8 @@ grep -n "Phase [0-9]\|§Q[0-9]\|v4\.[0-9]\|post-V[0-9]\|per PHASE-\|renamed from
    config = current rules, not rule evolution. Separation of concerns: files
    describe IS, git describes BECAME.
 
-5. **Friend onboarding (Phase 9+).** Когда template repo раздаётся друзьям, нет
-   need для них знать что «Phase 4 renamed X к Y» — им нужна текущая спецификация.
+5. **Friend onboarding.** Когда template repo раздаётся друзьям, им не нужно
+   знать, что и когда переименовали, — им нужна текущая спецификация.
    Clean files = clean onboarding.
 
 ---
@@ -205,13 +207,12 @@ grep -n "Phase [0-9]\|§Q[0-9]\|v4\.[0-9]\|post-V[0-9]\|per PHASE-\|renamed from
 in-scope files, обязана соблюдать правило. Если видит violation в существующем
 файле — fix при касании (touch-it-fix-it rule).
 
-**Review triggers:** adversarial review pass (like REVIEW-PHASE-*.md artifacts)
-включает этот checklist. Finding violations → part of review findings → fix
-before merge.
+**Review triggers:** любой adversarial review pass включает этот checklist.
+Finding violations → part of review findings → fix before merge.
 
-**Tooling-level enforcement** (potential Phase 5+): pre-commit hook running grep
-pattern above. Fails commit if in-scope file contains banned patterns. Deferred
-until manual discipline proves insufficient.
+**Tooling-level enforcement** — не реализован: pre-commit hook, гоняющий grep-
+паттерн выше и роняющий коммит на banned pattern в in-scope файле. Отложен, пока
+ручной дисциплины хватает.
 
 ---
 

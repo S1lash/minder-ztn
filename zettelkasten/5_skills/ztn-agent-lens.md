@@ -37,6 +37,9 @@ Pointer card. The full pipeline lives in the installed skill, not here.
 Reads the lens registry, filters lenses that are due per their
 per-lens cadence, runs each through a two-stage pipeline (free-form
 thinker LLM → structurer LLM → structural validator), writes
+— a lens declaring `output_schema: synthesis-custom` skips the
+structurer and writes its final shape itself, validator still enforcing
+the frontmatter trio and a non-empty body. It writes
 observation snapshots to `_system/agent-lens/{id}/{date}.md`. Each
 lens runs in isolation: fresh API context per Stage, no cross-lens
 carry-over, no subagent dispatch. Meta lenses (input_type=lens-outputs)

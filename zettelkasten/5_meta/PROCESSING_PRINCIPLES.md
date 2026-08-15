@@ -1,13 +1,13 @@
-# ZTN v4 — 8 Принципов Обработки
+# Принципы Обработки
 
-**Версия:** 1.1
-**Дата:** 2026-04-09
+Разделы 1–8 — **восемь принципов обработки**: они управляют ВСЕМИ решениями при
+обработке транскриптов и inclusion-biased по духу — лучше захватить лишнее, чем
+потерять факт. Это НЕ правила маршрутизации, а ценностные ориентиры для
+LLM-суждений. Разделы после них — механические спецификации (`projects:`-ось,
+атрибуты решений, values-профиль), которые действуют вместе с принципами.
 
-Эти принципы управляют ВСЕМИ решениями при обработке транскриптов.
-Они — inclusion-biased: лучше захватить лишнее, чем потерять факт.
-
-Принципы загружаются на шаге 1.2 pipeline и действуют на всех последующих шагах.
-Они НЕ являются правилами маршрутизации — это ценностные ориентиры для LLM-суждений.
+Файл загружается на шаге Load Context каждого пайплайна и действует на всех
+последующих шагах.
 
 ---
 
@@ -124,7 +124,12 @@ Hub отслеживает эволюцию:
 **При обнаружении нового человека:**
 - Создать профиль в `3_resources/people/{id}.md`
 - Добавить в `3_resources/people/PEOPLE.md`
-- Добавить тег `person/{id}` в `_system/registries/TAGS.md`
+- Проставить тег `person/{id}` в `tags:` заметки. В `_system/registries/TAGS.md`
+  руками ничего не добавляют: это перепись употреблений, её рендерит
+  `_system/scripts/render_tags.py`, и новый тег появится там сам
+- Имя, которое не разрешается в `firstname-lastname`, в `people:` не идёт —
+  оно уходит в `_system/state/people-candidates.jsonl` и агрегируется
+  еженедельным `/ztn:lint`
 
 **Антипаттерн:** «Этот человек упомянут мимоходом, не буду добавлять» — ЗАПРЕЩЕНО
 (если упоминание преднамеренное, а не оговорка).
@@ -178,8 +183,9 @@ project would make the record lose its core meaning. The test:
 - **Never:** 3+ elements. The frontmatter `projects:` array is NEVER
   used as an «umbrella tag cloud».
 
-`/ztn:lint` Scan A.X warns on any `projects.length > 2`, and on
-`projects.length == 2` without `boundary` annotation in body.
+`/ztn:lint` Scan A.8 warns on any `projects.length > 2`
+(`projects-array-overcount`), and on `projects.length == 2` without a
+`boundary` annotation in body (`projects-array-2-without-boundary-marker`).
 
 ### What goes elsewhere (not in `projects:`)
 
@@ -190,16 +196,16 @@ project would make the record lose its core meaning. The test:
 | «specific reference / dependency on another note about a project» | `[[wikilink]]` in body |
 | «cross-hub connection between two distinct project topics» | hub frontmatter `related_notes` or hub body «Cross-Domain связи» |
 
-### Hub kinds: project vs trajectory vs domain
+The `project/{id}` tag is therefore **an independent axis, not a projection of
+`projects:`** — nothing in the engine derives one from the other. The note's
+producer writes both, each carrying its own meaning: `projects:` says «this note
+is *about* the project», the tag says «this note *touches* it». A note can carry
+the tag without the membership, and retiring an identifier migrates the two
+surfaces separately.
 
-Hubs have different semantic types. The `hub_kind:` frontmatter field
-distinguishes them:
-
-| `hub_kind:` | What it represents | `projects:` axis member? |
-|---|---|---|
-| `project` (default) | Concrete project with deliverables (a real shipping product or work stream) | yes — records use `projects: [proj-id]` for primary topic |
-| `trajectory` | Personal arc / multi-year theme (career arc, learning trajectory) | NO — records use `tags: [trajectory/{slug}]`; `projects:` reserved for actual projects |
-| `domain` | Broad knowledge area (database reliability, leadership patterns) | NO — records use `domains: [...]` and `tags:` |
+**Eligibility** — whether a given identifier may occupy the `projects:` axis at
+all is decided by the Identity Contract in `_system/docs/SYSTEM_CONFIG.md`; this
+section owns only what requires judgment at extraction time.
 
 ### Why this matters
 
@@ -217,12 +223,12 @@ distinguishes them:
 - `/ztn:process --reprocess-corpus` re-derives `projects:` arrays for the
   corpus when the prompt strict-semantic changes (rare).
 
-> **See also:** `_system/docs/ARCHITECTURE.md` §«Hub kinds» and
-> `_system/registries/PROJECTS.md` for the project-vs-trajectory list.
+> **See also:** `1_projects/PROJECTS.md` — the registry that lists which
+> identifiers are projects and which are trajectories.
 
 ---
 
-## Enhanced Decision Tracking (ADR-013)
+## Enhanced Decision Tracking
 
 Решения — один из самых ценных типов knowledge notes. При фиксации решений
 записываются дополнительные атрибуты:

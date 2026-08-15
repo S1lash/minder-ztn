@@ -42,9 +42,15 @@ End your run with exactly these two lines, on their own, as the last thing
 you say:
 
 ```
-outcome: ok | idle | error
+outcome: ok | idle | degraded | error
 note: <one short line — what you did, or why there was nothing to do, or what failed>
 ```
+
+`degraded` is the one that is easy to skip and matters most: you ran and
+delivered, but part of the job could not be done — a quota ran out, a service
+refused you partway, a source was unreachable — so some of what you report is
+unverified. Say `degraded` rather than `ok` whenever you left something
+unverified, and name it in the note.
 
 The runner reads only those two lines and records them verbatim. A run that
 ends without them is recorded as an error, whatever it actually achieved.

@@ -1,0 +1,390 @@
+# ZTN — Журнал решений (ADR)
+
+**Статус:** Журнал решений. Это **единственный документ движка, где эволюция —
+и есть содержание**: запись фиксирует момент выбора вместе с контекстом,
+рассмотренными альтернативами и следствиями, и потому намеренно выведена
+из-под общего правила «документы описывают настоящее, не историю»
+(`_system/docs/CONVENTIONS.md`). Не «чинить» его приведением к текущему
+состоянию: запись, переписанная под сегодняшнюю правду, теряет ровно то,
+ради чего заведена.
+
+Что здесь **не** живёт: действующая спецификация. Каждое правило, которое
+сейчас исполняется, имеет свой дом — `_system/docs/SYSTEM_CONFIG.md`
+(форматы, routing, владение), `5_meta/PROCESSING_PRINCIPLES.md` (8 принципов),
+SKILL.md конкретного скилла (pipeline). Запись ADR хранит **рассуждение**,
+дом — **правило**; расходятся — прав дом, а не журнал.
+
+Философия и архитектура системы — `5_meta/CONCEPT.md`.
+
+---
+
+### ADR-001: Records отделены от Knowledge
+
+**Контекст:** В v3 рабочие встречи хранились как полноценные knowledge notes
+в `2_areas/work/meetings/`. С ростом базы (370+ заметок) шум рабочих встреч
+(статус-апдейты, мелкие задачи, логистика) начал засорять knowledge graph.
+
+**Решение:** Выделить Records в отдельный слой `_records/meetings/` с лёгким форматом.
+Knowledge notes извлекаются из records только когда есть значимый инсайт.
+
+**Альтернативы:**
+- Оставить всё в PARA → noise в knowledge graph растёт линейно
+- Автоматическая чистка → теряется context для поиска
+
+**Следствие:** Два формата frontmatter. Record проще, knowledge — богаче.
+
+### ADR-002: Hubs объединяют evolving + structure
+
+**Контекст:** Рассматривались два варианта: (a) один файл с обеими секциями,
+(b) два файла — evolving doc + chronological map.
+
+**Решение:** Один файл. Контекст не теряется при чтении. Хронологическая карта
+объясняет *почему* текущее понимание такое. Changelog показывает *эволюцию*.
+
+**Альтернативы:**
+- Два файла → переключение контекста, сложнее поддерживать
+- Только evolving → теряется история
+
+### ADR-003: Полная автоматизация (no human-in-the-loop)
+
+**Контекст:** Friction kills adoption. Если каждый из ~5 транскриптов в день
+требует ручной проверки, система умирает.
+
+**Решение:** Полная автоматизация. Принимаем noise как цену за completeness.
+Noise устраняется периодическими sweep-операциями.
+
+**Альтернативы:**
+- Manual review → friction → abandonment
+- Semi-auto (review only edge cases) → edge case detection is itself unreliable
+
+**Следствие:** Inclusion bias во всех 8 принципах. Better to over-capture.
+
+### ADR-004: Все решения принимает LLM
+
+**Контекст:** В v1-v2 были детерминированные правила (if > 2 topics → split;
+if mentions project → tag). Правила хрупки и не обрабатывают нюансы.
+
+**Решение:** Процесс (pipeline) детерминирован. Суждения (split/classify/link) — LLM.
+Opus-level модели справляются с контекстно-зависимыми решениями лучше правил.
+
+**Альтернативы:**
+- Rules-based → brittle, can't handle nuance
+- Hybrid (rules + LLM fallback) → complexity without benefit
+- Human judgment → see ADR-003
+
+### ADR-005: Inclusion-biased принципы
+
+**Контекст:** Ложноотрицательные (пропущенный факт) хуже ложноположительных
+(лишняя заметка). Пропущенный факт — навсегда потерянная связь.
+Лишняя заметка — минута при sweep.
+
+**Решение:** Все 8 принципов сдвинуты в сторону inclusion. Capture First (принцип 1),
+30% cross-domain threshold (принцип 4), low people threshold (принцип 7).
+
+**Альтернативы:**
+- Precision-biased → misses cross-domain insights
+- Balanced → in practice drifts toward precision (easier to not capture)
+
+### ADR-006: Единая система (не две)
+
+**Контекст:** Рассматривалась альтернатива: отдельная система для работы
+и отдельная для личного. Проще, чище boundaries.
+
+**Решение:** Одна система. Cross-domain insights (терапия → делегирование → работа)
+ломаются на границе систем. Ценность ZTN — именно в кросс-доменных связях.
+
+**Альтернативы:**
+- Две системы → no cross-domain insights
+- Shared search, separate storage → complexity without full benefit
+
+### ADR-007: PARA + Records + Hubs
+
+**Контекст:** Каждый слой обслуживает свой паттерн retrieval:
+- Records: «Что обсуждали?» (operational lookup)
+- Knowledge: «Что решили / поняли?» (conceptual retrieval)
+- Hubs: «Как менялось понимание?» (synthesis & evolution)
+
+**Решение:** Три слоя. PARA для knowledge, Records для operational logs, Hubs для synthesis.
+
+**Альтернативы:**
+- Only PARA → no clean separation of noise from signal
+- Only flat notes → no synthesis layer
+- Tags instead of layers → tagging doesn't change retrieval UX
+
+### ADR-008: Karpathy LLM Wiki validates, мы расширяем
+
+**Контекст:** Андрей Карпати описал трёхслойную LLM Wiki: raw feed → wiki articles →
+topic pages. Концептуально совпадает с Records → Knowledge → Hubs.
+
+**Решение:** Валидация архитектуры. ZTN расширяет модель Карпати:
+- PARA structure (не flat wiki)
+- 8 processing principles (explicit inclusion bias)
+- People tracking с профилями
+- Cross-domain detection с порогом 30%
+- Values Profile для per-user calibration
+- Hubs с evolution tracking (changelog)
+
+Карпати описал *что*. ZTN описывает *как* и *с какими принципами*.
+
+### ADR-009: Source link instead of `<details>`
+
+**Контекст:** В ранних версиях полный транскрипт встраивался в заметку
+через `<details>` (collapsible). Это раздувало файлы и дублировало источники.
+
+**Решение:** Records и knowledge notes содержат секцию `## Source` со ссылкой
+на файл в `_sources/processed/`. Полнотекстовый поиск — grep по `_sources/`.
+
+**Следствие:** Заметки стали компактнее. Single source of truth для транскрипта.
+
+### ADR-010: Adversarial Source Audit
+
+**Контекст:** При автоматической обработке LLM может пропустить факты,
+исказить формулировки или добавить информацию, которой нет в источнике.
+Без проверки эти ошибки накапливаются.
+
+**Решение:** После создания всех артефактов выполняется независимая перечитка
+источника. LLM получает *только* исходник и список заметок, проверяет три категории:
+MISSED, DISTORTED, HALLUCINATED. Найденные проблемы исправляются в этом же проходе.
+
+**Альтернативы:**
+- Не проверять → ошибки накапливаются, подрывают доверие к системе
+- Проверять отдельным проходом позже → context lost, дороже
+
+### ADR-011: Three-tier People Resolution Map
+
+**Контекст:** Люди в транскриптах упоминаются по-разному: имя, фамилия, прозвище,
+должность, отношение. Простой string matching по PEOPLE.md пропускает большинство.
+
+**Решение:** Трёхуровневый резолвинг:
+- **RESOLVED** — однозначное совпадение с PEOPLE.md (имя, alias). Binding: все файлы используют этот ID.
+- **NEW** — нет совпадения, но контекста достаточно для создания профиля. Назначается canonical ID.
+- **AMBIGUOUS** — может совпадать с несколькими людьми или неясная личность. Откладывается до Step 3.3 (полный контекст транскрипта).
+
+People Resolution Map — живой и мутабельный: новые люди, обнаруженные при обработке,
+добавляются немедленно для консистентности последующих файлов.
+
+**Следствие:** PEOPLE.md расширен полем `aliases` для каждого человека.
+
+### ADR-012: No batch strategy — always sequential
+
+**Контекст:** Рассматривалась batch-обработка: группировка транскриптов по теме
+перед обработкой (все встречи про API v2 обрабатываются вместе).
+
+**Решение:** Всегда sequential. Каждый транскрипт проходит полный pipeline
+отдельно. Результаты предыдущего (созданные записи, обновлённые хабы) доступны
+следующему через context handoff.
+
+**Альтернативы:**
+- Topic grouping → требует pre-classification, ошибки в группировке каскадируются
+- Parallel → потеря контекста между связанными транскриптами
+
+**Следствие:** Pipeline проще, предсказуемее, debuggable.
+
+### ADR-013: Enhanced Decision tracking
+
+**Контекст:** Решения — один из самых ценных типов заметок, но в v4.0 они
+фиксировались без контекста: что рассматривалось, кто решил, финальное ли решение.
+
+**Решение:** Расширенная фиксация: alternatives considered, who decided,
+scope (final/tentative), `supersedes:` для пересмотренных решений.
+Implicit consensus detection для неявных решений.
+
+**Следствие:** Decision freshness check в sweep-операциях.
+
+### ADR-014: CLARIFICATIONS.md — non-blocking human-in-the-loop
+
+**Контекст:** Полная автоматизация (ADR-003) означает, что LLM иногда
+принимает решения с низкой уверенностью. Остановка pipeline — не вариант (friction).
+
+**Решение:** LLM записывает неуверенные места в `_system/state/CLARIFICATIONS.md`,
+продолжает с лучшей гипотезой. Пользователь отвечает асинхронно,
+LLM применяет коррекции к существующим заметкам.
+
+**Альтернативы:**
+- Blocking HitL → friction → abandonment (ADR-003)
+- Ignore uncertainty → silent errors accumulate
+- Mark in notes → scattered, hard to review
+
+### ADR-015: disable-model-invocation: false
+
+**Контекст:** В v4.0 SKILL.md frontmatter содержал `disable-model-invocation: true`,
+что блокировало вызов skill через `/ztn:process`.
+
+**Решение:** Установить `disable-model-invocation: false` для нормального вызова.
+
+### ADR-016: LLM noise gate
+
+**Контекст:** Не все транскрипты содержат обрабатываемый сигнал.
+Случайные активации записи, тишина, бессодержательный smalltalk.
+Ранее фильтрация была по количеству строк — хрупкая эвристика.
+
+**Решение:** LLM оценивает семантическое содержание транскрипта.
+Inclusion-biased: при сомнении — обрабатывать. Noise-gated файлы
+НЕ записываются в PROCESSED.md (ADR-022) — остаются «новыми» для переоценки.
+
+**Альтернативы:**
+- Line-count threshold → пропускает короткие но ценные записи
+- Keyword matching → brittle, language-dependent
+
+### ADR-017: Leverage existing ZTN knowledge
+
+**Контекст:** При обработке нового транскрипта LLM не видел, что уже есть
+в системе по этой теме. Результат: дубликаты, противоречия, пропущенная эволюция.
+
+**Решение:** На шаге Load Context загружаются релевантные существующие
+knowledge notes и hubs. LLM использует их для:
+- Определения: новый инсайт или повторение
+- Точного отслеживания эволюции мышления
+- Избежания дублирования
+- Обогащения связей
+
+**Альтернативы:**
+- Не загружать → дубликаты, нет awareness of evolution
+- Загружать всё → context window overflow при 500+ notes
+
+### ADR-018: Document Architecture Cleanup — Ownership Matrix
+
+**Контекст:** Пять документов содержали пересекающийся контент без чёткого владения.
+Принципы — в CONCEPT.md и PROCESSING_PRINCIPLES.md. Форматы — в CONCEPT.md и SYSTEM_CONFIG.md.
+Pipeline — описан по-разному в трёх файлах.
+
+**Решение:** Матрица ответственности:
+- CONCEPT.md = человеческая документация (философия, архитектура, ADR). НЕ загружается SKILL.md.
+- SYSTEM_CONFIG.md = runtime config (форматы, routing, типы). Загружается SKILL.md.
+- PROCESSING_PRINCIPLES.md = guide для LLM-суждений. Загружается SKILL.md.
+- SKILL.md = executable pipeline. Ссылается на файлы по путям, не инлайнит.
+
+**Правило:** Один source of truth на концепт. Дубликаты заменяются указателями.
+
+### ADR-019: `contains:` block made optional
+
+**Контекст:** Блок `contains:` в frontmatter knowledge note (tasks: N, meetings: N, ideas: N,
+reflections: N) — boilerplate в 80%+ случаев. Reflection note с reflections:1, остальное:0
+не добавляет информации.
+
+**Решение:** `contains:` опционален. Включать только когда заметка содержит tasks/ideas/meetings.
+
+### ADR-020: POSTS.md as post-pipeline enrichment
+
+**Контекст:** POSTS.md сканирование существовало в SKILL.md, но отсутствовало в pipeline
+CONCEPT.md. Undocumented step.
+
+**Решение:** POSTS.md — post-pipeline enrichment в post-processing, не core pipeline step.
+Не влияет на создание заметок — это вторичное сканирование на идеи для контента.
+
+### ADR-021: Hub threshold — 3+ knowledge notes
+
+**Контекст:** Порог создания хабов «3+ упоминаний» был размытым. 3+ чего?
+
+**Решение:** 3+ knowledge notes, затрагивающих тему. Records не считаются — они
+операционные логи, не кристаллизованное знание. Тема, обсуждавшаяся на 10 стендапах
+(10 records), но не породившая ни одного knowledge note, не создаёт hub.
+
+### ADR-022: Noise gate does NOT write to PROCESSED.md
+
+**Контекст:** SDD-v4.2 предполагал запись skipped файлов в PROCESSED.md с пометкой
+`skipped: noise`. Это означает, что ошибочно пропущенный файл исключён навсегда.
+
+**Решение:** Noise-gated файлы НЕ записываются в PROCESSED.md. Они остаются «новыми»
+и переоцениваются при каждом запуске. Noise gate достаточно детерминирован для
+действительно шумных файлов (low cost). Если пользователь добавит контент в ранее
+пустую папку, он будет подхвачен.
+
+### ADR-023: SDD-файлы удаляются после имплементации
+
+**Контекст:** SDD-файлы (v4.0, v4.2, v4.3) — implementation guides, не operational документы.
+После имплементации они не несут runtime-ценности.
+
+**Решение:** SDD-файлы удаляются после успешной имплементации. Решения (ADR) живут
+в CONCEPT.md, pipeline — в SKILL.md, конфигурация — в SYSTEM_CONFIG.md. SDD — временный
+артефакт планирования.
+
+### ADR-024: Content Potential field (updated ADR-027)
+
+**Контекст:** Система хорошо создаёт заметки, но не помогает пользователю публиковать контент.
+Из 319 заметок многие содержат потенциально публичные инсайты, но нет механизма их выявления.
+
+**Решение:** Три optional поля в frontmatter knowledge notes:
+- `content_potential: high|medium` — уровень потенциала для публикации
+- `content_type: expert|reflection|story|insight|observation` — доминирующий тип заметки (single)
+- `content_angle: string | [array]` — один или несколько углов/зацепок для потенциальных постов
+
+Pipeline оценивает каждый knowledge stream на 14-м вопросе классификации (Q14).
+Оценка inclusion-biased: при сомнении ставится `medium`. Фильтрация — задача `/ztn:content`.
+
+**Альтернативы:**
+- Отдельный тег `content/candidate` → менее выразительно (нет градации high/medium)
+- Отдельный файл-тип для контент-кандидатов → оверинжиниринг, создаёт дублирование
+
+### ADR-025: POSTS.md — published-only archive (updated ADR-027)
+
+~~**Старое решение:** Разделить на POSTS.md + CONTENT_PIPELINE.md.~~
+
+**Контекст:** CONTENT_PIPELINE.md дублировал информацию из frontmatter заметок.
+Два файла (POSTS.md + CONTENT_PIPELINE.md) рассинхронизировались.
+
+**Решение (ADR-027):** Убрать CONTENT_PIPELINE.md. Кандидаты живут в frontmatter заметок.
+`/ztn:content` обнаруживает их динамически через grep.
+POSTS.md — только опубликованные посты + content strategy.
+
+### ADR-027: Content pipeline simplification
+
+> **Номер занят дважды.** Ниже есть второй `ADR-027` — «Skill namespace `ztn:*`».
+> Это две независимые записи, столкнувшиеся номером при разной нумерации. Ссылки
+> «updated ADR-027» в ADR-024 и ADR-025 указывают на **эту** запись, про контент.
+> Номера не переписываются: идентичность исторической записи — это то, что журнал
+> и защищает.
+
+**Контекст:** Три артефакта (CONTENT_PIPELINE.md, POSTS.md с кандидатами, frontmatter)
+хранили одни и те же данные, рассинхронизировались, создавали путаницу.
+
+**Решение:**
+1. Frontmatter = единственный source of truth для кандидатов (3 поля: potential, type, angle)
+2. `content_type` — single value (доминирующий тип заметки), `content_angle` — string или array
+   (одна заметка может порождать посты с разным фреймингом)
+3. CONTENT_PIPELINE.md — удалён
+4. CONTENT_MAP.md — автогенерируемый read-only view над хабами (не source of truth).
+   Канонический писатель — `/ztn:maintain` (Step 7.8), регенерируется после каждого
+   batch. Компактная строка на заметку + ripeness; интерфейс для lens `content-synthesis`
+5. POSTS.md — только published archive + content strategy
+6. `/ztn:process` не обновляет внешние реестры — только ставит поля на заметках
+7. multi-angle заметка попадает в каждую свою тему/хаб (заметка линкует хабы в теле);
+   ripeness поднимается во всех темах, к которым заметка относится
+
+**Альтернативы content_angle:**
+- Оба поля (type + angle) как массивы → проблема спаривания type↔angle
+- Paired objects `{type, angle}` → тяжёлый YAML, усложняет pipeline
+- ✅ Выбрано: type single + angle array — тип описывает заметку, углы описывают подачу
+
+**Альтернативы обзору:**
+- Без обзора → теряется bird's-eye view, пользователь не видит ландшафт
+- Ручной registry → рассинхронизация (старая проблема)
+- ✅ Выбрано: auto-generated read-only view — лучшее из обоих миров
+
+### ADR-026: Ideas as living documents
+
+**Контекст:** ~100 idea-файлов, многие дублируются по теме. Каждое упоминание идеи
+создавало новый файл вместо обогащения существующего.
+
+**Решение:** Idea notes — living documents. При обнаружении идеи в транскрипте:
+1. Поиск существующей идеи (три сигнала: теги 40%, ключевые слова 35%, подпапка 25%)
+2. При совпадении ≥80% — append `## Update YYYY-MM-DD` к существующей заметке
+3. При 50-79% — создать новую + лог в CLARIFICATIONS.md
+4. При <50% — создать новую как раньше
+
+Поле `mentions: N` отслеживает количество упоминаний идеи.
+
+**Отличие от Hub:** Hub = синтез по кросс-доменной ТЕМЕ. Idea = конкретный КОНЦЕПТ с эволюцией.
+
+### ADR-027: Skill namespace `ztn:*`
+
+**Контекст:** Скиллы ZTN назывались непоследовательно: `/process-notes`, `/ztn-recap`, `/ztn-search`.
+Нет единого namespace для autocomplete и группировки.
+
+**Решение:** Все ZTN-скиллы переименованы в `ztn:*` namespace:
+- `/ztn:process` — обработка транскриптов (бывший `/process-notes`)
+- `/ztn:recap` — session recap
+- `/ztn:search` — поиск по базе
+- `/ztn:content` — review контент-пайплайна (новый)
+
+Все команды и скиллы (`ztn:recap`, `ztn:search`, `ztn:process`, `ztn:content`, `ztn:lint`, `ztn:maintain`, `ztn:bootstrap`, `ztn:capture-candidate`, `ztn:check-decision`, `ztn:regen-constitution`) глобально доступны из любой CWD — `integrations/claude-code/install.sh` симлинкает их в `~/.claude/{commands,skills}/`.

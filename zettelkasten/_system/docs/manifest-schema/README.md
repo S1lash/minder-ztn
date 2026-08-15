@@ -30,12 +30,6 @@ informal and not part of the contract.
 All four skills emit into one shape distinguished by the top-level
 `processor` field. A consumer reads them uniformly.
 
-> **Filename note.** A small history wart: until `2026-05-04`,
-> `/ztn:process` wrote to `{batch_id}.json` (no skill suffix) while
-> the other three already carried the suffix. Going forward all four
-> follow `{batch_id}-{skill}.json`. Consumers built today should
-> accept both forms — sort by leading timestamp prefix.
-
 ---
 
 ## Schema location and version evolution
@@ -50,7 +44,7 @@ All four skills emit into one shape distinguished by the top-level
   `format_version: "MAJOR.MINOR"`. Consumers pick the matching schema
   file by major (and minor when relevant).
 
-### Evolution rules (SemVer per ARCHITECTURE.md §8.12.2)
+### Evolution rules (SemVer)
 
 | Change kind | Bump | Behaviour |
 |---|---|---|
@@ -69,10 +63,10 @@ coordinating a major bump.
 
 ### SemVer log
 
-The single exception to the «no version history in doc bodies» rule
-(`CONVENTIONS.md`): the schema contract IS its version log. Entries
-describe what changed and why, so a consumer can decide whether to
-update.
+One of the two sanctioned exceptions to the «no version history in doc
+bodies» rule (`CONVENTIONS.md`): the schema contract IS its version
+log. Entries describe what changed and why, so a consumer can decide
+whether to update.
 
 | Version | Change | Rationale |
 |---|---|---|
@@ -167,8 +161,7 @@ python3 _system/scripts/lint_manifest_schema.py --batches-dir _system/state/batc
 
 ## What is in the manifest
 
-Per ARCHITECTURE.md §4.5 (the long-form sample) and §8.11 (per-skill
-mapping). Briefly:
+`v2.json` is the field-by-field authority; this table is the map.
 
 | Top-level key | What it carries |
 |---|---|
@@ -210,14 +203,14 @@ presence + type only.
 | `/ztn:lint` | Cleaner / promoter. Auto-fixes (concept names, audience tags, privacy-trio backfill), promotes principle candidates to Tier 0, surfaces dedup pairs as CLARIFICATIONs (does not auto-merge). | Stats + checksum updates for autofixed files; `constitution.principles.upserts[]` on F.5 promotion. |
 | `/ztn:agent-lens` | Outside-view hypothesiser. Generates lens observations about owner state from accumulated content. | `tier2_objects.lens_observation.upserts[]` with `is_hypothesis: true`; references existing concepts (never creates new ones). |
 
-Full per-skill mapping with anatomy tables: ARCHITECTURE.md §8.11.
+Per-section field detail: the `$defs` in `v2.json`.
 
 ---
 
 ## What is NOT in the manifest
 
-Per ARCHITECTURE.md §4.5 + ENGINE_DOCTRINE.md §3.8 — these stay
-inside the engine and never reach a consumer:
+Per ENGINE_DOCTRINE.md §3.8 — these stay inside the engine and never
+reach a consumer:
 
 - **Candidate buffers** — `principle-candidates.jsonl`,
   `people-candidates.jsonl`. Pre-resolution staging; promotion gates
@@ -225,7 +218,7 @@ inside the engine and never reach a consumer:
   (people).
 - **Working memory** — `OPEN_THREADS.md`. Until the focus engine arrives.
 - **HITL queues** — `_system/state/CLARIFICATIONS.md`. Owner-facing only.
-- **Audit trails** — `log_process.md`, `log_maintain.md`, `log_lint.md`,
+- **Audit trails** — `log_process.md`, `log_maintenance.md`, `log_lint.md`,
   `agent-lens-runs.jsonl`, `check-decision-runs.jsonl`. Substrate for
   lenses and future cross-source analysis; not consumer-routable.
 - **Derived / regenerable views** — `CURRENT_CONTEXT.md`,
@@ -250,8 +243,7 @@ compatible with the contract.
 2. Sort by **filename timestamp prefix** (the `YYYYMMDD-HHMMSS` part
    of the basename). Filename is canonical — do not rely on
    filesystem ctime, it churns on copy / git restore.
-3. Process one at a time. No parallel reads — preserve causal order
-   per ARCHITECTURE.md §8.11.2.
+3. Process one at a time. No parallel reads — preserve causal order.
 
 ### Idempotency
 
@@ -266,7 +258,7 @@ carries `path` (records / notes / hubs) or a stable `id` (Tier 1/2
 objects). Re-applying an unchanged entity should be a no-op; the
 `checksum_sha256` field (where present) tells the consumer when
 content actually changed and graph reconciliation must run
-(ARCHITECTURE.md §8.11.6 invariant 1).
+(consumer invariant 1, below).
 
 ### Forward compatibility
 
@@ -294,22 +286,21 @@ consumer MUST diff the entity's relational arrays
 (`people`, `concept_hints`, etc.) against its existing graph state
 and reconcile edges (add new, remove obsolete). Re-applying based on
 the new checksum alone, without diffing, accumulates stale edges.
-This is invariant 1 in ARCHITECTURE.md §8.11.6 and applies uniformly
-across all four skills' emissions.
+This is consumer invariant 1, and it applies uniformly across all four
+skills' emissions.
 
 ### Status semantics
 
 No skill ever causes a hard delete. Lifecycle uses `status`
 (`active | archived | superseded | deprecated | dormant`). Consumers
 preserve history; default queries can filter by status. This is
-invariant 2 in §8.11.6.
+consumer invariant 2.
 
 ### Epistemic markers
 
 Two entity classes carry epistemic markers consumers should respect:
 
-- **Tier 0 principles** drive prompt calibration in agent
-  consumers — see ARCHITECTURE.md §8.9 for the calibration approach.
+- **Tier 0 principles** drive prompt calibration in agent consumers.
 - **Tier 2 lens-observations** carry `is_hypothesis: true`. A
   consumer that retrieves them as evidence should preserve the flag
   end-to-end so downstream synthesis can frame them as "noticed, not
@@ -336,20 +327,10 @@ else:
 EOF
 ```
 
-The same logic runs nightly inside `/ztn:lint` Scan G — see
+The same logic runs nightly inside `/ztn:lint` Scan H — see
 `integrations/claude-code/skills/ztn-lint/SKILL.md`. Validator failures
 surface as `manifest-schema-violation: <batch_id>` CLARIFICATIONs in
 the engine, never silently.
-
----
-
-## Examples — one specific consumer
-
-`minder-project/strategy/ARCHITECTURE.md` §5+ describes one specific
-downstream consumer (Minder backend). Other consumers — forks, custom
-backends, experimental tooling — read the same contract. Nothing in
-this directory is Minder-specific by design; the schema and the
-patterns above are the whole interface.
 
 ---
 

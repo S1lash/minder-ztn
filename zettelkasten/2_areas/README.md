@@ -5,7 +5,7 @@ layer: meta
 tags:
 - type/structural
 created: '2024-12-01'
-modified: '2026-04-26'
+modified: '2026-08-15'
 origin: personal
 audience_tags: []
 is_sensitive: false
@@ -16,6 +16,9 @@ is_sensitive: false
 Ongoing responsibilities without specific end dates.
 
 ## Current Areas
-- **Work/** - Employment / professional notes
-- **Career/** - Career development
-- **Personal/** - Personal development
+- **work/** — employment / professional notes
+- **career/** — career development
+- **personal/** — personal development
+
+Each grows its own subfolders as material accumulates; the rule for creating one
+is in `_system/registries/FOLDERS.md` → `## Creating New Folders`.

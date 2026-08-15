@@ -414,7 +414,8 @@ For each transcript in the raw globs above:
 #### Scope tagging (work / personal axis)
 
 ZTN handles the work / personal axis as a first-class universal
-property of every owner — see `ENGINE_DOCTRINE.md` §1.5. Every
+property of every owner — see `ENGINE_DOCTRINE.md` «The work /
+personal axis — first-class». Every
 extracted signal gets a **scope hint** during raw scan, so downstream
 seeding (PEOPLE.md Org column, PROJECTS.md Scope column, principle
 domain tagging) honours the split without owner having to retag
@@ -456,8 +457,11 @@ Apply the bias to each extracted signal:
 - **Principle candidate** — set `suggested_domain` from the
   constitution vocabulary (`identity` / `ethics` / `work` / `tech` /
   `relationships` / `health` / `money` / `time` / `learning` /
-  `ai-interaction` / `meta`). NEVER use `personal` as a domain (per
-  ENGINE_DOCTRINE §1.5 — too vague). For personal-bias transcripts,
+  `ai-interaction` / `meta`) — the closed enum in
+  `0_constitution/CONSTITUTION.md` «Domains», which is a different axis
+  from the note-level `domains:` whitelist in
+  `_system/registries/DOMAINS.md` and does NOT contain `personal`.
+  For personal-bias transcripts,
   prefer `identity` / `ethics` / `relationships` / `learning` based
   on principle content.
 
@@ -643,6 +647,62 @@ For every person already in `PEOPLE.md`:
 - Person with 0 mentions but has profile (stale?) → CLARIFICATION: "Still relevant? Archive?"
 - Person with 8+ mentions but NO profile → CLARIFICATION: "Generate profile?" (actual creation is `/ztn:lint`)
 - Raw scan finds name not resolved to any registered ID → CLARIFICATION (see above)
+
+### Step 3.4: Owner identity — registry row + profile
+
+The owner is a first-class identity: identity checks treat their identifier as
+registered by definition, and every record they took part in resolves through
+it. Skipped under `--skip-people` (writes to PEOPLE.md) and under `--dry-run`
+(reports only).
+
+**1. Resolve the identifier.** Read `_system/SOUL.md → ## Identity → Name:`
+(written by Step 2) and derive `firstname-lastname` by the registry's own ID
+rule. Name still `<unset>` / empty / a placeholder span → write CLARIFICATION
+`owner-identity-unresolved` and stop this step. Nothing is guessed from the OS
+user, the git config, or a transcript.
+
+**2. Registry row.** Write the row into the `## Owner` section of
+`3_resources/people/PEOPLE.md` — `ID | Name | Role | Profile`, `Role` from
+SOUL `## Identity`. Never into the general `## People` table: tier mechanics
+do not apply. A row already present with the *same* id is left as it stands;
+a row present with a *different* id surfaces CLARIFICATION
+`owner-identity-mismatch` (SOUL and the registry disagree — owner decides) and
+nothing is rewritten.
+
+**3. Profile.** Create `3_resources/people/{owner-id}.md` from
+`5_meta/templates/person-template.md` — the same shape as any other person
+profile, no second shape. **Assembled, not stubbed:** a file carrying only a
+name answers none of the questions a profile exists for.
+
+Each part comes from a named source, in this order:
+
+| Part of the profile | Source |
+|---|---|
+| `name`, `role`, `**Role:**` line | `_system/SOUL.md → ## Identity` |
+| `origin: personal`, `audience_tags: []`, `is_sensitive: false`, `tags: [person/{id}]` | fixed by the privacy trio defaults in the person template |
+| `## Контекст` — who they are, how they work, what they are on now | `_system/SOUL.md` → `## Identity` (role, location), `## Working Style`, `## Context for Agents`, `## Current Focus` |
+| `## Контекст`, closing line — the circle around them | `3_resources/people/PEOPLE.md` → Tier 1 rows, as `[[id]]` wikilinks with role / org |
+| `## Ключевые темы` — the values and principles they operate by | the active constitution tree `0_constitution/` (`status: active`) — one bullet per axiom / tier-1 principle: its title plus a wikilink to its file |
+| any of the above, where the owner wrote it themselves | `_sources/inbox/describe-me/` (and `_sources/processed/describe-me/` after Step 2 moved the consumed files) — the owner's own words win over a derived sentence |
+| `## Упоминания` | left as the template placeholder — the ordinary backlink machinery fills it; the owner appears in nearly every note, so a list here would carry no signal |
+
+**Assembly is deterministic from the sources named above, never invented.**
+What the sources do not say, the profile does not claim: an empty
+constitution yields no `## Ключевые темы` bullets, a SOUL with no
+`## Working Style` yields no sentence about working style. No plausible text
+fills a gap — a gap worth closing is a CLARIFICATION, not a paragraph.
+
+**4. No auto-population.** The owner is registered, NOT added to the `people:`
+array of any record or note, and not counted in anyone's mention totals. They
+are present by default almost everywhere; auto-population would inflate every
+count and carry no signal. Their absence from a record is what is significant.
+
+**Idempotency.** Re-run adds only what is missing and overwrites nothing the
+owner touched: an existing frontmatter field keeps its value, an existing
+section with a non-placeholder body is left alone, and a section that is
+missing or still the template placeholder is (re)assembled from the sources
+above. A friend whose constitution was empty on the first run gets
+`## Ключевые темы` on the run after their first principles land.
 
 ### Step 3.5: PROJECTS.md seeding (raw scan only)
 
@@ -862,6 +922,7 @@ Structured:     {R} records + {K} knowledge notes scanned
 SOUL.md           drafted — review Working Style + Context for Agents sections
 PEOPLE.md         {N} persons (structured) + {N_raw} raw-scan candidates → CLARIFICATIONS
   Tier 1: {N}  | Tier 2: {N}  | Tier 3: {N}
+Owner             {registered as `{owner-id}`, profile {created | gaps filled | unchanged} | unresolved → CLARIFICATION}
 PROJECTS.md       {N_proj} candidate rows added → CLARIFICATIONS
 Hub candidates    {N_hub} clusters surfaced → CLARIFICATIONS (no files created)
 Principle cand.   {N_princ} appended to principle-candidates.jsonl (review via /ztn:lint F.3)
@@ -948,7 +1009,7 @@ Write to `_system/state/CLARIFICATIONS.md` under `## bootstrap YYYY-MM-DD` heade
   - `profile-merge-conflict` (multiple profile files disagree on a section)
   - `process-compatibility` (schema mismatch noticed during raw scan)
 
-> **Note on bare-name items (updated 2026-04-24):** per `_system/docs/SYSTEM_CONFIG.md` «People inclusion» rule, routine bare-name mentions encountered during bootstrap should be appended to `_system/state/people-candidates.jsonl` via `python3 _system/scripts/append_person_candidate.py` instead of raising a CLARIFICATION — unless the high-importance escape hatch fires (external/client meeting, full surname present, role+context fully specified). Bootstrap runs once on a fresh base and can produce many bare-name mentions; buffer-routing keeps CLARIFICATIONS queue manageable. `/ztn:lint` Scan C.5 aggregates weekly.
+> **Note on bare-name items:** per `_system/docs/SYSTEM_CONFIG.md` «People inclusion in `people:` frontmatter», a routine bare-name mention is appended to `_system/state/people-candidates.jsonl` via `python3 _system/scripts/append_person_candidate.py` rather than raised as a CLARIFICATION — unless the high-importance escape hatch fires (external/client meeting, full surname present, role+context fully specified). Bootstrap runs once on a fresh base and can produce many bare-name mentions; buffer-routing keeps the CLARIFICATIONS queue manageable. `/ztn:lint` Scan C.5 aggregates weekly.
 - `**Subject:**` — primary entity id
 - `**Source:**` — `bootstrap-{YYYY-MM-DD}` or specific file path
 - `**Suggested action:**` — canonical verb from the Resolution-action vocabulary (see `_system/docs/SYSTEM_CONFIG.md`) or descriptive (reminder items)
@@ -1040,7 +1101,9 @@ Write to `_system/state/CLARIFICATIONS.md` under `## bootstrap YYYY-MM-DD` heade
 - Не создаёт hub-файлы — даже когда raw scan находит сильные кластеры. Hubs требуют ≥ 3
   knowledge notes per `/ztn:process` Step 3.5; bootstrap surfaces только candidates → CLARIFICATIONS
 - Не трогает `_records/` (они уже корректны)
-- Не создаёт новые профили в `3_resources/people/` (Tier 2→1 auto-generation — ответственность `/ztn:lint`)
+- Не создаёт новые профили в `3_resources/people/` (Tier 2→1 auto-generation — ответственность `/ztn:lint`).
+  **Исключение — профиль владельца** (Step 3.4): он не проходит через tier-механику вообще,
+  поэтому его некому создать по порогу упоминаний
 - Не запускает `/ztn:process`
 - **Не перемещает транскрипты из inbox в processed** — это ответственность `/ztn:process`.
   Raw scan читает транскрипты read-only.
@@ -1063,6 +1126,7 @@ Write to `_system/state/CLARIFICATIONS.md` under `## bootstrap YYYY-MM-DD` heade
 - **PEOPLE.md** — mentions recomputed from scratch. Tier upgrades only (downgrade требует explicit `/ztn:lint` suggestion через CLARIFICATIONS)
 - **CLARIFICATIONS** — previous answers preserved. New questions под новой `## bootstrap YYYY-MM-DD` header; не перезаписывают предыдущие
 - **SOUL.md** — если `--skip-soul` или пользователь вручную редактировал → не перезаписывается. Иначе перезапись с сохранением Working Style + Context for Agents секций при наличии текста
+- **Owner row + profile** — row added once into PEOPLE.md `## Owner`; a row with a different id surfaces a CLARIFICATION instead of being rewritten. Profile assembled per section: owner-written bodies stay, missing or still-placeholder sections are re-assembled from SOUL / constitution / registry, so a constitution that filled up after the first run reaches the profile on the next one
 - **PROJECTS.md** — candidate rows added by id; existing rows never overwritten. If a candidate id matches an existing row, increment mention count surfaced via CLARIFICATION rather than rewrite the row
 - **principle-candidates.jsonl** — append-only buffer. Re-running bootstrap appends new candidates only when their `(situation, observation, hypothesis)` triple is not already present in the buffer (dedup against last 30 days of entries)
 - **describe-me/ move** — per file, happens once. On re-run, consumed files are already in `_sources/processed/describe-me/`; bootstrap re-reads from there with no further move. New inbox-side files added since the previous run are consumed (and moved) the same way
@@ -1081,6 +1145,7 @@ Write to `_system/state/CLARIFICATIONS.md` under `## bootstrap YYYY-MM-DD` heade
 | `_system/state/log_maintenance.md` | append | One bootstrap entry |
 | `_system/state/CLARIFICATIONS.md` | append | Under `## bootstrap YYYY-MM-DD` header, grouped by subsection |
 | `_system/state/principle-candidates.jsonl` | append | One record per harvested principle; `origin: bootstrap-raw-scan` |
-| `3_resources/people/PEOPLE.md` | rewrite | New columns: Tier, Mentions, Last |
+| `3_resources/people/PEOPLE.md` | rewrite | New columns: Tier, Mentions, Last; owner row in `## Owner` (Step 3.4) |
+| `3_resources/people/{owner-id}.md` | create / fill gaps | Owner profile assembled from SOUL + active constitution + registry (Step 3.4) |
 | `1_projects/PROJECTS.md` | append rows | Candidate rows added in fresh-onboarding mode (`Status: candidate`) |
 | `_sources/inbox/describe-me/` | move consumed files to processed | After consumption, non-template files relocate to `_sources/processed/describe-me/`; folder + `PROFILE.template.md` stay in place (registered source row) |

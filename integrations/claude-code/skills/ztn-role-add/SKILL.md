@@ -202,20 +202,20 @@ module rather than a copy of it:
 
 ## `--from-previous` — carrying a previous-shape role across
 
-Migration 018 parked the owner's previous-shape roles and wrote one plan per
-role at `_system/roles/_previous/{id}.plan.json`. Read that plan and let it do
-the work it can, so the owner is asked about what genuinely needs them and
-nothing else.
+A base that carried roles under the previous shape holds them parked at
+`_system/roles/_previous/`, with one plan per role at
+`_previous/{id}.plan.json`. Read that plan and let it do the work it can, so
+the owner is asked about what genuinely needs them and nothing else.
 
 **Rebuild the plan before you read it.** The parked directory is what a role
 holds; the plan file is a view of it, and the copy on disk may have been written
-months ago by an engine that read less than this one does. A migration records
-itself applied and never runs again, so a stale view would otherwise stay there,
-authoritative and wrong, forever. One command, idempotent, reads only:
+by an engine that read less than this one does. Whatever wrote it runs once and
+never again, so a stale view would otherwise stay there, authoritative and
+wrong, forever. One command, idempotent, reads only:
 
 ```bash
-REPO="$(git rev-parse --show-toplevel)"; BASE=""
-for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; [ -n "$BASE" ] && BASE="ambiguous" && break; BASE="${d%/}"; done
+REPO="$(git rev-parse --show-toplevel)"; BASE=""; export PYTHONIOENCODING=utf-8
+for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; BASE="$(python3 "$d/_system/scripts/roles_run.py" base --repo "$REPO")"; break; done
 python3 "$REPO/scripts/migrations/_018_plan.py" "$BASE/_system/roles/_previous"
 ```
 
@@ -315,8 +315,8 @@ Shell state does not persist between tool calls. A snippet below that uses
 one:
 
 ```bash
-REPO="$(git rev-parse --show-toplevel)"; BASE=""
-for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; [ -n "$BASE" ] && BASE="ambiguous" && break; BASE="${d%/}"; done
+REPO="$(git rev-parse --show-toplevel)"; BASE=""; export PYTHONIOENCODING=utf-8
+for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; BASE="$(python3 "$d/_system/scripts/roles_run.py" base --repo "$REPO")"; break; done
 ```
 
 Without it `$BASE` is empty and every path becomes `/_system/...`, which fails
@@ -324,8 +324,11 @@ in a way that reads like a missing file rather than a missing variable. The
 credential blocks are where it bites hardest: an unset `$BASE` breaks the
 `trap` too, so a store an earlier call opened is left decrypted on disk.
 
-`BASE` empty or `ambiguous` → say so and stop, rather than running against a
-guessed path. This is the same derivation `/ztn:roles` uses; there is one form.
+The loop only locates a copy of the CLI; `roles_run.py base` is what decides,
+so zero bases and two bases are both loud — the CLI prints the reason on
+stderr and exits non-zero, leaving `$BASE` empty. `BASE` empty → repeat that
+reason to the owner and stop, rather than running against a guessed path.
+This is the same derivation `/ztn:roles` uses; there is one form.
 
 ## Step 1 — Hear the wish, then develop it
 
@@ -893,23 +896,18 @@ together.
    file and must survive untouched:
 
    ```bash
-   python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import roles_secrets, pathlib; \
+   ZTN_ROLES_KEY='<the key>' python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import roles_secrets, pathlib; \
        roles_secrets.store_secret(pathlib.Path(sys.argv[2]), sys.argv[3], sys.stdin.read().rstrip("\n"))' \
-       "$BASE/_system/scripts" "$BASE/_system/state/secrets.enc.json" NOTION_TOKEN
-   ```
-
-   Feed the value on stdin with a quoted heredoc, which is what makes it work
-   at all — the snippet reads stdin and nothing supplies it otherwise:
-
-   ```bash
-   ZTN_ROLES_KEY='<the key>' python3 -c '...' "$BASE/_system/scripts" \
-       "$BASE/_system/state/secrets.enc.json" NOTION_TOKEN <<'SECRET'
+       "$BASE/_system/scripts" "$BASE/_system/state/secrets.enc.json" NOTION_TOKEN <<'SECRET'
    <the value the owner pasted>
    SECRET
    ```
 
-   Quoted `<<'SECRET'` so the shell expands nothing inside it — an unquoted
-   heredoc would mangle a value containing `$` or backticks.
+   The key rides on this same call — it encrypts, and shell state does not
+   persist between tool calls. The value arrives on stdin through the quoted
+   heredoc, which is what makes the snippet work at all: it reads stdin and
+   nothing else supplies it, and the quoting stops the shell mangling a value
+   containing `$` or a backtick.
 
    The value goes in **on stdin, never as an argument** — arguments are visible
    in the process list to everything running as this account, and they land in
@@ -956,6 +954,12 @@ silence. An anchor note surviving to this gate means Step 5 left an anchor in,
 so confirm the owner chose it knowing what it requires; if it is there by
 accident, that is the landmine, and you drop the anchor.
 
+**One finding is about the shell, not the role:** the entry whose `role` is
+`null` and which names `ZTN_ROLES_KEY`. It says this conversation cannot
+decrypt, so the value-dependent check did not run. Carry the key in the same
+call — `ZTN_ROLES_KEY='<the key>' python3 "$RUN" validate …` — which you have
+here anyway, since Step 4 needed it to store the credential.
+
 A finding that the credential is too short to be leak-scanned is real, not
 noise: below that floor the engine cannot check that the role never writes the
 value into a file. Read the finding — it names the floor — and decide with the
@@ -972,16 +976,19 @@ answered has not been proven.
 written by the tick, and no tick is running here — so this gate materialises it
 itself and removes it in a `finally`, whatever the call returned:
 
-**In ONE Bash call, with a real `trap`.** Shell state does not persist between
-tool calls, so three separate calls have no `finally` between them at all: a
-proving call that fails, an owner who walks away, or a session that ends leaves
-the entire decrypted store in plaintext on disk. The next thing that would
-remove it is a tick that may not run until tomorrow morning.
+**In ONE Bash call, with a real `trap`** — including the `$BASE` derivation and
+the key. Shell state does not persist between tool calls, so a split block has
+no `finally` between its halves at all, an unset `$BASE` resolves every path to
+`/_system/...`, and a key exported earlier is simply gone. Any of the three
+leaves the entire decrypted store in plaintext on disk, and the next thing that
+would remove it is a tick that may not run until tomorrow morning. Do not split
+this «for readability»; the split IS the defect.
 
 ```bash
-REPO="$(git rev-parse --show-toplevel)"; BASE=""
-for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; [ -n "$BASE" ] && BASE="ambiguous" && break; BASE="${d%/}"; done
+REPO="$(git rev-parse --show-toplevel)"; BASE=""; export PYTHONIOENCODING=utf-8
+for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; BASE="$(python3 "$d/_system/scripts/roles_run.py" base --repo "$REPO")"; break; done
 RUN="$BASE/_system/scripts/roles_run.py"
+export ZTN_ROLES_KEY='<the key>'
 SECRETS_FILE="$(python3 "$RUN" secrets-open --base "$BASE")"
 trap 'python3 "$RUN" secrets-close --base "$BASE"' EXIT INT TERM HUP
 set -a; . "$SECRETS_FILE"; set +a
@@ -989,21 +996,15 @@ curl -sS -o /dev/null -w '%{http_code}\n' \
   -H "Authorization: Bearer $SOME_TOKEN" https://api.example.com/v1/whoami
 ```
 
-**Every Bash call in this skill re-derives `$BASE` first.** Shell state does not
-persist between tool calls, so a block that opens with `RUN="$BASE/..."` and no
-derivation resolves to `/_system/scripts/roles_run.py` and fails — including the
-`trap`, which then cannot close a store the previous call may have opened. That
-is the one failure mode this whole block exists to prevent, reintroduced by an
-unset variable.
+`secrets-open` decrypts, so it needs the key; without it the verb exits 2,
+`$SECRETS_FILE` is empty, and the sourcing line fails with a message about a
+missing file rather than a missing key. The `export` is scoped to this one call
+and reaches no file.
 
 **All four signals, not just `EXIT`.** `EXIT` alone fires on a normal return and
 on a failing curl — but NOT when the shell is killed, and a terminated shell is
 precisely when the plaintext would be left behind with nobody to notice. Verified
 by killing it: with `EXIT` alone the decrypted store survived.
-
-Do not split this across calls «for readability»; the split is the defect —
-shell state does not persist between tool calls, so three calls have no `finally`
-between them at all.
 
 ### Gate 3 — a trial run that does something and touches nothing else
 
@@ -1234,8 +1235,11 @@ reverted — which means the two of them can collide, and the owner reconciles.
 
 - `role.md` and the `state/` directory of the one role it creates, under the
   roles root (`roles_config.roles_root`)
-- the credentials file (`roles_config.secrets_file`), appended, and only when
-  the role reaches outside
+- the encrypted credential store (`roles_config.secrets_store` —
+  `_system/state/secrets.enc.json`), one name upserted, and only when the role
+  reaches outside. Never `roles_config.secrets_file`: that is the DECRYPTED
+  file outside the repository, written by the tick and by Gate 2's own
+  `secrets-open`, never by this skill
 
 ## Files this skill reads
 

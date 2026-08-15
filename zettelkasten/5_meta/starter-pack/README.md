@@ -2,10 +2,17 @@
 
 Optional generic axioms `/ztn:bootstrap --with-starter-axioms` can drop
 into your `0_constitution/axiom/{domain}/` as starting points. Engine
-ships these as drafts — `confidence: starter`, `status: draft` — so
-they're visible in your constitution but never auto-load into
-`constitution-core` until you mark them `confidence: proven` and
-`status: active`.
+ships these marked `confidence: starter` and `status: draft`, so it is
+obvious at a glance that you have not yet made them yours.
+
+They are visible in your constitution but do **not** auto-load into the
+hot `constitution-core` view. What holds them back is `applies_to:` —
+`gen_constitution_core.py` selects a principle only when `core: true`,
+`status != placeholder`, and `applies_to` contains `claude-code`, and
+these ship without it. So adopting one means adding `claude-code` to its
+`applies_to`, then re-running `/ztn:regen-constitution`. Editing
+`confidence` or `status` alone changes nothing — those two fields are
+for you, not for the filter.
 
 These are starting points, not prescriptions. Most users:
 

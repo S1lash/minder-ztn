@@ -65,6 +65,7 @@ fetch + checkout. One file per breaking engine change.
   | `018` roles hand-off | heal | it also moves owner data, but nothing reads the old location — un-run means invisible, not wrong |
   | `020` roles hand-off memory | heal | it only refreshes generated artifacts a clone already holds; un-run means a stale hand-off, not a wrong engine |
   | `007` manifest retrofit | heal | historical data is repaired or it is not; the engine reads it either way |
+  | `023`, `024`, `025` identity | heal | they touch a registry, which reads structural — but un-run leaves it INCOMPLETE, not wrong: a missing owner row is a missing row, an un-migrated retirement table is read as unparsed rows that surface as questions, and `025` only reports. Nothing reads a wrong place |
   | `016`, `004`, `005`, `015` | heal | they only print |
 
   The distinction is not stylistic. A repair of historical data used to abort
@@ -108,6 +109,19 @@ it as a migration of its own (`pending()` globs `*.sh`).
   accumulated and where it lives», shared by the hand-off and the plan so the two
   can never disagree. It reports an inventory with paths, never a copy: the files
   are the source of truth and sit beside the plan.
+
+- `_023_owner_persona.py` · `_024_retirement_schema.py` ·
+  `_025_identity_report.py` — the three identity migrations: the owner's
+  registry row and assembled profile, the retirement tables reaching the
+  declared schema, and the identity audit's findings reaching the owner's
+  clarification queue.
+- `_identity_migration_lib.py` — what those three share: resolving the base
+  whatever the owner named it, importing the engine's own registry parsers
+  rather than writing a second one, LF/UTF-8 file I/O, hash-guarded generated
+  blocks (refresh what we wrote, never touch what the owner edited), and
+  appending to the clarification queue without ever asking a question twice.
+  Not named `_NNN_` because it belongs to no single migration; the leading
+  underscore is what keeps it out of the `*.sh` glob either way.
 
 `020-roles-previous-shape-memory.sh` re-runs those producers for a clone where
 `018` already recorded `applied` and therefore never runs again. It is the

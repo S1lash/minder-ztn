@@ -52,12 +52,23 @@ what to write in the message, did I push, should I rebase first.
 
 1. Current directory is the ZTN repo root (has `.engine-manifest.yml`).
 2. `origin` remote is configured and reachable.
-3. No other ZTN producer skill is currently running. Read these locks
-   and abort with a clear message if any exists:
-   - `_sources/.processing.lock`
-   - `_sources/.lint.lock`
-   - `_sources/.maintain.lock`
-   - `_sources/.resolve.lock`
+3. No other ZTN producer skill is currently running. Read **all seven**
+   pipeline locks, in this order, and abort with a clear message naming
+   the conflicting skill if any exists:
+   - `_sources/.processing.lock` → `/ztn:process`
+   - `_sources/.maintain.lock` → `/ztn:maintain`
+   - `_sources/.lint.lock` → `/ztn:lint`
+   - `_sources/.agent-lens.lock` → `/ztn:agent-lens`
+   - `_sources/.content.lock` → `/ztn:content`
+   - `_sources/.resolve.lock` → `/ztn:resolve-clarifications`
+   - `_sources/.roles.lock` → `/ztn:roles`
+
+   The full set, not a subset: committing inside a running tick is
+   equally unsafe whichever tick it is. A roles tick is the sharpest
+   case — `roles_guard.py` attributes every write in its diff window to
+   the role that is running and reverts what falls outside that role's
+   zone, so a commit landing mid-tick is attributed to a role that did
+   not make it. A lock this skill does not read is a lock it walks into.
 
 This skill does NOT take its own lock — it does not write to ZTN
 content files, only to git, plus the rename-only portable-name
@@ -192,7 +203,7 @@ Next: continue working, or run /ztn:process if you have new transcripts.
 If `--no-push`:
 ```
 Committed locally — not pushed.
-Run `git push` (or `/ztn:save --no-push=false`) when ready.
+Run `/ztn:save` again (without `--no-push`) when ready.
 ```
 
 ## What this skill does NOT do

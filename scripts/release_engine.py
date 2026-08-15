@@ -2,10 +2,21 @@
 """
 Release engine — copy engine + template paths into a target directory.
 
-Reads `.engine-manifest.yml`. For each `engine` path, copies as-is. For
-each `template` path with `.template.md` suffix, strips the `.template`
-suffix in the destination filename. Anything not in `engine` or
-`template` is excluded by default.
+Reads `.engine-manifest.yml`. For each `engine` path, copies as-is. Each
+`template` path ships one of two ways, per the seed contract:
+
+  - strip-seed (`template:` minus `seed_skill:`) — the `.template`
+    segment is dropped from the destination name, whatever the extension
+    (`SOUL.template.md` → `SOUL.md`, `x.template.json` → `x.json`), so a
+    fresh clone opens with the file already in place.
+  - skill-seed (`template:` ∩ `seed_skill:`) — copied verbatim, name
+    intact; the owning skill materialises it on first run.
+
+Anything not in `engine` or `template` is excluded by default.
+
+Symlinks are preserved as symlinks, except under a deref-prefix
+(`.claude/skills/`) where they are dereferenced into real files — git
+symlinks do not survive a Windows clone.
 
 Used by the owner to assemble the public skeleton (`minder-ztn`) from
 the personal instance.
@@ -15,8 +26,16 @@ Usage:
   scripts/release_engine.py --target /tmp/skeleton --dry-run
 
 Verifies before write:
-  - Linter passes (no personal data)
   - All manifested paths exist in the source
+  - `check_no_personal_data.py` — no owner identity in what ships
+  - `check_portability.py` — no ENGINE_DOCTRINE §3.9 violation ships
+
+Verifies after write:
+  - `check_seed_contract.py::scan_skeleton` — the assembled tree honours
+    the seed contract (no un-materialised template leak, no owner
+    override or tuning file, nothing shipped twice)
+
+Any of these failing aborts the release.
 
 Does NOT initialize git in the target — that is the operator's job
 (orphan-init recommended for the public repo).
@@ -88,8 +107,15 @@ def parse_source_ids_from_template(template_path: Path) -> list[str]:
             continue
         # Strip backticks/markdown around the ID if any.
         first = first.strip("`").strip()
-        if first:
-            ids.append(first)
+        # A deliberately-empty table still needs a row to render, and the
+        # placeholder in that row is prose, not an identifier. Taken as one it
+        # becomes a real directory in every friend's vault, named with
+        # parentheses the whole engine otherwise keeps out of paths. A source
+        # ID is the portable identifier `/ztn:source-add` validates, so
+        # anything outside that shape is a rendering artifact and not a source.
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", first):
+            continue
+        ids.append(first)
     return ids
 
 

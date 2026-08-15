@@ -44,6 +44,37 @@ class AppendCandidateTests(unittest.TestCase):
             self.assertIn("лучше", entry["observation"])  # unicode
         clear_ztn_env()
 
+    def test_captured_by_is_declared_by_the_caller(self):
+        """Provenance is read at F.5 promotion, where only some origins
+        auto-merge. A producer that is not the capture skill names itself."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = make_fixture(Path(tmp))
+            buf = fx.system / "state" / "principle-candidates.jsonl"
+            a.main([
+                "--situation", "Recurring decision rationale across 3 records",
+                "--suggested-type", "principle",
+                "--suggested-domain", "work",
+                "--captured-by", "ztn:maintain",
+                "--buffer", str(buf),
+            ])
+            self.assertEqual(_read_buffer(buf)[0]["captured_by"], "ztn:maintain")
+        clear_ztn_env()
+
+    def test_blank_captured_by_falls_back_to_the_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = make_fixture(Path(tmp))
+            buf = fx.system / "state" / "principle-candidates.jsonl"
+            a.main([
+                "--situation", "any situation",
+                "--suggested-type", "principle",
+                "--suggested-domain", "tech",
+                "--captured-by", "   ",
+                "--buffer", str(buf),
+            ])
+            self.assertEqual(_read_buffer(buf)[0]["captured_by"],
+                             a.DEFAULT_CAPTURED_BY)
+        clear_ztn_env()
+
     def test_default_origin_is_personal(self):
         with tempfile.TemporaryDirectory() as tmp:
             fx = make_fixture(Path(tmp))

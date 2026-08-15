@@ -107,9 +107,9 @@ To extend: edit the snippet file directly — add a CSS selector like
 .nav-folder-title[data-path^="my-folder"] { display: none; }
 ```
 
-(There used to be a "File Hider" plugin recommendation here. It is not
-in the core community plugin registry — relying on it created a
-fragile dependency. CSS is shipped, native, and edit-in-place.)
+A CSS snippet rather than a plugin on purpose: it is shipped with the
+seed, native to Obsidian, and edit-in-place, so hiding a path costs no
+third-party dependency you would have to install and keep working.
 
 ### Optional extras
 

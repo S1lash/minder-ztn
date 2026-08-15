@@ -29,20 +29,23 @@ When you find these in conflict, the higher one wins. When a rule is absent ever
 - `integrations/claude-code/{rules,commands,skills}/` — Claude Code prompts and skills (sources)
 - `integrations/claude-code/{install.sh,uninstall.sh,SETUP_PROMPT.md,scheduler-prompts/}` — installer + scheduler templates
 - `integrations/minder-ztn-mcp/` — MCP integration guide
-- `integrations/obsidian/` — Obsidian vault config seed (`.obsidian/` defaults + `HOME.template.md` dashboard, idempotently seeded by `seed.sh` from `claude-code/install.sh`)
+- `integrations/obsidian/` — Obsidian vault config seed (`vault-config/` defaults + the `minder-ztn.template.md` dashboard, idempotently seeded to `<vault>/minder-ztn.md` by `seed.sh` from `claude-code/install.sh`)
 - `scripts/` — release, sync, gates, migrations; `scripts/lib/` holds the shared primitives every one of them uses
 - `zettelkasten/_system/docs/` — system spec
 - `zettelkasten/_system/scripts/` — python pipeline + tests
-- `zettelkasten/_system/registries/{FOLDERS.md,CONCEPT_NAMING.md,AGENT_LENSES.md,lenses/}` — engine registries (pure spec; sync upstream-to-downstream)
-- `zettelkasten/_system/registries/AUDIENCES.template.md` — seed for `AUDIENCES.md` (spec + owner-mutable Extensions table; ships as template so owner extensions survive sync)
+- `zettelkasten/_system/registries/{FOLDERS.md,CONCEPT_NAMING.md,CONCEPT_TYPES.md,AGENT_LENSES.md,lenses/}` — engine registries (pure spec; sync upstream-to-downstream)
+- `zettelkasten/_system/registries/{AUDIENCES,DOMAINS}.template.md` — seeds for `AUDIENCES.md` / `DOMAINS.md` (spec + owner-mutable Extensions table; ship as templates so owner extensions survive sync)
 - `zettelkasten/_system/roles/{_run-frame.md,_minder.md}` — the two engine files every role's prompt is assembled from (run mechanics; base conventions). Everything else under `_system/roles/` is owner data
 - `zettelkasten/5_meta/{CONCEPT.md,PROCESSING_PRINCIPLES.md,templates/,starter-pack/}`
 - `zettelkasten/5_skills/` — engine quick-reference cards
 - `zettelkasten/0_constitution/CONSTITUTION.md` — protocol spec (NOT the `axiom/principle/rule/` subdirs)
 - `zettelkasten/{1_projects,2_areas,3_resources,_records}/README.md` — PARA explainers
 - `.claude/CLAUDE.md`, `.claude/settings.json` — project-local engine-development guide and permissive command allowlist (this file and its sibling)
+- `.claude/skills/` — the canonical skill-discovery tree (symlinks here; `release_engine.py` dereferences them into real files on release, because a git symlink does not survive a Windows clone)
 - `.claude/agents/ztn-role.md` — the subagent definition the `/ztn:roles` tick spawns per due role
-- Root meta: `.gitignore`, `LICENSE`, `integrations/VERSION`, `CONTRIBUTING.md`, `docs/{onboarding,upstream-sync,scheduling,obsidian,privacy,CHANGELOG}.md`
+- Root meta: `.gitignore`, `.gitattributes`, `LICENSE`, `integrations/VERSION`, `CONTRIBUTING.md`, `README.template.md`, `docs/{onboarding,upstream-sync,scheduling,obsidian,privacy,CHANGELOG}.md`
+
+Notably **not** engine, though they sit beside these: `AGENTS.md` (the Codex-facing twin of this file — keep the two reconciled anyway, since a rule that reaches one runtime and not the other is worse than no rule), `.github/workflows/` (owner-only CI; a friend's clone stays CI-free by design), and the repo-root `README.md` (the maintainer's own; the public one ships from `README.template.md`).
 
 ### Owner-data paths (NEVER edit by hand — route through ZTN skills)
 
@@ -131,7 +134,7 @@ When engine behaviour changes, these are the docs that must move with it. Drift 
 | `zettelkasten/_system/docs/SYSTEM_CONFIG.md` | System contract: schemas, hard rules, cross-skill lock matrix |
 | `zettelkasten/_system/docs/CONVENTIONS.md` | Documentation style; binding on every edit listed in this table |
 | `zettelkasten/_system/docs/ENGINE_DOCTRINE.md` | Operating philosophy; auto-loaded into every session via `~/.claude/rules/ztn-engine-doctrine.md` |
-| `zettelkasten/_system/docs/ARCHITECTURE.md` | System design; multi-user planning |
+| `zettelkasten/_system/docs/ARCHITECTURE.md` | System design as built: git-centric layers, rejected alternatives, the system files the engine maintains |
 | `zettelkasten/_system/docs/manifest-schema/v{N}.json` | Canonical JSON Schema for ZTN engine manifest (consumer-agnostic). New major = new file alongside; old majors retained for validating old batches |
 | `zettelkasten/_system/docs/manifest-schema/README.md` | Reference doc for manifest contract: SemVer evolution rules, per-skill semantics, "what is NOT in the manifest", consumer integration patterns |
 | `zettelkasten/_system/docs/manifest-schema/fixtures/` | Per-skill sanitized example manifests; regression test for schema evolution — schema changes MUST keep these validating |
@@ -156,6 +159,7 @@ When engine behaviour changes, these are the docs that must move with it. Drift 
 | `scripts/manifest_paths.py` | Emits one manifest section as LF-separated lines for a shell caller. Exists so `sync_engine.sh` has no inline `python3 - <<'PY'` heredoc on the boundary — that heredoc printed with a bare `print()`, and python's text-mode stdout writes CRLF on Git Bash, which is what made `/ztn:update` silently apply nothing there |
 | `scripts/run_migrations.py` | The migration runner. Honours each migration's declared `# migration-kind:` — `structural` failure aborts, `heal` failure is recorded and the update continues. Called by `sync_engine.sh` and by `/ztn:update` |
 | `scripts/check_seed_contract.py` | Seed-contract gate — enforces the contract at release + CI; add a new seed's invariant here if you introduce a new seeding kind |
+| `scripts/retire_paths.py` | Removes what the manifest lists as `retired:`. A sync copies what upstream HAS and cannot express what it no longer has, so without this a deleted module lives on every clone forever. Runs on every update rather than as a one-off migration, so it converges a clone at any version — including one dark for months |
 | `CONTRIBUTING.md` | Contribution rules |
 | `docs/onboarding.md`, `docs/upstream-sync.md`, `docs/scheduling.md` | Friend-facing docs |
 

@@ -12,7 +12,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 import yaml
 
@@ -663,6 +663,733 @@ def parse_extensions_table(
             continue
         out.add(name)
     return out
+
+
+# -----------------------------------------------------------------------------
+# Entity registry — the project registry as a set of identities
+# -----------------------------------------------------------------------------
+#
+# An identity is anything that has an identifier, a registry row, and places
+# that refer to it. The registry is the only authority on what an identifier
+# currently means: a live entity, an entity on a different axis, or a retired
+# identifier that must be read as its successor. Parsing it lives here rather
+# than in a scanner because more than one consumer needs the same answer, and
+# two parsers of one registry are two answers to one question.
+#
+# Matching against these identifiers is EXACT string equality, never substring:
+# `hub-{id}-{something}` is a different identity that merely shares a prefix.
+
+REGISTRY_CATEGORIES: tuple[str, ...] = ("project", "trajectory", "consolidated")
+
+# The people registry's own categories. `person` is a live row — including a
+# row whose tier dropped to stale, because a tier drop is archival and leaves
+# the identifier valid. `consolidated` is the retired half, and is named after
+# the project registry's retired category on purpose: every consumer asks the
+# same question of both registries and must not need a per-registry branch to
+# ask it.
+PEOPLE_REGISTRY_CATEGORIES: tuple[str, ...] = ("person", "consolidated")
+
+# The four kinds of identity change (SYSTEM_CONFIG → Identity Contract). Only
+# three of them ever reach a retirement row — see `RETIREMENT_KINDS` — because
+# a `reclassify` leaves the identity valid and is stated by which section of
+# the registry it lives in, not by a row recording its end.
+#
+# `IDENTITY_KIND_UNKNOWN` is what a retirement row whose kind could not be read
+# yields. It is a report, never a guess: a row that does not say what happened
+# to it is work for the owner, not an inference for the scanner.
+IDENTITY_KINDS: tuple[str, ...] = (
+    "merge", "rename", "split", "reclassify", "void",
+)
+IDENTITY_KIND_UNKNOWN = "unknown"
+
+# How many successors each kind's row must declare. A rule the row can break,
+# which is the point: a row that breaks it is a defect OF THE ROW, reported
+# once against the registry, rather than a mystery repeated at every reference
+# that pointed at it.
+SUCCESSOR_ARITY: dict[str, tuple[int, int | None]] = {
+    "merge": (1, 1),
+    "rename": (1, 1),
+    "split": (2, None),
+    "void": (0, 0),
+}
+
+# A registry identifier: lowercase slug, hyphen/underscore allowed, starting
+# with a digit or a letter. Rejects header cells ("ID", "Old ID"), separator
+# rows ("---") and placeholder cells ("_(empty)_", "-").
+REGISTRY_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+# `[[hub-successor]]`, `[[successor]]`, `` `successor` `` — the three shapes a
+# successor cell takes. A backticked identifier wins over a wikilink, because
+# a row that carries both spells the wikilink as the hub and the backtick as
+# the identifier proper.
+_REGISTRY_BACKTICK_RE = re.compile(r"`([^`]+)`")
+_REGISTRY_WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)")
+_HUB_PREFIX = "hub-"
+
+
+@dataclass(frozen=True)
+class RegistryEntry:
+    """One identifier as the registry declares it.
+
+    `category` is one of `REGISTRY_CATEGORIES` / `PEOPLE_REGISTRY_CATEGORIES`.
+    `successor` is the identifier that replaces this one, and is present only
+    for a retired identifier whose row names one — a retirement with no
+    successor (the entity turned out never to have existed) leaves it `None`,
+    and so does any live row.
+
+    `kind` is the kind of identity change (`IDENTITY_KINDS`, or
+    `IDENTITY_KIND_UNKNOWN` when the row does not say), and is set only by a
+    registry that declares it. A registry whose retirement table does not carry
+    the kind yet leaves it `None` — absent, which is not the same statement as
+    `unknown`.
+    """
+
+    entity_id: str
+    category: str
+    successor: str | None = None
+    status: str = ""
+    kind: str | None = None
+    # Every successor the row declares, in the order it declares them. A
+    # `split` names two or more and leaves `successor` None: there is no single
+    # identifier its references migrate to, and offering one would be the
+    # scanner choosing on the owner's behalf which of the two a given sentence
+    # meant. Every other kind names at most one, and `successor` is it.
+    successors: tuple[str, ...] = ()
+    # Whether the KIND came from a column the table declares, rather than from
+    # prose inference or from nothing at all. A row that had somewhere to state
+    # its kind and did not is a defect; a table with no such column is the
+    # older shape, and flagging it would flag every retirement recorded before
+    # the column existed.
+    kind_declared: bool = False
+
+
+# A section header no rule recognises. NOT a category — the whole point is that
+# nothing has classified it, so no row under it is claimed to be anything.
+REGISTRY_SECTION_UNKNOWN = "unknown-section"
+
+# The headers that name a project section. A whitelist rather than a default,
+# and the difference is the entire reason this constant exists: an unrecognised
+# heading used to fall through to `project`, which read every retired
+# identifier under a renamed heading as an ACTIVE PROJECT. Rename `## Retired
+# Identifiers` — a friend tidying their registry, a translation, a future
+# engine rename — and every retirement silently un-happens, while the audit
+# reports clean because there is nothing retired left to have residue. It fails
+# green, which is the failure mode worth spending a whitelist on.
+_PROJECT_SECTION_MARKERS: tuple[str, ...] = (
+    "project registry", "projects", "project", "active", "completed",
+    "archived", "in progress", "on hold", "paused", "planned", "backlog",
+)
+
+
+def registry_section_category(header: str) -> str | None:
+    """Map a registry `#`-header to a category.
+
+    Returns `None` for a section to skip (documentation), a category for a
+    section this engine recognises, and `REGISTRY_SECTION_UNKNOWN` for a
+    heading no rule claims. The third is not a default and never becomes one:
+    a heading nobody recognises might be owner prose, a section the engine has
+    not learned yet, or a typo in a heading that matters, and guessing between
+    those is how a retirement section stops existing without anyone noticing.
+    Rows under it are registered as nothing and the section is reported.
+
+    The retirement section answers to `Retired Identifiers` (the shipped
+    template, named for all the kinds it holds) and to `Consolidated /
+    superseded` (what clones predating the rename still call it). Both must
+    resolve for as long as both exist in the wild.
+    """
+    h = header.lower()
+    if "template" in h:
+        return None
+    if "trajector" in h:
+        return "trajectory"
+    if "consolidat" in h or "supersed" in h or "retired" in h:
+        return "consolidated"
+    if any(marker in h for marker in _PROJECT_SECTION_MARKERS):
+        return "project"
+    return REGISTRY_SECTION_UNKNOWN
+
+
+def _registry_successor(cell: str) -> str | None:
+    """Read the successor identifier out of a retirement row's last cell."""
+    cell = cell.strip()
+    if not cell or cell in {"-", "—", "–"}:
+        return None
+    for m in _REGISTRY_BACKTICK_RE.finditer(cell):
+        candidate = m.group(1).strip()
+        if REGISTRY_ID_RE.match(candidate):
+            return candidate
+    m = _REGISTRY_WIKILINK_RE.search(cell)
+    if m:
+        target = m.group(1).strip()
+        if target.startswith(_HUB_PREFIX):
+            target = target[len(_HUB_PREFIX):]
+        if REGISTRY_ID_RE.match(target):
+            return target
+    stripped = cell.strip("*_` ").strip()
+    if REGISTRY_ID_RE.match(stripped):
+        return stripped
+    return None
+
+
+def _registry_successors(cell: str) -> list[str]:
+    """Every successor identifier a retirement row's cell declares.
+
+    A `split` names two or more, comma-separated; every other kind names at
+    most one. Splitting on the comma first and reading each part by the same
+    single-successor rules keeps one reading of what a successor looks like —
+    a part that is not an identifier simply yields nothing, so prose after a
+    comma cannot become a phantom successor.
+    """
+    parts = cell.split(",") if "," in cell else [cell]
+    out: list[str] = []
+    for part in parts:
+        found = _registry_successor(part)
+        if found and found not in out:
+            out.append(found)
+    return out
+
+
+def _successors_for_kind(cell: str | None, kind: str | None) -> tuple[
+    str | None, tuple[str, ...]
+]:
+    """`(successor, successors)` for a retirement row.
+
+    `successors` is everything the cell declares, whatever the kind, because
+    the arity rule is checked against it and a rule cannot catch what the
+    parser already discarded — reading only the first identifier would make a
+    `merge` naming two look exactly like a `merge` naming one.
+
+    `successor` is the single identifier references migrate to, and exists only
+    when there IS one: a kind that permits one and declares several has no
+    deterministic target, so it gets none and the row is reported instead.
+    """
+    if cell is None:
+        return None, ()
+    found = _registry_successors(cell)
+    if kind == "split" or len(found) != 1:
+        return None, tuple(found)
+    return found[0], (found[0],)
+
+
+# -----------------------------------------------------------------------------
+# Registry tables — shared reading primitives
+# -----------------------------------------------------------------------------
+#
+# Both registries are markdown tables under headers, and both are mid-schema:
+# the columns a retirement row will declare are shipped in the templates and
+# absent from most rows on disk. So every reader here works the same way — the
+# DECLARED COLUMN WINS when the table's header row names it, and the row's
+# prose is the fallback when it does not. One rule, so a consumer never has to
+# know which shape the file it just read happened to be in.
+
+_TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
+
+# Column aliases, per role. The declared column wins whenever it is present;
+# these names are what "present" means.
+_COL_KIND: frozenset[str] = frozenset({"kind", "change kind", "retirement kind"})
+_COL_SUCCESSOR: frozenset[str] = frozenset({
+    "successor", "superseded by", "now part of", "merged into", "renamed to",
+})
+_COL_REASON: frozenset[str] = frozenset({"reason", "status", "note", "notes"})
+
+# The kinds a retirement row can carry. `reclassify` is deliberately absent:
+# a reclassified identity stays valid and lives in a different section of its
+# registry, and that section is the statement — there is nothing retired to
+# record, so a retirement row never declares one.
+RETIREMENT_KINDS: tuple[str, ...] = ("merge", "rename", "split", "void")
+
+
+def _table_cells(line: str) -> list[str] | None:
+    stripped = line.strip()
+    if not stripped.startswith("|"):
+        return None
+    return [c.strip() for c in stripped.strip("|").split("|")]
+
+
+def _is_separator_row(cells: list[str]) -> bool:
+    return bool(cells) and all(
+        _TABLE_SEPARATOR_RE.match(c.strip()) for c in cells if c.strip()
+    )
+
+
+def _row_value(row: dict[str, str], names: frozenset[str]) -> str | None:
+    for key, value in row.items():
+        if key in names:
+            return value
+    return None
+
+
+def _declared_kind(row: dict[str, str]) -> str | None:
+    """The kind this row declares — `None` when the table has no such column.
+
+    The distinction is load-bearing. A table with no `Kind` column is the older
+    registry shape: it never had anywhere to say what happened, and reading
+    that as "the row fails to state its kind" would flag every retirement a
+    friend recorded before the column existed. A table that HAS the column and
+    holds something unreadable in it — a blank cell, a typo, `reclassify`,
+    which never produces a retirement row at all — is a row that had somewhere
+    to say it and did not, and that is a defect worth reporting.
+    """
+    if _row_value(row, _COL_KIND) is None:
+        return None
+    declared = (_row_value(row, _COL_KIND) or "").strip().lower()
+    return declared if declared in RETIREMENT_KINDS else IDENTITY_KIND_UNKNOWN
+
+
+# A cell that holds no identifier and is not trying to: an empty column, a
+# dash, a parenthesised placeholder. It is not a malformed identifier and is
+# never reported as one.
+_PLACEHOLDER_CELL_RE = re.compile(r"^(?:[\s\-—–.·]*|\(.*\))$")
+
+
+@dataclass(frozen=True)
+class RegistryRow:
+    """One row of a registry table, as it stands on the page.
+
+    `entity_id` is the identifier when the first cell is one, and `None` when
+    it is not. The parsers above drop an unreadable first cell, which is right
+    for them — they answer "what does this identifier mean" and a cell that is
+    not an identifier has no answer. It is wrong as the WHOLE system's
+    behaviour: a mistyped retirement row then looks exactly like no retirement
+    row at all, and the identifier it was meant to retire keeps reading as
+    live. This view keeps the rejected cell so a caller can report it.
+
+    `category` is the section the row sits in, which is also how a duplicate
+    declaration becomes visible: one identifier with a row in two categories is
+    a registry saying two things about itself.
+    """
+
+    raw: str
+    entity_id: str | None
+    category: str
+    line: int
+    # The `#`-header the row sits under, verbatim. Carried so a caller can name
+    # the section in a finding rather than a line number in a file the owner
+    # then has to open to find out what it was talking about.
+    section: str = ""
+
+
+def registry_rows(
+    path: Path,
+    section_category: Callable[[str], str | None],
+    default_category: str | None = None,
+) -> list[RegistryRow]:
+    """Every table row of a registry, with the section it sits in.
+
+    Reads by exactly the rules the two registry parsers read by — the same
+    table primitives, the same identifier regex, the same "first row a table
+    cannot read is its header" convention — so the two never disagree about
+    what a row is. Two questions the parsers structurally cannot answer are
+    answered here: which rows the registry could not read, and which
+    identifiers it declares twice.
+
+    A missing or unreadable registry yields an empty list, the same safe
+    degradation the parsers have.
+    """
+    out: list[RegistryRow] = []
+    if not path.exists():
+        return out
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return out
+
+    category = default_category
+    section_header = ""
+    headers_seen = False
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if line.lstrip().startswith("#"):
+            # An unrecognised section is carried through rather than dropped:
+            # the rows under it are exactly what a renamed heading makes
+            # disappear, and a caller cannot report what it cannot see.
+            category = section_category(line)
+            section_header = line.lstrip("# ").strip()
+            headers_seen = False
+            continue
+        cells = _table_cells(line)
+        if cells is None:
+            headers_seen = False
+            continue
+        if category is None or not cells or _is_separator_row(cells):
+            continue
+        candidate = cells[0].strip("*_` ").strip()
+        if REGISTRY_ID_RE.match(candidate):
+            out.append(RegistryRow(
+                candidate, candidate, category, lineno, section_header,
+            ))
+            continue
+        if not headers_seen:
+            headers_seen = True  # the table's header row
+            continue
+        if _PLACEHOLDER_CELL_RE.match(candidate):
+            continue
+        out.append(RegistryRow(
+            candidate, None, category, lineno, section_header,
+        ))
+    return out
+
+
+def parse_project_registry(root: Path) -> dict[str, RegistryEntry]:
+    """Parse the project registry into `{identifier: RegistryEntry}`.
+
+    The registry is the single source of truth for project identity: whether an
+    identifier names a project, names something on another axis (a trajectory),
+    or is retired — and, when retired, what replaced it. The successor column is
+    parsed rather than discarded, because a consumer that knows an identifier is
+    dead but not what replaced it can only tell its reader to go and look.
+
+    Safe degradation: a missing or unreadable registry yields an empty mapping,
+    which leaves every consumer unable to resolve identity and therefore silent
+    — the correct behaviour for a base that has not been set up yet.
+    """
+    out: dict[str, RegistryEntry] = {}
+    path = root / "1_projects" / "PROJECTS.md"
+    if not path.exists():
+        return out
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return out
+
+    category = "project"  # rows before the first section header default here
+    skip = False
+    headers: list[str] | None = None
+    for line in text.splitlines():
+        if line.lstrip().startswith("#"):
+            cat = registry_section_category(line)
+            # An unrecognised heading registers nothing. Rows under it are not
+            # projects, not retirements, not anything — the section is reported
+            # by the identity scan instead of being classified by default.
+            skip = cat is None or cat == REGISTRY_SECTION_UNKNOWN
+            headers = None
+            if not skip:
+                category = cat
+            continue
+        if skip:
+            continue
+        cells = _table_cells(line)
+        if cells is None:
+            headers = None
+            continue
+        if not cells or _is_separator_row(cells):
+            continue
+        # strip wrapping markdown emphasis from placeholder cells, e.g.
+        # `_(empty)_` → `(empty)` — still rejected by the slug regex.
+        candidate = cells[0].strip("*_` ").strip()
+        if not REGISTRY_ID_RE.match(candidate):
+            if headers is None:
+                headers = [c.lower() for c in cells]
+            continue
+        row = dict(zip(headers, cells)) if headers else {}
+        successor = None
+        successors: tuple[str, ...] = ()
+        kind = None
+        kind_declared = False
+        status = cells[1] if len(cells) > 1 else ""
+        if category == "consolidated":
+            # Kind is read only where the registry declares it. This registry
+            # has no prose convention for it, and inferring one would put a
+            # guess where the reader expects a statement. It is read first
+            # because it decides whether the successor cell is read as one
+            # identifier or as several.
+            kind = _declared_kind(row)
+            kind_declared = kind is not None
+            # Declared column first; the last cell is the fallback for the
+            # older shape, where the successor is simply the final column.
+            declared = _row_value(row, _COL_SUCCESSOR)
+            if declared is None and len(cells) > 1:
+                declared = cells[-1]
+            successor, successors = _successors_for_kind(declared, kind)
+        out[candidate] = RegistryEntry(
+            entity_id=candidate,
+            category=category,
+            successor=successor,
+            status=status,
+            kind=kind,
+            successors=successors,
+            kind_declared=kind_declared,
+        )
+    return out
+
+
+def registry_ids_by_category(
+    registry: dict[str, RegistryEntry],
+) -> dict[str, set[str]]:
+    """`{category: {identifier, ...}}` view over a parsed registry."""
+    cats: dict[str, set[str]] = {c: set() for c in REGISTRY_CATEGORIES}
+    for entry in registry.values():
+        cats.setdefault(entry.category, set()).add(entry.entity_id)
+    return cats
+
+
+# -----------------------------------------------------------------------------
+# People registry
+# -----------------------------------------------------------------------------
+#
+# Same question, other registry: what does this identifier currently mean, and
+# if it is retired, what replaced it. The people registry answers it in a
+# different shape — its retirement table carries a free-text reason today and
+# declared columns after the schema migration — so the parser reads the
+# declared columns when they are there and falls back to the prose when they
+# are not. Both paths produce the same `RegistryEntry`, because a consumer that
+# had to know which shape it got would be a second parser wearing one name.
+#
+# The prose fallback is deliberately conservative: a row it cannot read yields
+# `IDENTITY_KIND_UNKNOWN` with no successor, and that is reported. Guessing a
+# successor is worse than admitting the row is unreadable — a wrong successor
+# silently repoints live references at the wrong identity.
+
+_PEOPLE_SECTIONS_LIVE: tuple[str, ...] = ("people", "stale", "owner")
+_PEOPLE_SECTION_RETIRED: tuple[str, ...] = ("removed", "retired", "consolidated")
+
+# Prose shapes of a retirement reason. English and Russian, because the reason
+# cell is written by whoever resolved the row, in whichever language they were
+# thinking in.
+_PROSE_MERGE_RE = re.compile(
+    r"\bmerged?\s+(?:with|into)\b|\bслит\w*\s+с\b|\bобъединён\w*\s+с\b",
+    re.IGNORECASE,
+)
+_PROSE_RENAME_RE = re.compile(
+    r"\brenamed?\s+(?:to|as)\b|\bпереименован\w*\s+в\b", re.IGNORECASE,
+)
+_PROSE_VOID_RE = re.compile(
+    r"\bunknown\b|\bcould\s*n[o']?t\s+identify\b|\bnot\s+a\s+(?:real\s+)?person\b"
+    r"|не\s+удалось\s+опознать|не\s+существу\w*",
+    re.IGNORECASE,
+)
+_PROSE_TOKEN_SPLIT_RE = re.compile(r"[\s,;()«»\"']+")
+
+
+def people_registry_section_category(header: str) -> str | None:
+    """Map a people-registry `#`-header to a category, or None to skip.
+
+    A whitelist rather than a default, because this registry's tail is full of
+    reference tables — orgs, roles, the profile template — whose first cell is
+    a perfectly valid-looking slug. Defaulting to "person" would register
+    `ceo` and `rbs` as people.
+    """
+    h = header.lstrip("#").strip().lower()
+    if not h:
+        return None
+    if any(h.startswith(s) for s in _PEOPLE_SECTION_RETIRED):
+        return "consolidated"
+    if h.startswith("people registry") or h == "people":
+        return "person"
+    # The owner's own row, kept apart from the tier machinery. A live person
+    # row like any other as far as identity resolution is concerned.
+    if h.startswith("owner"):
+        return "person"
+    # "Stale People" — a tier drop, which is archival and leaves the identity
+    # valid. These rows are live people, not retirements.
+    if h.startswith("stale") or "stale" in h.split():
+        return "person"
+    if any(h.startswith(s) for s in _PEOPLE_SECTIONS_LIVE):
+        return "person"
+    return None
+
+
+def _prose_retirement(
+    reason: str, live_ids: set[str],
+) -> tuple[str, str | None]:
+    """`(kind, successor)` read out of a free-text retirement reason.
+
+    The successor is accepted only when the token following the marker is an
+    identifier the registry declares live. That is the whole guard against
+    guessing: "Merged with the person …" would otherwise hand back `the`.
+    """
+    for pattern, kind in (
+        (_PROSE_MERGE_RE, "merge"),
+        (_PROSE_RENAME_RE, "rename"),
+    ):
+        m = pattern.search(reason)
+        if not m:
+            continue
+        for token in _PROSE_TOKEN_SPLIT_RE.split(reason[m.end():]):
+            candidate = token.strip("`[]|#.,;:—–*_ ").strip()
+            if candidate.startswith(_HUB_PREFIX):
+                candidate = candidate[len(_HUB_PREFIX):]
+            if not candidate:
+                continue
+            if candidate in live_ids:
+                return kind, candidate
+            break  # only the token directly after the marker may be the successor
+        return kind, None
+    if _PROSE_VOID_RE.search(reason):
+        return "void", None
+    return IDENTITY_KIND_UNKNOWN, None
+
+
+def parse_people_registry(root: Path) -> dict[str, RegistryEntry]:
+    """Parse the people registry into `{identifier: RegistryEntry}`.
+
+    Live rows (`## People`, and `## Stale People` — a tier drop is archival,
+    never an identity retirement) become `category="person"`. Retirement rows
+    (`## Removed`) become `category="consolidated"` and carry the kind of
+    identity change plus the successor, read from the declared columns when the
+    table has them and from the reason prose when it does not.
+
+    Safe degradation matches the project registry: a missing or unreadable
+    registry yields an empty mapping, leaving every consumer silent rather than
+    flagging a base that has not been set up yet.
+    """
+    out: dict[str, RegistryEntry] = {}
+    path = root / "3_resources" / "people" / "PEOPLE.md"
+    if not path.exists():
+        return out
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return out
+
+    # Two passes: the live rows have to be known before a prose retirement
+    # reason can be checked against them.
+    live: dict[str, RegistryEntry] = {}
+    retired_rows: list[tuple[str, dict[str, str], str]] = []
+
+    category: str | None = None
+    headers: list[str] | None = None
+    for line in text.splitlines():
+        if line.lstrip().startswith("#"):
+            category = people_registry_section_category(line)
+            headers = None
+            continue
+        cells = _table_cells(line)
+        if cells is None:
+            headers = None
+            continue
+        if category is None or _is_separator_row(cells):
+            continue
+        candidate = cells[0].strip("*_` ").strip()
+        if not REGISTRY_ID_RE.match(candidate):
+            if headers is None:
+                headers = [c.lower() for c in cells]
+            continue
+        row = dict(zip(headers, cells)) if headers else {}
+        if category == "consolidated":
+            retired_rows.append((candidate, row, line))
+            continue
+        live[candidate] = RegistryEntry(
+            entity_id=candidate,
+            category="person",
+            successor=None,
+            status=(_row_value(row, _COL_REASON) or ""),
+        )
+
+    out.update(live)
+    live_ids = set(live)
+    for entity_id, row, raw_line in retired_rows:
+        reason = _row_value(row, _COL_REASON)
+        if reason is None:
+            cells = _table_cells(raw_line) or []
+            reason = cells[1] if len(cells) > 1 else ""
+        declared_successor_cell = _row_value(row, _COL_SUCCESSOR)
+        kind = _declared_kind(row)
+        kind_declared = kind is not None
+        successor, successors = _successors_for_kind(
+            declared_successor_cell, kind,
+        )
+        if kind is None or (successor is None and not successors):
+            prose_kind, prose_successor = _prose_retirement(reason, live_ids)
+            kind = kind or prose_kind
+            if successor is None and not successors and prose_successor:
+                successor, successors = prose_successor, (prose_successor,)
+        if kind == "void":
+            # a void identity never had a successor
+            successor, successors = None, ()
+        out[entity_id] = RegistryEntry(
+            entity_id=entity_id,
+            category="consolidated",
+            successor=successor,
+            status=reason,
+            kind=kind,
+            successors=successors,
+            kind_declared=kind_declared,
+        )
+    return out
+
+
+# -----------------------------------------------------------------------------
+# Owner identity
+# -----------------------------------------------------------------------------
+#
+# The owner is the one identity every base carries and no registry has to
+# declare. Their identifier is on hundreds of live surfaces, so a check that
+# reads "absent from the registry, therefore drift" calls the owner of the base
+# garbage. The owner is valid by construction, and every identity check asks
+# here rather than carrying its own exception.
+
+_CYRILLIC_TRANSLIT: dict[str, str] = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
+    "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sch",
+    "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+}
+
+_SOUL_NAME_RE = re.compile(r"^\s*[-*]\s*\*\*Name:\*\*\s*(.+?)\s*$", re.MULTILINE)
+_OWNER_SECTION_RE = re.compile(r"^#{1,6}\s*owner\b", re.IGNORECASE)
+
+
+def transliterate_identifier(name: str) -> str | None:
+    """A display name reduced to the registry's identifier form.
+
+    Same shape the people registry's own ID rules describe: transliterated,
+    lowercase, hyphen-joined. Returns None when nothing survives — an empty
+    identifier is not an identity.
+    """
+    if not name:
+        return None
+    out_chars: list[str] = []
+    for ch in name.strip().lower():
+        if ch in _CYRILLIC_TRANSLIT:
+            out_chars.append(_CYRILLIC_TRANSLIT[ch])
+        elif ch.isalnum() and ch.isascii():
+            out_chars.append(ch)
+        else:
+            out_chars.append(" ")
+    slug = "-".join("".join(out_chars).split())
+    return slug or None
+
+
+def owner_identity(root: Path) -> str | None:
+    """The owner's identifier — declared if the registry declares it, derived
+    from `SOUL.md → ## Identity → Name:` otherwise.
+
+    Declared wins: once the people registry carries an owner section, that row
+    is the statement. The derivation exists so a base that has not got one yet
+    still knows who its owner is, and so no shipped code has to name a person.
+    """
+    people = root / "3_resources" / "people" / "PEOPLE.md"
+    if people.exists():
+        try:
+            text = people.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            text = ""
+        in_owner = False
+        for line in text.splitlines():
+            if line.lstrip().startswith("#"):
+                in_owner = bool(_OWNER_SECTION_RE.match(line.strip()))
+                continue
+            if not in_owner:
+                continue
+            cells = _table_cells(line)
+            if cells is None or _is_separator_row(cells):
+                continue
+            candidate = cells[0].strip("*_` ").strip()
+            if REGISTRY_ID_RE.match(candidate):
+                return candidate
+
+    soul = root / "_system" / "SOUL.md"
+    if not soul.exists():
+        return None
+    try:
+        text = soul.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    m = _SOUL_NAME_RE.search(text)
+    if not m:
+        return None
+    return transliterate_identifier(m.group(1))
 
 
 # Single-context model: every consumer loads every scope.

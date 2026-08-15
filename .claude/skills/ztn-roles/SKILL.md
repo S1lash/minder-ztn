@@ -141,9 +141,9 @@ this skill starts with this prelude and uses these variables (or, once 0.1
 has printed them, the resolved absolute paths verbatim):
 
 ```bash
-REPO="$(git rev-parse --show-toplevel)"; BASE=""
-for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; [ -n "$BASE" ] && BASE="ambiguous" && break; BASE="${d%/}"; done
-RUN="$BASE/_system/scripts/roles_run.py"; export PYTHONIOENCODING=utf-8
+REPO="$(git rev-parse --show-toplevel)"; BASE=""; export PYTHONIOENCODING=utf-8
+for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; BASE="$(python3 "$d/_system/scripts/roles_run.py" base --repo "$REPO")"; break; done
+RUN="$BASE/_system/scripts/roles_run.py"
 ```
 
 **The base is discovered, never assumed to be called `zettelkasten`.** An
@@ -152,6 +152,12 @@ owner may rename their base — `roles_config` derives the `writes` sugar from
 is the worst kind of wrong here: `due` on a non-existent base returns `[]`
 and exits 0, so a hardcoded name that no longer matches yields a green,
 empty, useless tick every night forever. 0.1 turns that into a loud failure.
+
+**The loop locates the CLI; `roles_run.py base` decides.** Zero bases and
+two bases are both loud there, in one message, and every skill that needs
+the base gets the same answer from the same code. A shell that decided this
+itself is a second implementation of a fact that has one home, and the two
+failed differently — which is the failure you notice last.
 
 `PYTHONIOENCODING=utf-8` is not optional: the assembled prompt and the run
 lines carry the owner's own language, and Python's default stdout encoding is
@@ -195,7 +201,7 @@ echo "REPO=$REPO"; echo "BASE=$BASE"
 [ -f "$RUN" ] && [ -f "$BASE/_system/roles/_run-frame.md" ] && [ -f "$BASE/_system/roles/_minder.md" ] && echo "install ok" || echo "install broken"
 ```
 
-`install broken` (or an empty / `ambiguous` `BASE`) → report
+`install broken` (or an empty `BASE`) → report
 `install-broken`, naming both paths tried, and **exit non-zero**. Take no
 lock, run nothing. The run frame is engine-owned and the CLI treats its
 absence as a hard error; a tick that cannot find it cannot run a role, and
@@ -518,21 +524,21 @@ otherwise `stage.sh` commits and pushes exactly what the abort refused to
 touch. «Nothing was repaired» is true; «nothing was written» would not be, and
 the report must not imply it.
 
-The `ignore` field alone never aborts, because it is the only one whose
-danger can be answered by looking. An ignore rule hides a path from
-`git status`, and `git status` is what attribution reads — so a rule added
-mid-run used to move a write outside everything the guard could see. That is
-a blind spot in attribution, and the guard now closes it: it names every path
-that went invisible during the run, digests and scans each one, and reports it
-in `reported_only` under the `ignored` label. Hiding therefore buys a role
-nothing — a hidden write is handled exactly as the same write in plain sight
-would have been, including the credential scan.
-
-With the gap closed the veto had no job left, and it had a real cost.
+The `ignore` field alone never aborts, because it is the only one whose danger
+can be answered by looking. An ignore rule hides a path from `git status`, and
+`git status` is what attribution reads — so a rule added mid-run would move a
+write outside everything the guard sees. The guard closes that by looking: it
+reverts each changed ignore file it can restore (those appear in `reverted`,
+and a revert that fails lands in `failed`), re-attributes against the
+un-hidden tree, then names every path that still went invisible during the
+run, digests and scans each one, and reports it in `reported_only` under the
+`ignored` label. Hiding therefore buys a role nothing — a hidden write is
+handled exactly as the same write in plain sight would have been, including
+the credential scan. An abort would buy nothing either, and would cost:
 `.git/info/exclude` belongs to the harness hosting the tick, which writes its
-own runtime files and rules there **during** a role's run — so the abort fired
-on ordinary nights, and an abort that fires on ordinary nights stops being
-read while still taking every role queued behind it down with it.
+own runtime files and rules there **during** a role's run, so an abort here
+would fire on ordinary nights — and one that fires on ordinary nights stops
+being read while still taking every role queued behind it down with it.
 
 A hidden path is never restored. «Restore» for a path in no commit means
 delete, and this is precisely the path whose author the guard does not know —
@@ -615,7 +621,7 @@ paragraph — the owner reads these through an LLM, not by eye):
 
 `Source` is `roles/{role-id} {run ts}` — except `role-secrets-unavailable`,
 which belongs to no single role and carries `roles/tick {tick ts}`.
-`Confidence tier` is `surfaced` for all six — each needs the owner.
+`Confidence tier` is `surfaced` on every one of them — each needs the owner.
 
 **A reported path is left alone by the GUARD, and then committed by the tick.**
 Worth stating because «reported, never restored» reads as «and left out of the
@@ -780,22 +786,13 @@ between the two has made a commit it cannot prove it made, and the next
 `finalize-tick.sh` finds an unlisted commit ahead of `origin/main` and
 refuses to deliver anything at all.
 
-Why the list exists at all: **a subject line is not authorship.** A role has
-a shell, and `[scheduled]` is a substring anyone can type. A role that writes
-outside its zone and then commits its own work defeats the guard twice over —
-the guard's `head_moved` branch deliberately mutates nothing, and a committed
-tree is a clean tree, so there is nothing left dirty for the leak scan to
-find. `.scheduler-state/authored-shas` is the tick's record of what it
-actually created, so delivery can trust identity instead of wording. Same
-directory, same one-per-line UTF-8 LF shape and same consume-once discipline
-as the hold-back list (2.7.1); `.scheduler-state/` is gitignored.
+The list is why delivery can trust identity instead of wording (invariant 9).
+Same directory, same one-per-line UTF-8 LF shape and same consume-once
+discipline as the hold-back list (2.7.1); `.scheduler-state/` is gitignored.
 
-**`[scheduled]` is not optional** (invariant 6). Without it the next
-`finalize-tick.sh` sees a commit ahead of `origin/main` that it reads as the
-owner's manual work, refuses to fold, and exits 2 — every night, silently,
-until someone reads the log. It goes on the subject in `--role <id>` mode
-too: an interactive run's commit sits in the same history and would break the
-same chain.
+**`[scheduled]` is not optional** (invariant 6), and it goes on the subject in
+`--role <id>` mode too: an interactive run's commit sits in the same history
+and breaks the same chain.
 
 Nothing staged → no commit, and that is a clean outcome (an `idle` role
 writes nothing but its run line). **No push** — delivery belongs to the
@@ -924,9 +921,9 @@ state file and one file outside its zone. The third runs clean.
    back exactly → **reverted**, and named in `reverted`.
 4. `log` records `error`, `writes: 1`, `reverted: ["<that path>"]`. Then 2.8
    commits **the half-written file**. That is the right answer: it is the
-   role's own memory, in its declared zone, and the `[previous run: error]`
-   line in role 2's next prompt tells it to verify the world before repeating
-   an outward act. Leaving it dirty would hand it to the next tick's baseline,
+   role's own memory, in its declared zone, and the
+   `[previous run: outcome=error …]` line in role 2's next prompt tells it to
+   verify the world before repeating an outward act. Leaving it dirty would hand it to the next tick's baseline,
    where it becomes "the owner's work" forever and the guard can never touch
    it again.
 5. Role 3 runs clean and is committed the same way.
@@ -973,7 +970,7 @@ second consecutive error reaches the owner's queue.
 ## Files this skill writes
 
 - `_system/roles/{id}/log.jsonl` — via the `log` verb, append-only
-- `_system/state/CLARIFICATIONS.md` — append, only the six types above
+- `_system/state/CLARIFICATIONS.md` — append, only the types listed in 2.7
 - `_sources/.roles.lock` — create and delete
 - `.scheduler-state/hold-back` — append, only a `secret_leak` path left on
   disk; gitignored, consumed by `stage.sh`

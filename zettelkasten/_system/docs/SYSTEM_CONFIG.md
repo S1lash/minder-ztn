@@ -61,6 +61,8 @@ migrating existing open items.
 | `tier-promote-suggested` | `/ztn:maintain` | Person mentions cross a tier-up threshold | No tier change applied |
 | `principle-drift` | `/ztn:process` | `/ztn:check-decision` verdict violated at confidence ≥ 0.8 on a record from the current batch (typed `decision`, or `observation` with `tradeoff_framing` flag set by the subagent per §3.7.5) | Capture in trail; behaviour unchanged this batch |
 | `principle-drift-retro` | `/ztn:lint` Scan F.2 | Same verdict + threshold as `principle-drift`, but on a historical decision-record re-checked against the current constitution tree. Trigger: explicit `--rescan-drift --days N` OR auto path on detecting `git log --since="${f2_last_ran_at}" -- 0_constitution/{axiom,principle,rule}/` non-empty | Capture in trail; owner reviews whether the principle edit was intentional |
+| `people-bare-name` | `/ztn:process` (Step 3.7 escape hatch), `/ztn:lint` Scan C.5 (on aggregation), `/ztn:bootstrap` | A transcript mention whose name resolves to nobody in `PEOPLE.md`. Routine one-off mentions go to `people-candidates.jsonl` instead; this type is raised only when the high-importance escape hatch or C.5 promotion fires | Surface only. No profile is created and no `PEOPLE.md` row is written — per doctrine §3.6 there is no silent profile creation. Owner resolves via `/ztn:resolve-clarifications` (`resolve-bare-name` / `create-profile` / `dismiss`) |
+| `person-identity` | `/ztn:process` (Step 3.7 escape hatch), `/ztn:bootstrap` | A mention that needs an identity decided — a new person, or a choice between existing candidates in `PEOPLE.md` | Surface only, same contract as `people-bare-name`. On `create-profile` the resolve skill writes `3_resources/people/{id}.md` + the `PEOPLE.md` row |
 | `domain-resolution` | `/ztn:process` (Step 3.4.5) | Domain value cannot be resolved by the cascade `normalize_domain` → whitelist → LLM remap → trivial-vs-material | Drop the unmatched value; remaining `domains:` entries kept (possibly `[]`) |
 | `process-compatibility` | every skill writing manifests | Schema deviation that would break the manifest contract with downstream consumers | Suspend that section's manifest emission until owner resolves |
 | `concept-drift-on-reprocess` | `/ztn:process --reprocess-corpus` (Step 3.5) | Matcher's new `concepts:` set differs from prior set by > 50 % of the union (symmetric-difference / union ratio) | Apply the new (matcher-canonical) set; surface for owner audit, do not gate the write |
@@ -235,7 +237,7 @@ restating it.
 | Append `## Update {today}` section to a decision note | `/ztn:resolve-clarifications` (`decision_update_section` lens hint) | Scaffold only — owner fills the body |
 | SOUL.md edits (Identity / Focus / Working Style — outside auto-zone) | **manual only** | Identity file; auto-zone is a separate write-lane |
 | SOUL.md auto-zone (Values between markers) | `render_soul_values.py` only | Deterministic render from `0_constitution/` |
-| Write `_system/state/batches/{id}.md` + `BATCH_LOG.md` row | `/ztn:process` only | One run = one batch; maintain reads, doesn't write |
+| Write `_system/state/batches/{batch-id}-process.{md,json}` + `BATCH_LOG.md` row | `/ztn:process` only | One run = one batch; every other emitting skill writes only its own `-{skill}` pair |
 | Hub linkage back-write (`hub:` field on thread, bullet in hub Open Questions) | `/ztn:maintain` only | Both sides updated atomically; lint verifies |
 | Regenerate views (CONSTITUTION_INDEX, constitution-core, INDEX, HUB_INDEX, CURRENT_CONTEXT) | Scripts via `regen_all.py` / relevant skill | Views are derived — source is `0_constitution/` / knowledge notes / hubs |
 | Create `_records/<family>/<source>/<date>.md` + update `_system/state/<family>/<source>/{baselines,streaks}.json` | `/ztn:process` metric-day branch only | Per-day deterministic emission from `_sources/inbox/<source>/<date>.md`, profile-driven (`<family>` = `biometric` for garmin/oura, `activity` for activitywatch). One source file → one record; records + baselines namespaced per source. Idempotent on re-run; content-hash drift auto-resolves by richness (richer-or-equal re-collect absorbed + baselines recomputed forward; poorer/empty keeps the existing record — no CLARIFICATION). |
@@ -245,6 +247,8 @@ restating it.
 | Write `_system/roles/{id}/log.jsonl` | `/ztn:roles` only | One line per **executed** run (not per tick — a role whose cadence has not elapsed writes nothing). The role is explicitly barred from writing its own log; the tick appends it from the guard's verdict + the role's two-line return |
 | Drop a note in `_sources/inbox/roles/` | a role with `inbox` in its `writes:` | The only path from a role back into the base. Flat file, `source: role:{id}` frontmatter, shape spec in `_system/roles/_minder.md`; `/ztn:process` then treats it as any other source |
 | Write `## Health Snapshot` block in CURRENT_CONTEXT.md | `/ztn:maintain` only (via `render_health_snapshot.py`, integrated into CURRENT_CONTEXT regen chain) | Extension of existing CURRENT_CONTEXT regen — derived view, not new content. ≤15 lines, life-connection focused. |
+| Write rows in `1_projects/PROJECTS.md` (create, retire, reclassify) | `/ztn:resolve-clarifications` (identity changes — already the writer for `project-identity` items) + owner direct edit + `/ztn:bootstrap` (candidate seeding) | Identity is an owner decision, and resolve is the engine's one owner-driven write path. A retirement row names kind and successor per Identity Contract; without a named writer the contract has no obligee |
+| Write the retirement section of `3_resources/people/PEOPLE.md` (`## Removed`) | `/ztn:resolve-clarifications` (identity changes) + owner direct edit + `/ztn:bootstrap` (candidate seeding) | Same lane and same reason as the projects registry. Distinct from `## Stale People`, which is a tier drop (archival), not an identity change |
 | Write AUTO-GENERATED zone of `5_meta/mocs/hub-cognitive-model.md` | `/ztn:maintain` only (via `render_cognitive_model_hub.py`, Step 7.9 — post-loop, after Step 7.8) | Pure projection of constitution `cognitive_axes` fields + candidate buffer; only the zone between the `<!-- AUTO-GENERATED: cognitive-model-hub -->` markers, never the owner's «portrait» above them. |
 
 **Supporting invariants:**
@@ -286,6 +290,8 @@ Owner-facing review path: `/ztn:resolve-clarifications` — interactive walker t
 | `demote-tier` | person-id | `from: 1, to: 2, reason: "inactive"` |
 | `merge-notes` | kept-note-id | `deleted: [ids], merge_strategy: "A superset of B"` |
 | `dismiss-duplicate` | note-id | `(none)` |
+| `entity-retire` | entity-id | `kind: "merge \| rename \| split \| void", successor: "{id}" (merge and rename) \| successors: [{id}, ...] (split, ≥ 2) \| omitted (void), registry: "{path}", gate: {command, exit_code: 0, residue_count: 0}` — an identity leaves circulation per Identity Contract; the `gate` block is the recorded per-identity scan that Obligation 4 requires, and an archived row without it is unproven. Interactive only, never `--auto-mode` |
+| `entity-reclassify` | entity-id | `from_category: "project", to_category: "trajectory", registry: "{path}", gate: {command, exit_code: 0, residue_count: 0}` — the identity stays alive and changes category; no successor. Interactive only |
 | `backfill-evidence-trail` | note-id | `entries: [{date, source, action}]` |
 | `resolve-bare-name` | subject-string | `person: person-id` OR `ignore: true` |
 | `create-profile` | person-id | `from_tier: N, context_sources: [record-ids]` |
@@ -324,7 +330,7 @@ All six pipeline skills (`/ztn:process`, `/ztn:maintain`, `/ztn:lint`, `/ztn:age
 
 The owner-driven role skills sit outside the matrix, each for its own reason. `/ztn:role:list` and `/ztn:role:ask` are read-only — no lock, nothing written, the role never run. `/ztn:role:add` and `/ztn:role:edit` take `.roles.lock` **narrowly and release it in a `finally`** — `edit` around the live write (a tick reads `role.md` while assembling a prompt, so an edit landing mid-tick would hand a role half of one version and half of another), `add` around its **Step 9 write** — the same reason as `edit`, and NOT around its trial run: the trial is `/ztn:roles --role {id}`, which acquires `.roles.lock` itself, so a caller holding it would deadlock the skill against its own gate and no role could ever be created. Neither holds the lock for the length of an owner conversation; both abort rather than wait if a tick already holds it.
 
-`/ztn:resolve-clarifications` acquires `.resolve.lock` for both interactive and `--auto-mode` runs. Interactive mode reads the five pipeline locks (process / maintain / lint / agent-lens / content) and aborts on any. **`--auto-mode` exception for `.lint.lock`:** auto-mode is dispatched by `/ztn:lint` Step 7.5 (lint holds its own lock during dispatch); treating that lock as competitor would deadlock the nightly chain. Auto-mode therefore proceeds when `.lint.lock` exists (it is the dispatcher's signature), aborts silently on any other pipeline lock (those should have cleared at lint's own Step 0.1; presence here means something genuinely went wrong — let the next nightly tick retry).
+`/ztn:resolve-clarifications` acquires `.resolve.lock` for both interactive and `--auto-mode` runs. Interactive mode reads all six pipeline locks (process / maintain / lint / agent-lens / content / roles) and aborts on any; it also pre-syncs via `/ztn:sync-data` (Step 0) so multi-device queues stay current. `/ztn:sync-data` and `/ztn:save` read **all seven** pipeline locks (process / maintain / lint / agent-lens / content / resolve / roles) and refuse while any is held — a rebase or a commit is equally unsafe under any running tick, and under `/ztn:roles` it is worse: `roles_guard.py` attributes every write in its diff window to the running role and reverts what falls outside that role's zone. Neither skill takes a lock of its own. The resolve skill's Step 9.1 releases `.resolve.lock` before reminding the owner to run save. **`--auto-mode` exception for `.lint.lock`:** auto-mode is dispatched by `/ztn:lint` Step 7.5 (lint holds its own lock during dispatch); treating that lock as competitor would deadlock the nightly chain. Auto-mode therefore proceeds when `.lint.lock` exists (it is the dispatcher's signature), aborts silently on any other pipeline lock (those should have cleared at lint's own Step 0.1; presence here means something genuinely went wrong — let the next nightly tick retry). Auto-mode also skips the Step 0 pre-sync (the dispatcher already synced, and lint's autofixes leave the working tree dirty) and never writes `lens-resolution-history.jsonl`.
 
 **Nightly cadence:** three scheduler ticks. Agent-lens at 03:00 (lens production isolated), lint at 05:00 (invariant scans → Step 7.5 dispatches resolve --auto-mode inline → consumes fresh lens hints + new clarifications), roles at 07:00 (every due role, sequentially). Roles runs last of the three and ahead of the day's first process tick, so an inbox note a role leaves is folded in the same morning; its 07:00 slot is also the floor for any role cadence anchor, since an anchor later in the day is never reached at tick time. The two-hour gap separates lens emission from resolve consumption at the scheduler-agent-context level — the agent that judges proposals in Step A.2/A.3 has not just produced lens body output, which prevents confirmation bias on its own emissions. Lint and resolve in one tick is acceptable because their reasoning shapes are ortogonal (invariant pattern-match vs experienced-owner judgement) — minor contextual bleed in exchange for operational simplicity (one tick consumes the CLARIFICATIONS lint just emitted).
 
@@ -367,14 +373,14 @@ zettelkasten/
 ├── _records/                         # Слой 1: Records (операционная память)
 │   ├── meetings/                     # Логи многосторонних встреч (kind: meeting)
 │   └── observations/                 # Соло-записи: рефлексии, идеи, терапия (kind: observation)
-├── _system/                          # Системные файлы (Phase 4.75 layout)
+├── _system/                          # Системные файлы
 │   ├── SOUL.md                       # Identity + Focus + Working Style
 │   ├── TASKS.md                      # Автогенерируемый список задач
 │   ├── CALENDAR.md                   # Автогенерируемый календарь
 │   ├── POSTS.md                      # Реестр опубликованных постов
 │   ├── docs/                         # Платформенные документы (binding)
 │   │   ├── SYSTEM_CONFIG.md          # Этот файл — runtime config
-│   │   ├── ARCHITECTURE.md           # Системный дизайн
+│   │   ├── ARCHITECTURE.md           # Системный дизайн как построен
 │   │   ├── CONVENTIONS.md            # Documentation style rules (binding)
 │   │   ├── batch-format.md           # Контракт batch формата
 │   │   ├── constitution-capture.md   # Global hook (symlinked from ~/.claude/rules/)
@@ -411,13 +417,13 @@ zettelkasten/
 │       ├── AUDIENCES.md              # Whitelist `audience_tags` privacy labels
 │       ├── AGENT_LENSES.md           # Agent-lens registry
 │       └── lenses/                   # Per-lens prompts + frame contract
-├── 0_constitution/                   # Behavioural principles layer (Phase 4.5)
+├── 0_constitution/                   # Behavioural principles layer
 │   ├── CONSTITUTION.md               # Root doc — scope, invariants, tree
 │   ├── axiom/                        # Tier-1 axioms
 │   ├── principle/                    # Tier-2 principles
 │   └── rule/                         # Tier-3 rules
 ├── 1_projects/                       # Активные проекты
-│   └── PROJECTS.md                   # Реестр проектов (co-located here since 4.75)
+│   └── PROJECTS.md                   # Реестр проектов
 ├── 2_areas/                          # Области ответственности
 │   ├── work/
 │   │   ├── company/
@@ -441,7 +447,7 @@ zettelkasten/
 │   │   ├── business/
 │   │   └── products/
 │   └── people/                       # Профили людей
-│       └── PEOPLE.md                 # Реестр людей (co-located with profiles since 4.75)
+│       └── PEOPLE.md                 # Реестр людей
 ├── 4_archive/                        # Архив
 ├── 5_meta/                           # Мета-система
 │   ├── CONCEPT.md                    # Архитектурный документ (source of truth)
@@ -495,7 +501,7 @@ category/specific-tag
 
 ---
 
-## Note Formats (v4)
+## Note Formats
 
 ZTN v4 использует два формата: Record (лёгкий) и Knowledge Note (полный).
 Шаблоны: `5_meta/templates/record-template.md`, `5_meta/templates/note-template.md`
@@ -739,10 +745,24 @@ modified: YYYY-MM-DD
 hub_created: YYYY-MM-DD
 
 layer: hub
+# Identity category of the hub — project | trajectory | domain.
+# Absent → project. Semantics + eligibility for the membership axis:
+# `## Identity Contract` in this file.
+hub_kind: project
 domains:
   - work|personal|career
 projects: []
 people: []
+
+# Rendering policy for `## Хронологическая карта` — derived | curated.
+# Absent → curated. `derived` means `/ztn:maintain` regenerates the map
+# block via `_system/scripts/render_hub_maps.py`, and the body must carry
+# the AUTO-GENERATED markers; `curated` means the owner maintains it.
+# `excluded_from_map` holds record-ids the derived map skips;
+# `excluded_from_map_reasons` is parallel to it and MUST be the same length.
+chronological_map_mode: curated
+excluded_from_map: []
+excluded_from_map_reasons: []
 
 # Privacy trio — auto-derived by `_common.py::recompute_hub_trio()`
 # from member-note trios. `_engine_derived` lists fields the engine
@@ -846,6 +866,8 @@ Archival event = transition where an entity stops being part of the active surfa
 
 This contract applies **forward-only**: every archival event from contract adoption onward MUST carry a reason. Pre-existing archived entities are not backfilled.
 
+**Identity boundary.** `## Identity Contract` below governs what happens to an identifier when it stops being valid — archival leaves the identifier valid, an identity change ends it.
+
 ### Form by entity shape
 
 Three forms — pick by shape, not by skill. Every archival pathway falls into exactly one.
@@ -860,7 +882,7 @@ For knowledge notes, hubs, principles (axiom / principle / rule), and any other 
 - date: YYYY-MM-DD
 - reason: "<one-sentence rationale in owner's natural language>"
 - triggered_by: owner | /ztn:lint F.3 | /ztn:resolve-clarifications | <skill-id>
-- superseded_by: [[wikilink]]   # optional — when archival is due to replacement
+- superseded_by: [[wikilink]]   # REQUIRED when the reason is a merge or a rename; otherwise omit
 ```
 
 Plus frontmatter flags for machine-readable state:
@@ -888,6 +910,7 @@ Where the archived sub-table lives per registry:
 |---|---|---|
 | `3_resources/people/PEOPLE.md` | `## People` (tier 1 / 2 / 3) | `## Stale People` (tier `stale`) |
 | `1_projects/PROJECTS.md` | `## Active Projects`, `## Completed Projects` | `## Archived Projects` (status `archived` — dropped before completion; completed projects are not an archival event and do not require Reason) |
+| `1_projects/PROJECTS.md` | `## Active Projects`, `## Trajectories` | `## Retired Identifiers` (identity retirement — the `Successor` cell is the one Form A requires; a `split` row lists all of them, comma-separated) |
 | `_system/registries/SOURCES.md` | `## Active Sources`, `## Reserved Sources` | `## Deprecated Sources` |
 | `_system/registries/AGENT_LENSES.md` | `## Active Lenses`, `## Draft Lenses` | `## Paused/Archived Lenses` (status `paused` / `archived`) |
 
@@ -919,6 +942,86 @@ Skill enforcement: any resolution that triggers archival without populating the 
 
 ---
 
+## Identity Contract
+
+**Invariant:** an identity change is atomic and leaves zero residue. Companion to Archive Contract above, which owns the *reason* and the *successor* of every archival event; this contract owns *what else has to move* when an identifier stops being valid.
+
+**Identity** = anything that has an identifier, a registry that declares it, and places that refer to it: a person, a project, a trajectory, a concept, a hub, a source, a lens. One procedure for all of them — the registry declares which surfaces it has and at which paths, everything below is shared. A new kind of identity that needs a special rule inside the procedure, rather than a row in its registry's own declaration, means the procedure is written wrong.
+
+Birth of an identity is `## Entity Matching` below; this contract governs everything after it.
+
+### Kinds of identity change
+
+| Kind | What happens | Successor | Person-side example | Project-side example |
+|---|---|---|---|---|
+| merge | the entity became part of another | required | two rows turn out to be one person | two projects fold into one umbrella |
+| rename | same entity, different identifier | required | a misspelt surname corrected | identifier renamed to its real scope |
+| split | the entity became two or more | two or more required | one row turns out to be two namesakes | an umbrella that was really two efforts |
+| reclassify | entity stays alive, category changes | not applicable | a row that is an organization, not a person | a project becomes a trajectory |
+| void | the entity never existed | forbidden | a speech-to-text artefact that named no one | a placeholder id that never had content |
+
+### Surfaces — roles, not paths
+
+| Role | What it is |
+|---|---|
+| membership field | the frontmatter axis naming the identity (`projects:`, `people:`) |
+| namespaced tag | `{namespace}/{id}` in `tags:` |
+| wikilink | `[[id]]`, bare or labelled |
+| node card | the identity's own `.md` file |
+| node container | the identity's own folder plus its README |
+| hub | a hub whose own identifier is exactly `hub-{id}` |
+| registry row | the row in the registry that declares the identity |
+| tag-registry row | the row counting the namespaced tag in TAGS.md — a census entry, not a declaration, and therefore DERIVED: it is corrected by regenerating the census, and a hand edit is undone by the next render |
+
+A role a registry does not declare does not exist for that registry. **Matching is exact identifier equality, never substring** — on every role. A longer identifier that contains a retired one is a different identity and is never touched; every replacement template is anchored on the full token in a known position.
+
+**A hub declares its identity's category** in `hub_kind:` — `project`, `trajectory` or `domain`, defaulting to `project` when absent. This is the hub-side statement of the same category the registry declares, and the two must agree — disagreement is a defect of the pair, reported by the identity scan against the hub and never silently repaired, because rewriting either side moves every member note between axes. Only `project` is eligible for the membership axis: a `trajectory` is carried as `tags: [trajectory/{id}]`, a `domain` as `domains:`. A `hub_kind` value outside the three is a defect, and changing one is an identity change of the reclassify kind — never a silent fix, because it moves every member note between axes.
+
+A hub whose own identifier is not `hub-{id}` for any registered identity is not a surface of anything — it is an identity in its own right, and its retirement is Archive Contract Form A with a `superseded_by` pointer the resolver reads.
+
+### Surface classes
+
+| Class | Obligation |
+|---|---|
+| LIVE | migrate — membership fields, tags, wikilinks, nodes, and the registry row that *declares* an identity |
+| DERIVED | regenerate, never hand-edit — a hand edit is undone by the next regeneration. Aggregate views, indexes, rendered views |
+| IMMUTABLE | never touched, and excluded from the residue check by rule |
+| UNCLASSIFIED | a path no rule claims. Counted as residue, because a scan that silently skips what it does not recognise has a green verdict that means nothing. Coverage is inverted, not enumerated: the scan walks the whole base, and this engine grows by adding top-level regions |
+
+IMMUTABLE by rule: `_sources/`, manifests (they carry their own checksums), append-only logs, lens outputs, the resolved-clarification archive, and **the body of any record**. Rewritten history is not migration.
+
+Residue is the sum of three things, not one: live surfaces still naming the retired identifier, unclassified paths, and malformed registry rows. A per-identity run (`--identity`) drops the last two — coverage gaps and unreadable rows belong to the base as a whole, and letting them fail one identity's gate is the confusion the filter exists to remove.
+
+The class is decided by what the content *is*, not by which folder holds it, and the line runs inside a record file: its body is a historical artifact and is never rewritten, while its frontmatter is engine-managed classification and migrates like any other live surface. A record whose frontmatter still names a retired identity is residue; a record whose prose mentions it is history.
+
+### Obligations
+
+1. **Atomic.** Every live surface migrates in the same unit of work as the decision. No two-stage identity change.
+2. **Zero residue.** Afterwards a scan for the retired identifier across live surfaces returns nothing — proven by running the scan, not asserted by the writer.
+3. **Well-formed.** A retirement row that breaks the successor rule of its own kind is a defect **of the row**, reported against the registry row rather than against the surfaces that refer to it. A malformed row blocks every automatic rewrite for that identity: there is no deterministic target to write.
+4. **Proven per identity.** The proof is a run of the residue scan **filtered to the identity being changed**, and its exit code is recorded with the resolution. A whole-base scan proves nothing about one change — another identity's residue must never fail this change, and must never be repaired by undoing it.
+
+### Successor integrity
+
+A declared successor is an identifier of the **same registry**, present in it, and **live at the moment the retirement is written** — never one that is itself retired or void. This forbids aiming a new retirement at the dead, and it is why a cycle cannot be created through the write path at all; a cycle found in the registry got there by hand.
+
+It does not abolish chains: an identifier retired into a live successor that is itself retired later is ordinary and expected. **A reader therefore resolves transitively to the terminal live successor** and rewrites to that one. A resolution that does not terminate — a cycle, or a chain ending in void, in a foreign registry, or in an identifier the registry does not hold — yields no target: it is a defect of the rows on the chain, reported and never guessed around.
+
+### Canonical node
+
+Resolution order by role: canonical hub → node card → node container README. First found wins; every other node of the same identity declares itself derived, otherwise one identifier carries several self-proclaimed sources of truth. A retired identity resolves to the node of its terminal live successor.
+
+### References with no single target
+
+Two kinds leave references without one identifier to migrate to, and they resolve oppositely.
+
+- **void** — the identity never existed, so its references are frozen where they stand and excluded from the residue check.
+- **split** — the identity became several, and which successor a given reference means is decided by what that reference says, not by anything the registry holds. References neither freeze nor migrate: every live surface of a split identity surfaces as an owner decision among the declared successors, and residue is cleared one surface at a time by that decision. The completion rule is unchanged — zero live residue — only the route to it is manual.
+
+**Enforcement.** Write path: `/ztn:resolve-clarifications` Class I, the declared writer of both registries' retirement sections — it refuses a row its kind's successor rule forbids, and finalises only against a clean per-identity scan. Read path: `_system/scripts/identity_audit.py`, run nightly by `/ztn:lint` A.8, which recomputes residue from the base itself and re-raises whatever a write path let through.
+
+---
+
 ## Concepts (concepts:)
 
 Open-vocabulary semantic anchors — every "thing-in-the-world" the
@@ -931,11 +1034,12 @@ knowledge base tracks. Format and rules: `_system/registries/CONCEPT_NAMING.md`.
 - **Format:** snake_case ASCII `[a-z0-9_]`, length 1–64, no forbidden
   type prefix, English-only (translate non-English source terms; never
   transliterate).
-- **Type lives in metadata, not in name.** The 18-enum
-  (`theme`/`tool`/`decision`/`idea`/`event`/`organization`/`skill`/
-  `location`/`emotion`/`goal`/`value`/`preference`/`constraint`/
-  `algorithm`/`fact`/`other` — `person` and `project` reserved but
-  not emitted by ZTN) lives in manifest `concepts.upserts[].type`.
+- **Type lives in metadata, not in name.** The enum lives in manifest
+  `concepts.upserts[].type`; `manifest-schema/v2.json` holds the canonical
+  list — `theme`/`tool`/`decision`/`idea`/`event`/`organization`/`skill`/
+  `technical`/`location`/`emotion`/`goal`/`value`/`preference`/`constraint`/
+  `algorithm`/`fact`/`other`. `person` and `project` are reserved in the
+  vocabulary and never emitted by ZTN.
 - **Autonomous resolution.** Engine resolves every format issue via
   `_system/scripts/_common.py::normalize_concept_name()`; never raises
   CLARIFICATIONs (see ENGINE_DOCTRINE §3.1 layer-specific exception).
@@ -1021,33 +1125,10 @@ rows surface as CLARIFICATIONs). See `/ztn:lint` SKILL Scan A.11 for the method.
 
 ## Folder Routing Logic
 
-При определении папки для заметки:
-
-1. **По layer (приоритет v4):**
-   - record + `kind: meeting` (или kind отсутствует) → `_records/meetings/`
-   - record + `kind: observation` (solo Plaud: reflection / idea / therapy) → `_records/observations/`
-   - hub → `5_meta/mocs/`
-
-2. **Несколько types** → выбираем по приоритету:
-   - project → 1_projects/
-   - meeting → 2_areas/work/meetings/ [DEPRECATED в v4 для новых заметок, используй _records/meetings/]
-   - planning → 2_areas/work/planning/
-   - technical + domain/work → 2_areas/work/technical/
-   - technical + ideas → 3_resources/tech/
-   - idea → 3_resources/ideas/
-   - reflection → 2_areas/personal/reflection/
-   - person → 3_resources/people/
-
-3. **По domain если неясно:**
-   - work → 2_areas/work/
-   - career → 2_areas/career/
-   - personal → 2_areas/personal/
-
-4. **По контенту:**
-   - проекты, команда, планирование → 2_areas/work/
-   - AI, LLM, архитектура → 3_resources/tech/
-   - Бизнес-идеи → 3_resources/ideas/business/
-   - Продуктовые идеи → 3_resources/ideas/products/
+Правила маршрутизации заметки в папку живут в реестре папок —
+`_system/registries/FOLDERS.md → ## Routing Rules`. Он владеет порядком
+разрешения (layer → types → domain → keywords) и всеми таблицами. Читай их
+там; если файл недоступен — не угадывай папку, подними CLARIFICATION.
 
 ---
 
@@ -1085,6 +1166,8 @@ Pipeline обработки определён в SKILL.md (`/ztn:process`).
 ---
 
 ## Entity Matching
+
+Birth of an identity — how an identifier comes into existence. What happens to it afterwards is `## Identity Contract` above.
 
 ### Before creating any new entity:
 
@@ -1276,7 +1359,7 @@ Before saving each note:
 | _system/docs/SYSTEM_CONFIG.md | This file — runtime config (formats, routing, types) | Manual |
 | _system/SOUL.md | Identity + Focus + Working Style | Manual + /ztn:bootstrap (once) |
 | _system/state/OPEN_THREADS.md | Active open threads + resolved history | /ztn:bootstrap, /ztn:maintain, /ztn:resolve-clarifications (writers per Skill Write Territory) |
-| _system/views/CURRENT_CONTEXT.md | Live state snapshot for thin orientation | /ztn:maintain, /ztn:lint |
+| _system/views/CURRENT_CONTEXT.md | Live state snapshot for thin orientation | /ztn:bootstrap, /ztn:maintain |
 | _system/views/INDEX.md | Surface catalog of knowledge + archive + constitution + hubs (PARA / domains / cross-domain / hubs facets); records and posts intentionally out of scope | /ztn:bootstrap Step 5.5, /ztn:maintain Step 7.6, regen_all.py — all via `_system/scripts/render_index.py` |
 | _system/state/log_lint.md | Append-only log of /ztn:lint runs | Each /ztn:lint |
 | `.engine-migrations.jsonl` (repo root) | Append-only migration ledger — one line per attempt: name, declared kind, exit code, outcome (`applied` / `partial`), timestamp, note. A clone carrying the older flat `.engine-migrations-applied` has it folded in on read. Committed, so a second machine agrees on what has run | `scripts/run_migrations.py`, called by `/ztn:update` and `scripts/sync_engine.sh` |
@@ -1294,7 +1377,7 @@ Before saving each note:
 | _system/state/lint-context/daily/*.md | 30-day rolling daily summaries | Each /ztn:lint |
 | _system/state/lint-context/monthly/*.md | Append-forever monthly summaries | First /ztn:lint of new UTC month |
 | _system/state/BATCH_LOG.md | Append-only index of batch operations | Each /ztn:process |
-| _system/state/batches/{id}.md | Full batch reports (one per /ztn:process run) | Each /ztn:process |
+| _system/state/batches/{batch-id}-{skill}.md + .json | Full batch report + JSON manifest, one pair per emitting run | Each /ztn:process, /ztn:maintain, /ztn:lint, /ztn:agent-lens |
 | _system/docs/batch-format.md | Batch format contract — markdown report + JSON manifest; per-entity privacy trio + concept fields; sections `## Concepts Upserted` + `## Sensitive Entities` | Manual (bump version on change) |
 | _system/state/PROCESSED.md | Source → Note mapping | Each /ztn:process |
 | _system/TASKS.md | All open tasks | Regenerated |
@@ -1304,7 +1387,7 @@ Before saving each note:
 | 5_meta/mocs/hub-cognitive-model.md | Cognitive-model hub — per-axis projection of `cognitive_axes`-tagged principles + candidate buffer (axis set is the SoT in `lenses/cognitive-model/prompt.md`); AUTO-GENERATED zone between markers, owner «portrait» above | /ztn:maintain Step 7.9 via `render_cognitive_model_hub.py` (owner-data; managed zone regenerable) |
 | _system/state/content-pipeline-state.json | Content ledger — per-draft state (theme_ids[], ripeness, draft_status, owner_touched) | /ztn:content --maintain (NOT regenerable) |
 | _system/state/CLARIFICATIONS.md | Non-blocking human-in-the-loop questions | All skills (safety valve) |
-| _system/registries/TAGS.md | Tag registry (`tags:` namespace labels) | When new tags |
+| _system/registries/TAGS.md | Tag registry (`tags:` namespace labels) — census of the `tags:` frontmatter across the knowledge layer; AUTO-GENERATED zone between markers, owner-curated preamble above and `## Notes` below | `render_tags.py` only (via `/ztn:maintain` Step 7.10 and `regen_all.py`; managed zone regenerable, read-only) |
 | _system/registries/CONCEPT_NAMING.md | Spec — canonical concept-name format (engine-shipped) | Manual (engine maintainer) |
 | _system/registries/AUDIENCES.md | Spec + extensions for `audience_tags` privacy labels | /ztn:resolve-clarifications (extension append on owner approval) + Manual (owner edits) |
 | 1_projects/PROJECTS.md | Project registry | When new projects |

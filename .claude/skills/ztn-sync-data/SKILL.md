@@ -38,12 +38,21 @@ different remote (`upstream`, the public skeleton).
 
 1. Repo root has `.engine-manifest.yml`.
 2. `origin` (or `--remote`) is configured and reachable.
-3. No producer-skill lock present:
-   - `_sources/.processing.lock`
-   - `_sources/.lint.lock`
-   - `_sources/.maintain.lock`
-   - `_sources/.resolve.lock`
-   Abort with the conflicting skill name if any.
+3. No producer-skill lock present. Read **all seven**, in this order:
+   - `_sources/.processing.lock` → `/ztn:process`
+   - `_sources/.maintain.lock` → `/ztn:maintain`
+   - `_sources/.lint.lock` → `/ztn:lint`
+   - `_sources/.agent-lens.lock` → `/ztn:agent-lens`
+   - `_sources/.content.lock` → `/ztn:content`
+   - `_sources/.resolve.lock` → `/ztn:resolve-clarifications`
+   - `_sources/.roles.lock` → `/ztn:roles`
+
+   Abort with the conflicting skill name if any. The full set, not a
+   subset: a rebase under any running tick moves the tree beneath it. A
+   roles tick is the sharpest case — `roles_guard.py` attributes every
+   write in its diff window to the running role and reverts what falls
+   outside that role's zone, so a rebase landing mid-tick is attributed
+   to a role that did not make it.
 
 ## Pipeline
 
@@ -129,7 +138,7 @@ If `--auto-stash` was applied → `git stash pop`. If pop conflicts —
 inform owner, leave stash in place (`git stash list`).
 
 If pulled commits touched any of:
-- `_system/state/CURRENT_CONTEXT.md` → mention «context refreshed».
+- `_system/views/CURRENT_CONTEXT.md` → mention «context refreshed».
 - `_system/registries/*.md` → mention «registries updated».
 - `_records/**` → count new records, report.
 - `_sources/inbox/**` → count new transcripts, suggest `/ztn:process`.
@@ -168,9 +177,11 @@ Up-to-date repo → no-op exit 0. Re-running immediately → no-op.
   another device.
 - After waking up a long-dormant clone.
 
-Auto-firing from producer skills is intentionally NOT done — keeping
-sync explicit avoids surprise rebases mid-pipeline. If forgetting is a
-recurring issue, raise it and we can add an opt-in pre-step.
+A producer skill never fires this one mid-pipeline — a surprise rebase
+under a running pipeline is the failure it avoids. Two callers invoke it
+as an explicit pre-work step, before any lock is taken: the scheduler
+prompts (Step 3 of every tick) and `/ztn:resolve-clarifications` (its
+Step 0, so the queue reflects every device).
 
 ## Failure modes
 

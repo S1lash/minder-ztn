@@ -54,23 +54,24 @@ what to change. Both halves are optional; ask for whichever is missing.
    repository root, and reuse `$BASE` everywhere below:
 
    ```bash
-   REPO="$(git rev-parse --show-toplevel)"; BASE=""
-   for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; [ -n "$BASE" ] && BASE="ambiguous" && break; BASE="${d%/}"; done
+   REPO="$(git rev-parse --show-toplevel)"; BASE=""; export PYTHONIOENCODING=utf-8
+   for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; BASE="$(python3 "$d/_system/scripts/roles_run.py" base --repo "$REPO")"; break; done
    python3 "$BASE/_system/scripts/roles_run.py" due --base "$BASE" --repo "$REPO"
    ```
 
    **This is the one derivation, and it is the same one `/ztn:roles` uses.**
-   Three things about it are load-bearing and the shorter form got each one
-   wrong: `git rev-parse` means it works from any subdirectory, not only the
+   The loop only locates a copy of the CLI; `roles_run.py base` is what
+   decides, so «which directory is the base» is answered in one place with
+   one message. Two things about the surrounding shell are load-bearing:
+   `git rev-parse` means it works from any subdirectory, not only the
    repository root (a `ls -d */...` from inside the base matches nothing and
    yields an EMPTY `$BASE`, after which every command silently runs against
-   `/_system/scripts/roles_run.py`); two bases produce the literal
-   `ambiguous` rather than `head -1` silently picking one; and the absolute
-   `$REPO` is what the CLI is given, so nothing depends on the working
-   directory.
+   `/_system/scripts/roles_run.py`); and the absolute `$REPO` is what the CLI
+   is given, so nothing depends on the working directory.
 
-   `BASE` empty or `ambiguous` → say so and stop. Do not proceed with a
-   guessed path.
+   Zero bases and two bases are both loud: the CLI prints the reason on
+   stderr and exits non-zero, leaving `$BASE` empty. `BASE` empty → repeat
+   that reason to the owner and stop. Do not proceed with a guessed path.
 
    One JSON row per role: `id`, `name`, `due`, `reason`, `status`.
    Nothing else enumerates roles — never glob the roles directory to
@@ -148,19 +149,31 @@ may write nowhere leaves nothing behind but a log line.
 The live file is never the place where an invalid role is discovered.
 
 1. Assemble a scratch copy: a temporary directory holding
-   `$TMP/$(basename "$BASE")/_system/roles/{id}/role.md` and nothing else.
-   The **basename**, not `$BASE` — `$BASE` is absolute, and `$TMP/$BASE`
-   concatenates two absolute paths into a nonsense tree. The name itself has
-   to be kept, because the `writes` shorthand expands from it and a
-   differently-named copy would validate a different role.
+   `$TMP/$(basename "$BASE")/_system/roles/{id}/role.md`, plus the credential
+   store copied in beside it. The **basename**, not `$BASE` — `$BASE` is
+   absolute, and `$TMP/$BASE` concatenates two absolute paths into a nonsense
+   tree. The name itself has to be kept, because the `writes` shorthand
+   expands from it and a differently-named copy would validate a different
+   role.
+
+   **The store has to come along, and it is the encrypted one** — `validate`
+   resolves a declared credential against the store under the base it was
+   given, so a scratch base without it reports every declared name as having
+   no value. That finding would be about the scratch tree, not about the
+   edit, and it blocks every credentialed role from ever being edited. The
+   copy is the committed ciphertext; no key is needed to check that a name is
+   present, and nothing is decrypted here.
 
 2. Validate the scratch copy — deriving `$BASE` in the same call, per the
    prelude:
 
    ```bash
-   REPO="$(git rev-parse --show-toplevel)"; BASE=""
-   for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; [ -n "$BASE" ] && BASE="ambiguous" && break; BASE="${d%/}"; done
+   REPO="$(git rev-parse --show-toplevel)"; BASE=""; export PYTHONIOENCODING=utf-8
+   for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; BASE="$(python3 "$d/_system/scripts/roles_run.py" base --repo "$REPO")"; break; done
    NAME="$(basename "$BASE")"
+   mkdir -p "$TMP/$NAME/_system/state"
+   [ -f "$BASE/_system/state/secrets.enc.json" ] && \
+       cp "$BASE/_system/state/secrets.enc.json" "$TMP/$NAME/_system/state/"
    python3 "$BASE/_system/scripts/roles_run.py" validate \
        --base "$TMP/$NAME" --repo "$TMP" --role {id}
    ```
@@ -170,6 +183,16 @@ The live file is never the place where an invalid role is discovered.
    validate again. Never hand the owner the raw finding and never write
    past one. A credential the owner just named is a finding until its
    value is actually in the secrets store — the name alone is not enough.
+
+   **One finding is about this shell, not about the role:** the entry whose
+   `role` is `null` and which names `ZTN_ROLES_KEY`. It says the key is not
+   in this conversation's environment, so no value could be decrypted and
+   measured. Carry the key in the same call to clear it —
+   `ZTN_ROLES_KEY='<the key>' python3 … validate …`, in one Bash call,
+   since shell state does not persist between them. If the owner does not
+   have it to hand, say plainly which check did not run and do not read it
+   as a defect in their edit; every finding that names the role itself is
+   still a blocker.
 
 4. `"notes"` are not refusals; they name a shape that only works under a
    condition the engine cannot check. Say each one plainly **before**
@@ -216,16 +239,27 @@ edit; this path is the only way a value changes.
    that value alone and leaves every other ciphertext byte-identical:
 
    ```bash
-   REPO="$(git rev-parse --show-toplevel)"; BASE=""
-   for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; [ -n "$BASE" ] && BASE="ambiguous" && break; BASE="${d%/}"; done
-   python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import roles_secrets, pathlib; \
+   REPO="$(git rev-parse --show-toplevel)"; BASE=""; export PYTHONIOENCODING=utf-8
+   for d in "$REPO"/*/; do [ -f "$d/_system/scripts/roles_run.py" ] || continue; BASE="$(python3 "$d/_system/scripts/roles_run.py" base --repo "$REPO")"; break; done
+   ZTN_ROLES_KEY='<the key>' python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import roles_secrets, pathlib; \
        roles_secrets.store_secret(pathlib.Path(sys.argv[2]), sys.argv[3], sys.stdin.read().rstrip("\n"))' \
-       "$BASE/_system/scripts" "$BASE/_system/state/secrets.enc.json" NOTION_TOKEN
+       "$BASE/_system/scripts" "$BASE/_system/state/secrets.enc.json" NOTION_TOKEN <<'SECRET'
+   <the value the owner pasted>
+   SECRET
    ```
 
-   Feed the value on stdin. Never as an argument — arguments are visible in the
+   **The key rides on this same call.** Shell state does not persist between
+   tool calls, so a key exported earlier is not here; without it
+   `store_secret` refuses and nothing is written. It goes on the command
+   line rather than into a file — a key sitting in plaintext beside the store
+   it opens is the one place it must never be.
+
+   Feed the value on stdin, with a quoted heredoc so the shell expands
+   nothing inside it. Never as an argument — arguments are visible in the
    process list to every other process on the machine, and they land in shell
-   history.
+   history. A value containing a newline is refused here rather than at
+   render time: it would split into a second line that parses as another
+   credential.
 4. **A rename is two changes, not one.** If the declared name changes as well,
    the new name goes into the store *and* into the role's `secrets:` through the
    ordinary validated write above. The old name is not removed automatically:

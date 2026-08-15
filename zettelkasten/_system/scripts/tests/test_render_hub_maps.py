@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -229,6 +230,35 @@ class TestRenderHubMaps(unittest.TestCase):
         self.assertIn("explicit summary", body)
         self.assertIn("title-only-fallback", body)
         self.assertIn("note-3", body)
+
+
+class TestDefaultRoot(unittest.TestCase):
+    """The default root must be the base itself.
+
+    `repo_root()` already resolves to the zettelkasten base, so appending
+    `zettelkasten` to it pointed one level too deep and every invocation without
+    `--root` died on "root does not exist" — a whole mode that no caller could
+    use and no test noticed.
+    """
+
+    def test_default_root_resolves_to_base(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "5_meta" / "mocs").mkdir(parents=True)
+            (root / "_records" / "meetings").mkdir(parents=True)
+            old = os.environ.get("ZTN_BASE")
+            os.environ["ZTN_BASE"] = str(root)
+            try:
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc = r.main([])
+            finally:
+                if old is None:
+                    os.environ.pop("ZTN_BASE", None)
+                else:
+                    os.environ["ZTN_BASE"] = old
+            self.assertEqual(rc, 0, err_buf.getvalue())
+            self.assertNotIn("root does not exist", err_buf.getvalue())
 
 
 if __name__ == "__main__":

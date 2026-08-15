@@ -164,7 +164,7 @@ Then exit `partial` immediately.
 
 ## Forbidden in this tick
 
-- `/ztn:process`, `/ztn:lint` — separate schedules
+- `/ztn:process`, `/ztn:lint`, `/ztn:content`, `/ztn:roles` — separate schedules
 - `/ztn:resolve-clarifications` — owner-only interactive; auto-mode is
   dispatched only by lint Step 7.5, never from agent-lens
 - `/ztn:save` in any form (owner-interactive only — scheduler uses

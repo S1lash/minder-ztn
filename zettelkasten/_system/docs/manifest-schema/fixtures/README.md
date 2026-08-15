@@ -15,16 +15,11 @@ against the version of `manifest-schema/v{N}.json` they are paired with.
   were emitted that run.
 - `lint.json` — `/ztn:lint` emission. Real batch with non-zero
   `autofixes_applied` and the `autofixes_by_fix_id` breakdown.
-- `agent-lens.json` — `/ztn:agent-lens` emission. **Synthesized** per
-  ARCHITECTURE.md §8.11.5 + §6.4.2: at the time the schema and
-  fixtures were authored, /ztn:agent-lens emitted only to
-  `_system/state/agent-lens-runs.jsonl` and not to
-  `_system/state/batches/{ts}-agent-lens.json`. Bringing agent-lens
-  under the universal manifest contract (per SD007 / §8.11.1) is a
-  follow-up — the synthetic fixture pins the expected shape so that
-  the validator and downstream consumers have a stable contract from
-  day one. When the first real agent-lens batch lands, swap this
-  synthetic fixture for a sanitized real one.
+- `agent-lens.json` — `/ztn:agent-lens` emission. **Synthesized**: it
+  pins the expected shape rather than sanitizing a real batch. Real
+  `{ts}-agent-lens.json` manifests now exist under
+  `_system/state/batches/`, so this fixture is due to be replaced with
+  a sanitized real one.
 
 ## Why fixtures exist
 
@@ -32,8 +27,8 @@ Regression test for schema evolution. **Any future schema change MUST
 keep these fixtures validating.** If a change breaks them, that is a
 contract change — make the conscious decision: either adjust the
 fixtures (if the change is intentional + non-breaking, MINOR bump per
-§8.12.2) or treat it as a MAJOR bump (breaks consumers; ship a
-migration shim).
+the evolution rules in `../README.md`) or treat it as a MAJOR bump
+(breaks consumers; ship a migration shim).
 
 The fixture set deliberately covers the four `processor` values so a
 `oneOf`-style branch in the schema cannot silently regress one skill
@@ -77,5 +72,5 @@ for path in sorted(glob.glob('zettelkasten/_system/docs/manifest-schema/fixtures
 EOF
 ```
 
-The same logic runs in `/ztn:lint` Scan G (manifest schema validation
+The same logic runs in `/ztn:lint` Scan H (manifest schema validation
 — see ztn-lint SKILL.md).

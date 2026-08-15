@@ -8,7 +8,11 @@
 # Reads .engine-manifest.yml. For each `engine:` path, fetches the
 # upstream version and overwrites the local path. `template:` paths are
 # DELIBERATELY skipped — they seed once at clone time and are then
-# friend's data.
+# friend's data. Then two steps that a plain copy cannot express:
+# `retire_paths.py` removes what the manifest lists as `retired:` (a sync
+# copies what upstream HAS, never what it no longer has), and
+# `run_migrations.py` runs the pending chain, honouring each migration's
+# declared kind.
 #
 # This script is the CI / power-user entry point. The default owner path is
 # the `/ztn:update` skill, which does the same work with a preview and a

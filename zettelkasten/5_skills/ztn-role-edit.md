@@ -19,7 +19,9 @@ Pointer card. The full flow lives in the installed skill, not here.
 - **Flow, incl. how a role reference is resolved:**
   `~/.claude/skills/ztn-role-edit/SKILL.md` (after `install.sh`). That
   resolution is written once there; `list` and `ask` reference it.
-- **What it edits:** `_system/roles/{id}/role.md` — nothing else.
+- **What it edits:** `_system/roles/{id}/role.md`, and — on a credential
+  rotation only — the encrypted value in `_system/state/secrets.enc.json`.
+  Nothing else.
 - **What runs the result:** [[ztn-roles]].
 - **Full orientation card:** [[CLAUDE_ZETTELKASTEN]].
 

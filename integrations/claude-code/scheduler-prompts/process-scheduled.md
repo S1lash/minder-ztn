@@ -88,7 +88,8 @@ Then exit `partial` immediately. Do not retry.
    stranded scheduler work from prior ticks via PR-merge sweep.
 
 2. `bash scripts/scheduler/lock-check.sh` — abort if any pipeline lock
-   (process / maintain / lint / agent-lens / resolve) is recent (<2h).
+   (process / maintain / lint / agent-lens / content / resolve / roles) is
+   recent (<2h).
    Stale locks (>2h) are removed automatically.
 
 3. `/ztn:sync-data` — safe `git pull --rebase` with conflict-refuse
@@ -213,7 +214,7 @@ Then exit `partial` immediately. Do not retry.
 
 ## Forbidden in this tick
 
-- `/ztn:lint`, `/ztn:agent-lens` — separate nightly schedules
+- `/ztn:lint`, `/ztn:agent-lens`, `/ztn:content`, `/ztn:roles` — separate schedules
 - `/ztn:resolve-clarifications` — owner-only interactive; auto-mode is
   dispatched by lint Step 7.5, not from process
 - `/ztn:save` in any form (owner-interactive only — scheduler uses

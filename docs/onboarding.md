@@ -8,8 +8,9 @@ After this guide you'll have:
   registries (people, projects) seeded from your existing context.
 - A clarifications queue you've walked through, resolving anything
   bootstrap was uncertain about.
-- An autonomous nightly schedule (lint + agent-lens) catching drift
-  while you sleep.
+- An autonomous schedule catching drift while you sleep — ingestion
+  through the day, lenses and lint overnight, and optionally the
+  content and roles ticks.
 
 Two shell commands by hand: clone, then `install.sh`. Everything else
 is Claude Code skills — `/ztn:bootstrap` first, then the daily flow.
@@ -342,4 +343,8 @@ never fire.
 - **`integrations/claude-code/skills/ztn-{save,sync-data,update}/SKILL.md`**
   — git-flow skills.
 - **`zettelkasten/_system/docs/SYSTEM_CONFIG.md`** — full system spec.
-- **`zettelkasten/5_skills/`** — engine reference cards for each skill.
+- **`zettelkasten/5_skills/`** — engine reference cards for a hand-picked subset
+  of the skills. They are a convenience, not a contract: the SKILL under
+  `integrations/claude-code/skills/{skill}/SKILL.md` is the source of truth, and
+  a skill without a card is no different from one with it. See
+  `zettelkasten/5_skills/README.md`.

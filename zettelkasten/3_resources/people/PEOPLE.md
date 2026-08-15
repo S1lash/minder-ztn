@@ -13,6 +13,21 @@ All people mentioned in the system. New entries appear automatically when
 
 ---
 
+## Owner
+
+The person this base belongs to. Kept in its own section, separate from the general table, because tier mechanics — mention counting, promote, demote — do not apply to them: they are present in nearly everything, so a count carries no signal.
+
+- **Identifier** — derived from `_system/SOUL.md → ## Identity → Name:` by the same `firstname-lastname` rule as every other row. It is the id used in `speaker:` on observation records.
+- **Always a valid identity.** Identity checks treat the owner identifier as registered by definition — it is never reported as an identifier missing from the registry.
+- **Registered, never auto-populated.** The owner is NOT added to the `people:` array of records and notes automatically. They are present by default almost everywhere; auto-population would inflate every count and carry no signal. Their *absence* from a record is what is significant.
+- **Profile** — `3_resources/people/{id}.md`, same shape as any other profile (`5_meta/templates/person-template.md`), assembled by `/ztn:bootstrap` from SOUL, the active constitution and the registry.
+
+| ID | Name | Role | Profile |
+|---|---|---|---|
+| _(seeded by `/ztn:bootstrap`)_ | | | |
+
+---
+
 ## People
 
 Sorted by mentions desc within tier.

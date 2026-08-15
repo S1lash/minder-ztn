@@ -30,6 +30,9 @@ This skill turns review into a guided conversation: one theme per round,
 numbered questions, full context reminded inline, decisions applied
 mechanically, queue cleaned after.
 
+**Working directory:** the zettelkasten base. Every path and every `python3`
+command in this file is written relative to it.
+
 **Documentation convention:** при любых edits этого SKILL соблюдай
 `_system/docs/CONVENTIONS.md` — файл описывает current behavior без
 version/phase/rename-history narratives.
@@ -54,7 +57,9 @@ version/phase/rename-history narratives.
   resolve is the engine). Runs Step A (lens hint ingestion + smart
   curation + auto-resolve sweep) and exits silently. Skips Step 0
   pre-sync (the dispatching scheduler tick already synced), skips
-  theme menu / round / save reminder. Residue clarifications stay
+  theme menu / round / save reminder. Also skips Class I entirely —
+  identity change is an owner decision and never happens in a
+  non-interactive run. Residue clarifications stay
   queued for owner; auto-applied actions write to the session log
   under `_system/state/resolve-sessions/`. The most quality-sensitive
   isolation — agent-lens vs resolve — IS preserved at the scheduler
@@ -102,27 +107,24 @@ This skill writes to CLARIFICATIONS.md and may edit profiles / records.
 Producer skills (`/ztn:process`, `/ztn:lint`, `/ztn:maintain`) write to
 the same files. Mutual exclusion required.
 
-Read all six before starting:
-- `_sources/.processing.lock` — abort «`/ztn:process` running»
-- `_sources/.maintain.lock` — abort «`/ztn:maintain` running»
-- `_sources/.lint.lock` — abort «`/ztn:lint` running» (see auto-mode
-  exception below)
-- `_sources/.agent-lens.lock` — abort «`/ztn:agent-lens` running»
-- `_sources/.content.lock` — abort «`/ztn:content` running»
+Before starting, read every pipeline lock under `_sources/` and abort on any,
+naming the skill that holds it. The set is owned whole by
+`_system/docs/SYSTEM_CONFIG.md` → «Cross-skill exclusion» — read it there
+rather than keeping a second copy that drifts.
 
 **`--auto-mode` exception for `.lint.lock`.** Auto-mode is dispatched
 by `/ztn:lint` Step 7.5; lint holds `.lint.lock` for the duration of
 the dispatch. Treating that lock as «competitor» would deadlock the
 nightly chain. Under `--auto-mode` only, presence of `.lint.lock` is
 proof the dispatcher is alive — proceed with resolve work, do not
-abort. The other four locks (`.processing.lock`, `.maintain.lock`,
-`.agent-lens.lock`, `.content.lock`) stay competitive
-(lint already cleared those at its own Step 0.1; if any appears here,
-something has gone genuinely wrong — abort silently and let the next
-nightly tick retry).
+abort. Every OTHER pipeline lock stays competitive (lint already
+cleared those at its own Step 0.1; if any appears here, something has
+gone genuinely wrong — abort silently and let the next nightly tick
+retry). Auto-mode also skips the Step 0 pre-sync and never writes
+`lens-resolution-history.jsonl`.
 
-Interactive mode keeps the full six-lock check; the owner-driven
-session has no dispatcher above it.
+Interactive mode keeps the full check with no exception; the
+owner-driven session has no dispatcher above it.
 
 1. Create `_sources/.resolve.lock` with `{ISO timestamp} — {session info}`
 2. Delete it on every exit path (normal, error, abort, early exit)
@@ -429,16 +431,21 @@ escalates it:
    `reject`-ed a substantively-similar proposal in the last 30 days,
    default to `queue` with `queue_reason: "anti-flip-flop"` and a
    note linking the prior rejection.
-5. **Additive-only restriction.** Currently whitelisted types
-   (`wikilink_add`, `hub_stub_create`, `open_thread_add`,
-   `decision_update_section`, `principle_candidate_add`) are all
+5. **Additive-only restriction.** Exactly five types may auto-apply:
+   `wikilink_add`, `hub_stub_create`, `open_thread_add`,
+   `decision_update_section`, `principle_candidate_add`. All five are
    additive — no auto type can mutate or delete owner content.
    `principle_candidate_add` appends one line to the high-recall
    `principle-candidates.jsonl` buffer (CAPTURE, not promotion — the
    owner still gates promotion to `0_constitution/` via `/ztn:lint`
-   F.5); append-only + git-revertible, on par with the others. Resolver
-   enforces by allowing only `ACTION_HINT_TYPES` in `action.type` for
-   auto-apply.
+   F.5); append-only + git-revertible, on par with the others.
+   `ACTION_HINT_TYPES` in `_common.py` is **wider** than this set — it
+   also carries `threshold_tune_proposal` and
+   `metric_record_rerender_apply`, both Class C (owner-approved, never
+   auto-applied), and both non-additive. So membership in
+   `ACTION_HINT_TYPES` is necessary but NOT sufficient: the resolver
+   checks the five-name list above, and a proposal of either Class C
+   type is demoted to `queue` even though the parser accepted it.
 6. **Uncertainty default = queue with `queue_reason: "uncertainty"`.**
    When the LLM is unsure between auto and queue, route to queue and
    record `queue_reason: "uncertainty"` so Step A.3.5 can escalate to
@@ -456,9 +463,11 @@ escalates it:
 
 For each `auto-apply` decision:
 
-- Validate `action.type ∈ ACTION_HINT_TYPES`. If not, demote to
-  `queue` with reason «type not whitelisted for auto» — defends
-  against LLM proposing types it shouldn't.
+- Validate `action.type` against the **five auto-appliable names** of rule 5,
+  not against `ACTION_HINT_TYPES` (which is wider — it also holds the two
+  Class C types). If not one of the five, demote to `queue` with reason «type
+  not whitelisted for auto» — defends against the LLM proposing types it
+  shouldn't.
 - Invoke `lens_action_handlers.APPLIERS[action.type](action.params,
   source_lens, base)`. The handler re-validates (TOCTOU) and either
   applies or returns `success=False`.
@@ -733,9 +742,9 @@ weight. Standard Types (extend as new ones appear in producer skills):
 | `thread-closure-suggested` | medium | 4 |
 | `idea-ambiguous-match` | medium | 4 |
 | `evidence-trail-anomaly` | medium | 4 |
-| `topic-classification` | medium | 4 |
 | `cross-domain-link` | medium | 4 |
 | `project-identity` | medium | 4 |
+| `identity-*` (the family `/ztn:lint` A.8 raises — `identity-field-retired`, `identity-tag-retired`, `identity-wikilink-repoint`, `identity-node-relocate`, `identity-split-undecided`, `identity-successor-*`, `identity-gate-unproven`, …) | heavy | 3 |
 | `org-structure-tension` | heavy | 3 |
 | `principle-candidate-batch` | heavy | 3 |
 | `decision-*` | heavy | 3 |
@@ -923,7 +932,8 @@ the reasoning ground; never just "I think X".}
 
 ✅ Варианты:
   {For HEAVY items (cluster weight «heavy» per Step 3 — org-structure-tension,
-  principle-candidate-batch, decision-*, semantic-drift / policy), each
+  principle-candidate-batch, decision-*, identity-*, semantic-drift /
+  policy), each
   primary option (a/b/c) MUST include three micro-sections:}
 
   a) {one-line label}
@@ -1074,6 +1084,138 @@ overwrites the markdown session file with the final accumulated state
 (captures conversational reasoning) — `is_sensitive: true` by default,
 `audience_tags: []`, `origin: personal`.
 
+**Class I — identity change (interactive-only):**
+
+Two actions, `entity-retire` and `entity-reclassify`, resolve
+the `identity-*` family and identity-bearing `project-identity` items. Per
+`_system/docs/SYSTEM_CONFIG.md → Identity Contract` this skill is the declared
+writer for `1_projects/PROJECTS.md` rows and the `## Removed` section of
+`3_resources/people/PEOPLE.md` when an identifier stops being valid — the
+contract's obligee.
+
+**Never runs under `--auto-mode`.** Identity is an owner decision
+(`ENGINE_DOCTRINE` §3.6). Step A neither auto-applies nor escalates these
+items: `entity-retire` / `entity-reclassify` are not in `ACTION_HINT_TYPES`,
+so the sweep can only leave them in the queue for an interactive session.
+Also skipped under `--dry-run` — the migration and its completion gate write.
+
+**I.1 — kind and successor, declared not inferred.**
+
+| Kind | Action | Successor | What the owner must supply |
+|---|---|---|---|
+| merge | `entity-retire` | required | the surviving identifier |
+| rename | `entity-retire` | required | the new identifier |
+| split | `entity-retire` | two or more required | every identifier the old one became |
+| reclassify | `entity-reclassify` | not applicable | the target category (project → trajectory, person-row → organization) |
+| void | `entity-retire` | forbidden | nothing — references freeze where they stand |
+
+Refuse the action when the owner's answer does not determine the kind, or
+determines a kind whose successor rule it violates (a merge with no successor,
+a void naming one, a split naming one). Re-prompt with the five kinds; never
+infer the kind from the item text or from the registry's current wording.
+
+**Every named successor is checked before I.2 writes anything.** It must be an
+identifier of the same registry, present in it, and **live** — not itself
+retired, not void. A successor that fails any of the three is refused with the
+reason named, and the owner is asked for another: per Identity Contract
+Successor integrity this is what keeps a retirement from aiming at the dead and
+makes a cycle unreachable through this path. When the owner names an identifier
+that is itself retired, offer its terminal live successor as the candidate
+rather than accepting the hop.
+
+**I.2 — registry row (provisional until I.5).** Write the retirement /
+reclassification row per Archive Contract Form B, carrying kind, successor and
+date in the declared columns of that registry's retirement section
+(`## Retired Identifiers` in PROJECTS.md, `## Removed` in PEOPLE.md).
+The row goes first because `identity_audit.py` resolves «what counts as
+residue» against the registry — before the row exists the scan has nothing to
+report, so the row and the migration are one unit of work, not two.
+
+**I.3 — migrate live surfaces off the audit's work list.** Run
+`python3 _system/scripts/identity_audit.py --report --json` and take the
+`findings` for this identity. Each finding carries `surface`, `surface_class`,
+`action`, `current`, `target` — dispatch on `action`:
+
+| `action` | Surfaces | How it is applied |
+|---|---|---|
+| `migrate` / `demote` | membership field | silent-safe — exact-token rewrite, report counts in the round-close report |
+| `migrate` / `renamespace` | namespaced tag | silent-safe — same |
+| `repoint` | wikilink | **owner-reviewed** — render the diff per the Class B gate; a repointed link changes prose the owner wrote, and a sentence true of the old identifier is often false of the successor |
+| `relocate` | node card, node container, hub | **owner-reviewed, one confirmation per node** — a node moves by what it contains, not by its name, and the move is irreversible |
+| `regenerate` | anything with `surface_class: derived` | never edited here — I.4 |
+
+Matching is exact identifier equality on every surface; a longer identifier
+containing the retired one is a different identity and is left alone. A `void`
+kind migrates nothing — its references freeze and the audit excludes them. A
+`split` kind migrates nothing automatically: each of its
+`identity-split-undecided` findings is put to the owner as a choice among the
+declared successors, one surface at a time, and applied per the row its chosen
+action falls under above. Residue clears by his decisions, not by a template.
+
+**I.4 — derived surfaces are queued, not edited.** Findings with
+`surface_class: derived` are left untouched and `registry_writes++` — Step 9.3
+runs `/ztn:maintain`, which rebuilds them. Hand-editing a derived surface is
+undone by the next rebuild.
+
+**I.5 — completion gate (per identity, recorded).** Run exactly:
+
+```bash
+python3 _system/scripts/identity_audit.py --report --json --fail-on-residue --identity {entity-id}
+```
+
+`--identity` is what makes this gate about **this** change: it restricts the
+report, the residue count and the exit code to that identifier's buckets and
+drops every other identity's findings from the output entirely, so an unrelated
+dirty identity can neither fail this change nor be mistaken for its work list.
+Exit codes: `0` — zero live residue for this identity; `2` — live residue
+remains; `1` — the identifier is unknown to every registry, or the scan could
+not run. **Exit 1 is a failure, never a pass.** Its ordinary causes are a
+mistyped id and a registry row that never landed, and a gate that reads
+«unknown» as «clean» closes the change against nothing.
+
+Copy the invocation and its result into the resolution as `gate: {command,
+exit_code, residue_count}` — from the run's output, never from memory. Identity
+Contract Obligation 4 makes this recorded scan part of the resolution; a
+resolution archived without it is unproven, and `/ztn:lint` A.8 (9) raises
+`identity-gate-unproven` against it.
+
+- **Exit 0** → the row is final. Archive the item with `Resolution-action:
+  entity-retire`, payload `{registry, entity_id, kind, successor | successors,
+  date, gate, surfaces_migrated: {field: N, tag: N, wikilink: N, node: N}}` —
+  or `entity-reclassify`, payload `{registry, entity_id, from_category,
+  to_category, date, gate, surfaces_migrated: {...}}`.
+- **Exit 2 or exit 1** → the change is not finalised. All four of the
+  following, none optional:
+  1. Do **not** archive the item and do not write a `Resolution-action` for it.
+     The item left open **is** the refusal — it returns in the next session and
+     in tonight's lint.
+  2. Rewrite its `**To resolve:**` with the remaining findings copied out of
+     the JSON — `surface`, path, `current`, `target`, one line each. On exit 1,
+     write instead which identifier was queried and that no registry holds it.
+  3. Leave every file written in I.2–I.3 in the working tree, untouched.
+     **Nothing is reverted.** The migration already done is correct work; a
+     `git checkout --` over a path list reconstructed from the session's own
+     memory destroys more than it restores; and the registry row has to stay,
+     because without it the scan cannot tell residue from an ordinary
+     reference. An unfinished identity change is visible and resumable; a
+     half-reverted one is neither.
+  4. Report the dirty paths and the exact command above in the round-close, so
+     the owner re-runs it himself and sees the same number. Step 9.4's save
+     reminder names the unfinished change by id.
+
+Honesty about what this gate is: the refusal binds because the failing branch
+is the cheap one — nothing to undo, nothing to reconstruct — and because it is
+not the last check. The same audit runs unattended in tonight's A.8 over the
+same base and re-raises every surface still naming the identifier, whatever
+this session recorded; A.8 (9) separately catches a resolution archived without
+its gate line. A claim of zero residue costs a re-raised item tomorrow, under
+the id of the resolution that made it.
+
+`entity-reclassify` runs the same five sub-steps; its I.1 takes a target
+category instead of a successor, and its I.5 gate demands the same zero live
+residue for the same identity — the identity is alive, so what has to be gone
+is every surface still carrying the old category's namespace.
+
 **Archive Contract enforcement (cross-cutting, applies to any Class A or Class B action whose effect is archival):**
 
 Per `_system/docs/SYSTEM_CONFIG.md → Archive Contract`, every archival event MUST carry a reason captured **with the entity**. When applying the actions below, the skill is responsible for writing the contract-required field in the same atomic operation as the archival flag. Skipping the field is a contract violation; a follow-up `/ztn:lint` Archive-contract scan will surface it as `archive-note-missing` / `archive-reason-missing` CLARIFICATION.
@@ -1085,6 +1227,7 @@ Per `_system/docs/SYSTEM_CONFIG.md → Archive Contract`, every archival event M
 | `dismiss-duplicate` | Form C (queue) | Same as `dismiss`. |
 | `merge-notes` (the merged-away note) | Form A (file-based) | Append `## Archive Note` to the merged-away note BEFORE removing it from active surface, with `reason: "merged into [[kept-note-id]]"`, `triggered_by: /ztn:resolve-clarifications`, `superseded_by: [[kept-note-id]]`. Move the merged-away file to `4_archive/` (do not delete). |
 | `close-thread` | Form C (queue) | The `resolution_text` payload populates the Resolved-section entry in `OPEN_THREADS.md`. Required for every `close-thread` and `pursue-or-close` with `choice: close`. |
+| `entity-retire` | Form B (registry-row) | Write the retirement row in the registry's retirement section with kind, successor and date populated (`## Retired Identifiers` in `1_projects/PROJECTS.md`, `## Removed` in `3_resources/people/PEOPLE.md`). Successor is required for `merge` / `rename` and forbidden for `void`. Same atomic write as the live-surface migration — a row without its migration is a contract violation, caught by the I.5 gate before it can be committed. `entity-reclassify` is not an archival event (the identity stays alive) and requires no Archive Contract write. |
 | `demote-tier` (to `stale`) | Form B (registry-row) | Move the row from `## People` to `## Stale People` in `PEOPLE.md` and populate the `Reason` cell with `payload.reason`. Same atomic write — never leave the row half-moved. |
 
 For all other Resolution-actions whose effect is non-archival (promotion, refresh, restructure), no Archive Contract write is required.
@@ -1097,7 +1240,7 @@ classes of writes happened during the session (counters, not file lists):
 | Counter | Incremented by | Triggers in Step 9 |
 |---|---|---|
 | `constitution_writes` | principle-candidate accept (new file under `0_constitution/{type}/{domain}/`) | `/ztn:regen-constitution` |
-| `registry_writes` | person-identity (new profile + PEOPLE.md row), project-identity (PROJECTS.md), thread-closure (OPEN_THREADS.md), hub edits (`5_meta/mocs/`), `content_type` canonicalization (A.11 note frontmatter) | `/ztn:maintain` |
+| `registry_writes` | person-identity (new profile + PEOPLE.md row), project-identity (PROJECTS.md), identity change (Class I — registry row + every migrated live surface), thread-closure (OPEN_THREADS.md), hub edits (`5_meta/mocs/`), `content_type` canonicalization (A.11 note frontmatter) | `/ztn:maintain` |
 
 These are surfaced + acted on by Step 9. The skill no longer leaves
 them as text suggestions in the round-close report.
@@ -1422,6 +1565,12 @@ If clean → print «Working tree clean — nothing to commit». Exit.
   review.** Items tagged `origin: work` or `origin: bootstrap-raw-scan`
   go through the diff gate even if the round logic could otherwise
   auto-archive them. Constitution stays signal-only.
+- **Identity change is interactive-only and gated on a scan.** `entity-retire`
+  and `entity-reclassify` never run under `--auto-mode` or `--dry-run`, and the
+  item is never archived while `identity_audit.py --fail-on-residue --identity
+  {id}` returns anything but 0 — the work stays in the tree and the item stays
+  open. The scan's exit code is recorded in the resolution; nightly A.8 checks
+  both the residue and the record.
 - **No re-render of stored blocks.** When archiving, the block markdown
   is copied verbatim plus a `**Resolution:**` line. Never normalise
   fields, never strip whitespace — preserves audit trail.
@@ -1472,6 +1621,10 @@ Direct writes by this skill (Steps 1–8):
 - `5_meta/mocs/{hub}.md` — open questions / current understanding edits when thread-closure
 - `_system/state/OPEN_THREADS.md` — thread state moves
 - `0_constitution/{type}/{domain}/{slug}.md` — principle accepts (creates only)
+- `1_projects/PROJECTS.md` — Class I retirement / reclassification rows
+- `3_resources/people/PEOPLE.md` `## Removed` — Class I retirement rows
+- Live surfaces named by `identity_audit.py` findings — membership fields,
+  namespaced tags, wikilinks and nodes carrying a retired identifier
 
 Step 6.5 extraction writes (when owner approves a proposal at diff gate):
 - `1_projects/{slug}.md`, `2_areas/{domain}/{slug}.md`,
@@ -1544,5 +1697,13 @@ the pipeline.)
 - Does not loop modify-after-diff. Extraction `m` (modify) accepts
   one 1-line edit instruction; second wrong answer drops the proposal
   without recursive sub-menus.
+- Does not change identity in `--auto-mode` — `entity-retire` /
+  `entity-reclassify` are owner decisions, taken in an interactive session or
+  not at all.
+- Does not edit derived surfaces during an identity change — they regenerate
+  via `/ztn:maintain` in Step 9.3.
+- Does not touch immutable surfaces: raw sources, append-only state, lens
+  output, manifests, and the body of any record. A record's prose mentioning a
+  retired identifier is history, not residue.
 - Does not run extraction in `--auto-mode` (no owner conversation),
   `--dry-run` (preview only), or `--no-extraction` (explicit opt-out).

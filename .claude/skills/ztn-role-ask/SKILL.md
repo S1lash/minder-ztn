@@ -60,8 +60,9 @@ Two sources, and only these two:
   small by design.
 - **Its run history**, `log.jsonl`, one line per run. Each line carries
   when it ran, how it ended (`ok` did work, `idle` found nothing to do,
-  `error` failed) and a one-line note. This answers «has it been
-  working», never «what did it find».
+  `degraded` delivered with part of the job unverified, `error` failed)
+  and a one-line note. This answers «has it been working», never «what
+  did it find».
 
 Read the role's `role.md` too, but only to know what the role was told
 to keep and where — so an empty file reads as «nothing matched» rather

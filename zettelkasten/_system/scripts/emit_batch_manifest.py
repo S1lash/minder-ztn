@@ -16,11 +16,14 @@ Exit codes:
       section). Concept / audience format issues NEVER cause non-zero
       exit — they autofix or drop per the autonomous-pipeline contract.
 
-The format contract is owned by `minder-project/strategy/ARCHITECTURE.md`
-§4.5. ZTN-side guarantee: every concept name reaches Minder already
-conformant per CONCEPT_NAMING.md; every audience tag is in canonical
-5 ∪ active AUDIENCES.md extensions; every privacy trio field is
-type-correct with conservative defaults.
+The format contract is owned by `_system/docs/manifest-schema/` — the
+canonical JSON Schema in `v{N}.json`, the SemVer evolution rules and
+consumer-integration patterns in its `README.md`. The contract is
+consumer-agnostic: it is the engine's promise to any downstream reader,
+not to one of them. ZTN-side guarantee: every concept name reaches the
+consumer already conformant per CONCEPT_NAMING.md; every audience tag is
+in canonical 5 ∪ active AUDIENCES.md extensions; every privacy trio field
+is type-correct with conservative defaults.
 
 This helper is the producer-side enforcement gate — the SAME normalisers
 called by `lint_concept_audit.py` (post-write defence-in-depth) run
@@ -132,7 +135,7 @@ EMPTY_REQUIRED_SECTION: dict[str, object] = {
 # Empty-shorthand reconciliation. The accumulator inside Claude-driven
 # /ztn:process sometimes emits `tier1_objects.tasks: []` (and friends) as
 # a literal empty list when no entities exist, instead of the canonical
-# `{"created": [], "updated": []}` envelope from ARCHITECTURE.md §4.5.
+# `{"created": [], "updated": []}` envelope the schema declares.
 # The schema (manifest-schema/v2.json) is strict on the sectioned shape,
 # so this normaliser coerces empty `[]` to the proper empty-envelope
 # form at write time. Future-conformant; existing legacy batches are

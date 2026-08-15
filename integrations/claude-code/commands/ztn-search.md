@@ -17,7 +17,8 @@ Search the personal ZTN knowledge base and return relevant content.
 
 Interpret `$ARGUMENTS` as a natural language search query. Extract:
 - **Keywords** — main search terms
-- **People** — if mentioned (map to person IDs: lowercase transliterated first name)
+- **People** — if mentioned (map to person IDs via PEOPLE.md; the format is
+  `firstname-lastname`, transliterated lowercase)
 - **Projects** — if mentioned (map to project IDs)
 - **Time range** — if mentioned ("last week", "in January", etc.)
 - **Type filter** — if mentioned ("meetings", "ideas", "tasks", etc.)
@@ -44,6 +45,9 @@ grep -rl "tag-pattern" {{MINDER_ZTN_BASE}}/
 - `3_resources/people/PEOPLE.md` — resolve person names to IDs
 - `1_projects/PROJECTS.md` — resolve project names to IDs
 - `_system/registries/TAGS.md` — find relevant tags
+- `_system/registries/CONCEPTS.md` — find relevant concepts
+- `_system/views/INDEX.md` — one-line catalog of every knowledge, archive,
+  constitution and hub entry; scan it before grepping the whole tree
 
 **d) Tasks/Calendar** — if query is about tasks or events:
 - `_system/TASKS.md` — search open tasks

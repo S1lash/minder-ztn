@@ -69,7 +69,7 @@ For each argument that was not passed via flag, prompt the owner with one focuse
 
 - **ID** — kebab-case (`^[a-z][a-z0-9-]*[a-z0-9]$`), 3–32 chars. Reject if:
   - already present (case-insensitive) in any of `## Active Sources`, `## Reserved Sources`, `## Deprecated Sources`
-  - matches a reserved system name: `inbox`, `processed`, `.gitkeep`, `.lint.lock`, `.maintain.lock`, `.processing.lock`, `.resolve.lock` (`describe-me` is already a registered row, caught by the duplicate check above)
+  - matches a reserved system name: `inbox`, `processed` (dot-prefixed names — `.gitkeep`, the pipeline lock files — are already excluded by the pattern; `describe-me` is a registered row, caught by the duplicate check above)
 - **Family** — must be one of `transcript`, `metric-day`, `recap`. Default `transcript` if not provided. Reject any other value.
 - **Layout** — must be one of the three documented types. No free-form input.
 - **Default Domain** — accept owner-provided string; reject only if empty / contains pipe characters. The whitelist (`personal`, `work`, `mixed`, `auto`, `health`, …) lives on SOURCES.template.md and is informational, not enforced.
@@ -149,7 +149,7 @@ Next: drop input files into _sources/inbox/{id}/ and run /ztn:process.
 
 ## What this skill does NOT do
 
-- **Never edits any other SKILL.md** — the engine is decoupled from per-source IDs by design (Phase B refactor). If a downstream skill needs source-specific behaviour, that behaviour lives as a column on SOURCES.md, not as code.
+- **Never edits any other SKILL.md** — the engine is decoupled from per-source IDs by design. If a downstream skill needs source-specific behaviour, that behaviour lives as a column on SOURCES.md, not as code.
 - **Never edits CONCEPT.md / SYSTEM_CONFIG.md / FOLDERS.md** — those describe the layout in source-agnostic terms.
 - **Never moves or processes files** — input handling is `/ztn:process`'s job.
 - **Never deprecates or removes sources** — deprecation is manual to enforce a deliberate audit-trail entry.
@@ -160,11 +160,11 @@ Next: drop input files into _sources/inbox/{id}/ and run /ztn:process.
 - **`/ztn:process`** — picks up the new source on its next run, no configuration. Reads SOURCES.md Step 2.1.
 - **`/ztn:bootstrap`** — source-agnostic raw scan globs `_sources/inbox/**/*.md`, so the new source is included automatically once its row is active.
 - **`/ztn:sync-data`** — counts new files in `_sources/inbox/**` for its «pending /ztn:process» nudge; no awareness of source IDs.
-- **`/ztn:lint`** — does not look at SOURCES.md directly. Lint checks the registry mechanically only when the owner requests a registry audit (out of scope here).
+- **`/ztn:lint`** — Scan G reads the `## Deprecated Sources` table and surfaces any row whose `Reason` cell is empty as an `archive-reason-missing` CLARIFICATION. It never writes to SOURCES.md.
 
 ## Locks
 
-This skill writes only to a registry row + two `.gitkeep` files. It is **not** in the cross-skill mutex set with `/ztn:process` / `/ztn:maintain` / `/ztn:lint` / `/ztn:agent-lens`, because:
+This skill writes only to a registry row + two `.gitkeep` files. It is **not** in the cross-skill mutex set (the matrix in `_system/docs/SYSTEM_CONFIG.md`), because:
 
 - It does not scan inbox content.
 - It does not touch system state files (`_system/state/*`, logs, batches).

@@ -401,7 +401,14 @@ def _secret_findings(cfg, values, secrets_path: Path) -> list:
 
 
 def cmd_base(args) -> int:
-    """Print the repository's one ZTN base, so no caller derives it itself."""
+    """Print the repository's one ZTN base, so no caller derives it itself.
+
+    Every role skill's prelude calls this. Their shell loop only locates a copy
+    of this CLI — which directory is the base is decided here, once, and zero
+    bases and two bases are loud in the same message everywhere. A caller that
+    decided it in shell is a second implementation of a one-home fact, and the
+    two diverge in exactly the case that matters: failure.
+    """
     print(roles_config.discover_base(args.repo))
     return EXIT_OK
 

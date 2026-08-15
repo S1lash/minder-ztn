@@ -22,8 +22,10 @@ Pointer card. The full tick contract lives in the installed skill, not here.
   `_system/roles/_minder.md` (how to use the base).
 - **The subagent it spawns:** `.claude/agents/ztn-role.md`.
 - **CLI it drives:** `_system/scripts/roles_run.py`
-  (`due` / `context` / `tick-begin` / `role-begin` / `check` / `log` /
-  `validate`).
+  (`due` / `context` / `tick-begin` / `role-begin` / `check` / `log`,
+  plus `secrets-open` / `secrets-close` around the credential store).
+  `validate` is not one of them — it belongs to role creation and
+  editing.
 - **Scheduler-prompt body:**
   `integrations/claude-code/scheduler-prompts/roles-nightly.md`
   (daily tick at 07:00 — after lint, ahead of the morning process run, so
@@ -40,7 +42,8 @@ After every run, whatever the outcome, it compares the repository against that
 role's own snapshot: paths outside the role's declared `writes:` are reverted,
 except where the path was already dirty when that role started — restoring it
 would destroy content the role did not author, so it is reported and left alone,
-labelled `owner` or `earlier-role`. In-zone files are scanned, contents and
+labelled `owner`, `earlier-role`, or `ignored` (an ignore rule made it
+invisible during the run, so the guard cannot tell whose it is). In-zone files are scanned, contents and
 filename, for every credential on the base — not only the declared ones — in
 raw, base64, hex and percent-encoded form;
 a hit is pulled out of the commit. One line per executed

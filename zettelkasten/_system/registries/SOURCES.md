@@ -1,7 +1,5 @@
 # Sources Registry
 
-**Last Updated:** REPLACE_WITH_DATE
-
 Whitelist of inbox source directories scanned by `/ztn:process`. Each row
 describes one source type. Adding a source is a **declarative** operation:
 either invoke `/ztn:source-add` or append a row here + create the
@@ -126,6 +124,10 @@ For metric-day family the filename is canonical `YYYY-MM-DD.md` — one file per
 ## Reserved Sources
 
 _(Empty by default. Add rows here when whitelisting a source whose inbox stays empty until a future integration is enabled.)_
+
+| ID | Inbox Path | Family | Layout | Default Domain | Skip Subdirs | Description | Status |
+|---|---|---|---|---|---|---|---|
+| _(empty)_ | | | | | | | |
 
 ---
 

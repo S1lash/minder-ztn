@@ -52,7 +52,8 @@ scheduler prompts have an explicit Step 5b that:
 1. Pushes the local commit to the sandbox branch via plain `git push`.
 2. Calls the `github` MCP `create_pull_request` tool.
 3. Calls the `github` MCP `merge_pull_request` tool with squash method.
-4. Best-effort sandbox-branch cleanup via three fallbacks.
+4. Leaves branch cleanup to GitHub's «Automatically delete head branches»
+   setting — the prompts issue no delete call.
 
 Step 5b is the **only** authorized non-script git/MCP path in the
 prompts. It runs only on the specific «gh missing» exit and only after
@@ -92,8 +93,6 @@ prompts forbid it explicitly.
 ## Single-commit guarantee
 
 Every scheduler tick produces **exactly one commit on `origin/main`**.
-This replaces the old `/ztn:save --auto` step which was producing N
-commits per tick (one per "phase" the agent felt like grouping).
 
 - `scripts/scheduler/stage.sh` — staging-only helper (idempotent). May
   be called any number of times during a tick; commits nothing.
@@ -146,8 +145,8 @@ or queues residue for owner.
 
 **Manifest emission per tick.** `/ztn:process` Step 5.5 writes both
 `{batch_id}.md` (markdown report) and `{batch_id}.json` (machine-
-parseable JSON manifest for the Minder consumer; schema in
-`minder-project/strategy/ARCHITECTURE.md` §4.5). `/ztn:maintain`
+parseable JSON manifest; canonical schema in
+`_system/docs/manifest-schema/`). `/ztn:maintain`
 Step 6.6 writes its own `{batch_id}-maintain.json`, and `/ztn:lint`
 Step 7.6 its own `{batch_id}-lint.json`. All of them commit
 through `finalize-tick.sh` at the tail of the scheduler tick.
@@ -191,8 +190,8 @@ same prompt bodies. Ensure the agent has:
 - filesystem access to the ZTN repo working tree
 - configured git identity for autonomous push
 - authentication to `origin` (SSH key in the runner / token in env)
-- a way to surface non-zero exit (logs, email, pager) — the prompts
-  exit non-zero on sync-blocked / save-blocked
+- a way to surface a non-`success` status (logs, email, pager) — the
+  prompts report `partial` / `sync-blocked` instead of `success`
 
 ## After `/ztn:update`
 

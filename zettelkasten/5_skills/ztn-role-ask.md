@@ -19,8 +19,9 @@ Pointer card. The full flow lives in the installed skill, not here.
 - **Flow:** `~/.claude/skills/ztn-role-ask/SKILL.md` (after `install.sh`).
 - **What it reads:** `_system/roles/{id}/state/**` and that role's
   `log.jsonl`.
-- **How the role fills that state:** its own «Завершение» section in
-  `role.md`, written by [[ztn-role-add]].
+- **How the role fills that state:** the closing section of its `role.md`
+  — the one [[ztn-role-add]] writes as the role's «close», named in the
+  owner's own words rather than by a fixed heading.
 - **Full orientation card:** [[CLAUDE_ZETTELKASTEN]].
 
 ## What it does (one paragraph)

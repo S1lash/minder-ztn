@@ -4,8 +4,8 @@ description: >
   Append a principle candidate to _system/state/principle-candidates.jsonl —
   single, narrow, append-only capture for observations that look like a
   behavioural principle, a conscious trade-off, a non-obvious judgment,
-  or an implicit pattern. Tags the entry with session origin (personal /
-  work / external) based on CLAUDE_CONTEXT. No reasoning, no decisions —
+  or an implicit pattern. Tags the entry with a session origin (personal /
+  work / external), defaulting to personal. No reasoning, no decisions —
   the buffer feeds /ztn:lint Scan F.3 weekly aggregation for the owner's
   batch review.
 disable-model-invocation: false
@@ -125,6 +125,7 @@ from the owner's own corpus, not from this skill's prompt.
        ${HYPOTHESIS:+--hypothesis "$HYPOTHESIS"} \
        --suggested-type "$SUGGESTED_TYPE" \
        --suggested-domain "$SUGGESTED_DOMAIN" \
+       ${ORIGIN:+--origin "$ORIGIN"} \
        ${RECORD_REF:+--record-ref "$RECORD_REF"} \
        ${APPLIES_IN_CONCEPTS:+--applies-in-concepts "$APPLIES_IN_CONCEPTS"}
    ```
@@ -137,10 +138,12 @@ from the owner's own corpus, not from this skill's prompt.
    cannot be normalised are dropped. The helper does NOT reject the append
    for concept format — autonomous resolution is the contract.
 
-   `origin` is resolved automatically from `CLAUDE_CONTEXT`:
-   - `personal` (or unset) → `personal`
-   - `work` → `work`
-   - `chatgpt` / `bootstrap` → `external`
+   `origin` defaults to `personal`. There is no environment-based
+   detection — when the session is not the owner's personal context, pass
+   `--origin work` or `--origin external` explicitly. This is load-bearing:
+   only `origin: personal` candidates are eligible for lint F.5 L2
+   auto-merge, so a work observation left at the default can reach the
+   constitution without the owner's review.
 
    `session_id` is generated automatically from UTC timestamp if not
    provided.
@@ -194,7 +197,7 @@ per `_system/registries/CONCEPT_NAMING.md` enforced by the helper.
 ## Multi-environment notes
 
 - `ZTN_BASE` env var resolves the zettelkasten root.
-- `CLAUDE_CONTEXT` drives origin tagging; unset → `personal`.
+- Origin tagging is an explicit `--origin` argument; omitted → `personal`.
 - The buffer lives inside the repo (`_system/state/principle-candidates.jsonl`)
   so scheduler tasks accumulate directly into the shared file.
 

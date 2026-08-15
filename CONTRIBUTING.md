@@ -18,24 +18,43 @@ Engine paths in short:
 - `integrations/obsidian/` — Obsidian vault config seed (`.obsidian/`
   defaults + `minder-ztn.md` dashboard). Idempotent seeder runs from
   `claude-code/install.sh`; never overwrites a friend's live `.obsidian/`.
-- `scripts/` — release, sync, lint tooling.
-- `zettelkasten/_system/{docs,scripts,registries/{FOLDERS,CONCEPT_NAMING,AUDIENCES,AGENT_LENSES}.md}` —
-  authoritative system spec. CONCEPT_NAMING + AUDIENCES define the
-  autonomous resolution contract for the concept and audience layers
-  (engine resolves format issues mechanically — never raises a
-  CLARIFICATION for owner action; see ENGINE_DOCTRINE §3.1
-  layer-specific exception).
-- `zettelkasten/_system/registries/AUDIENCES.template.md` — seed for
-  the `audience_tags` privacy whitelist (ships as template; owner
-  extensions accumulate after install).
-- `zettelkasten/5_meta/{CONCEPT.md,PROCESSING_PRINCIPLES.md,templates/}`
+- `scripts/` — release, sync, gates, migrations; `scripts/lib/` holds
+  the primitives they share.
+- `zettelkasten/_system/{docs,scripts}` and the pure-spec registries
+  `registries/{FOLDERS,CONCEPT_NAMING,CONCEPT_TYPES,AGENT_LENSES}.md`
+  + `registries/lenses/` — authoritative system spec. CONCEPT_NAMING
+  and AUDIENCES define the autonomous resolution contract for the
+  concept and audience layers (engine resolves format issues
+  mechanically — never raises a CLARIFICATION for owner action; see
+  ENGINE_DOCTRINE §3.1 layer-specific exception).
+- `zettelkasten/_system/registries/{AUDIENCES,DOMAINS}.template.md` —
+  seeds for the `audience_tags` whitelist and the domain vocabulary.
+  They ship as templates, not engine, because each file carries an
+  owner-mutable Extensions table beside its spec; the live
+  `AUDIENCES.md` / `DOMAINS.md` are owner data after install.
+- `zettelkasten/_system/roles/{_run-frame,_minder}.md` — the two engine
+  files every role's prompt is assembled from. Everything else under
+  `_system/roles/` is owner data.
+- `zettelkasten/5_meta/{CONCEPT.md,PROCESSING_PRINCIPLES.md,templates/,starter-pack/}`
 - `zettelkasten/5_skills/` — quick-reference cards.
 - `zettelkasten/0_constitution/CONSTITUTION.md` — protocol spec
   (your `axiom/principle/rule/` files stay yours).
 - `.claude/CLAUDE.md`, `.claude/settings.json` — project-local
   engine-development guide and permissive Bash allowlist for common
   dev/CI commands.
-- `.github/workflows/`, `.gitignore`, `LICENSE`, `integrations/VERSION`.
+- `.claude/skills/` — the canonical skill-discovery tree (symlinks
+  here, dereferenced into real files on release) and
+  `.claude/agents/ztn-role.md`, the subagent the roles tick spawns.
+- `docs/{onboarding,upstream-sync,scheduling,obsidian,privacy,CHANGELOG}.md`
+  — the friend-facing docs.
+- `.gitignore`, `.gitattributes` (forces LF — a CRLF checkout breaks
+  bash and python on Windows), `LICENSE`, `integrations/VERSION`,
+  `CONTRIBUTING.md`.
+
+Notably **not** engine: `.github/workflows/` is owner-only CI (a
+friend's clone stays CI-free by design — engine quality is upstream's
+concern), and the repo root `README.md` is the maintainer's own; the
+public one ships from `README.template.md`.
 
 Before opening an engine PR, read `.claude/CLAUDE.md` — it codifies
 the boundary between engine paths and owner-data paths, the
@@ -47,10 +66,15 @@ engine changes.
 
 1. Fork the upstream skeleton (the public `minder-ztn` repo).
 2. Branch off `main` (`feat/<short-slug>` or `fix/<short-slug>`).
-3. Make engine changes only — never touch a `template:` path or any
-   path outside the manifest.
+3. Make engine changes only — never touch a path outside the manifest.
+   A `template:` path is edited **only** for its spec portion (a
+   canonical set, a format rule, an example value), never for the
+   owner-mutable rows beside it; when a template has a live sibling in
+   this repo, both move in the same change or neither does.
 4. Run the three gates before opening a PR. CI runs all three, and
-   `release_engine.py` runs the first two again at release time:
+   `release_engine.py` runs all three again at release time — the first
+   two before it copies anything, the seed-contract gate against the
+   assembled skeleton afterwards:
 
    ```bash
    python3 scripts/check_portability.py      # ENGINE_DOCTRINE §3.9

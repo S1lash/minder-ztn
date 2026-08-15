@@ -268,14 +268,15 @@ def main(argv: list[str] | None = None) -> int:
     configure_std_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=None,
-                        help="ZTN base path (defaults to repo_root() / 'zettelkasten').")
+                        help="ZTN base path (defaults to repo_root(), the zettelkasten base).")
     parser.add_argument("--apply", action="store_true",
                         help="Write changes to disk. Without this flag, only diff is printed.")
     parser.add_argument("--hub", type=str, default=None,
                         help="Process a single hub by name (with or without .md). Default: all derived hubs.")
     args = parser.parse_args(argv)
 
-    root = args.root or repo_root() / "zettelkasten"
+    # `repo_root()` already resolves to the zettelkasten base (or `ZTN_BASE`).
+    root = args.root or repo_root()
     if not root.exists():
         print(f"ERROR: root does not exist: {root}", file=sys.stderr)
         return 1

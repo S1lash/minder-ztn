@@ -119,6 +119,7 @@ engine:
 
   # Engine philosophy + processing principles + note templates
   - zettelkasten/5_meta/CONCEPT.md
+  - zettelkasten/5_meta/DECISION_LOG.md
   - zettelkasten/5_meta/PROCESSING_PRINCIPLES.md
   - zettelkasten/5_meta/templates/
 
@@ -170,6 +171,12 @@ engine:
   # an owner drops their own personal agents, and a directory entry would ship
   # those upstream. A second engine agent gains a line here.
   - .claude/agents/ztn-role.md
+
+  # The repo-local contract a coding agent reads first. Claude Code reads
+  # `.claude/CLAUDE.md`; every other runtime reads this one, so shipping only
+  # the first leaves a friend on any other agent with no contract at all.
+  # The two are runtime twins and are kept reconciled.
+  - AGENTS.md
 
   # Public-facing docs (friend onboarding + upstream sync)
   - CONTRIBUTING.md
@@ -414,3 +421,12 @@ retired:
   - zettelkasten/_system/scripts/tests/test_roles_persist.py
   - zettelkasten/_system/scripts/tests/test_roles_registry.py
   - zettelkasten/_system/scripts/tests/test_roles_stance.py
+  # Superseded by the identity contract. The project-card genre it taught no
+  # longer exists — a project's canonical node is its hub, so a clone that
+  # keeps this template keeps being told to create the one shape the contract
+  # removed. The array linter is a strict subset of `identity_audit.py`, which
+  # carries its checks verbatim; left in place it is a second opinion on the
+  # same question and its test goes on being collected.
+  - zettelkasten/5_meta/templates/project-template.md
+  - zettelkasten/_system/scripts/lint_projects_array.py
+  - zettelkasten/_system/scripts/tests/test_lint_projects_array.py

@@ -114,7 +114,7 @@ Detect drift в LLM verdict prompt calibration. Each case has known-correct tier
 
 **Expected rule-floor:** strong (deterministic schema completion)
 **Expected LLM verdict:** high (no judgment variance across candidates)
-**Expected tier:** `silent` (bulk-uniform, per SDD §Principles §2 rule)
+**Expected tier:** `silent` (bulk-uniform — one deterministic template, no per-candidate judgment)
 **Expected action:** apply all 50 + aggregated log_lint.md summary
 
 ---
@@ -148,7 +148,7 @@ Detect drift в LLM verdict prompt calibration. Each case has known-correct tier
 ## Execution protocol
 
 1. Operator reads each Case
-2. Feeds «Candidate» + «Context» into lint SKILL Step 3 LLM verdict prompt (SKILL.md:465-485)
+2. Feeds «Candidate» + «Context» into the LLM verdict prompt template in `SKILL.md` → «Confidence tier routing»
 3. Collects verdict + tier routing
 4. Asserts match с «Expected tier» + «Expected action»
 5. Counts mismatches

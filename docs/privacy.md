@@ -92,7 +92,11 @@ remote at all, simply don't push — the system works fully offline.
 Every note's frontmatter carries a privacy trio:
 
 - `origin: personal | work | external`
-- `audience_tags: [private | public | family | team | ...]`
+- `audience_tags` — any subset of the canonical five (`family`,
+  `friends`, `work`, `professional-network`, `world`) plus whatever you
+  add to the Extensions table in
+  `_system/registries/AUDIENCES.md`. Empty (the default) means
+  owner-only.
 - `is_sensitive: true | false`
 
 Today these are **advisory metadata**:

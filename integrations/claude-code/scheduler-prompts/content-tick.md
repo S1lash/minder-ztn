@@ -91,7 +91,8 @@ Then exit `partial` immediately.
    work from prior ticks via PR-merge sweep.
 
 2. `bash scripts/scheduler/lock-check.sh` — abort if any pipeline lock
-   (process / maintain / lint / agent-lens / content / resolve) is recent (<2h).
+   (process / maintain / lint / agent-lens / content / resolve / roles) is
+   recent (<2h).
    Stale locks (>2h) are removed automatically. (`/ztn:content --maintain`
    acquires `.content.lock` itself during Step 4 — this pre-check only guards
    against a concurrent pipeline run, including a crashed prior content tick.)
@@ -165,7 +166,7 @@ Then exit `partial` immediately.
 
 ## Forbidden in this tick
 
-- `/ztn:process`, `/ztn:lint`, `/ztn:maintain`, `/ztn:agent-lens` — separate
+- `/ztn:process`, `/ztn:lint`, `/ztn:maintain`, `/ztn:agent-lens`, `/ztn:roles` — separate
   schedules (the lens runs in the agent-lens Monday tick; the map is kept fresh
   by maintain after process batches)
 - `/ztn:resolve-clarifications` in any form

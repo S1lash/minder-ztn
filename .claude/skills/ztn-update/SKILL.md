@@ -45,8 +45,9 @@ no version / phase / rename-history narratives.
 ## Preconditions
 
 1. Repo root has `.engine-manifest.yml` and `integrations/VERSION`.
-2. No producer-skill lock present (process / lint / maintain / resolve
-   / save / sync-data). Abort if any.
+2. No pipeline lock present under `_sources/` — `.processing.lock`,
+   `.maintain.lock`, `.lint.lock`, `.agent-lens.lock`, `.content.lock`,
+   `.roles.lock`, `.resolve.lock`. Abort naming the one found.
 3. Working tree clean on engine paths (script-style requirement —
    uncommitted engine edits would be lost).
 4. `upstream` remote configured. If missing — offer to add it
@@ -132,13 +133,11 @@ Render:
 Engine update: 0.1.0 → 0.3.0
 
 Pending migrations:
-  • 0001-rename-state-files.sh
-      Renames _system/state/CURRENT_CONTEXT.md → CONTEXT.md.
-      Auto-apply: yes (idempotent file rename).
+  • 0001-example-structural.sh   (kind: structural)
+      One-line summary from the migration's header comment.
 
-  • 0002-add-projects-frontmatter-field.py
-      Adds `priority:` field to PROJECTS.md rows where missing.
-      Auto-apply: yes (additive only).
+  • 0002-example-heal.sh         (kind: heal)
+      One-line summary from the migration's header comment.
 
 [y] proceed with full update   [m] migrations only   [f] file copy only
 [d] show full migration scripts   [n] abort
@@ -368,7 +367,7 @@ Proposed commit:
   engine: update 0.1.0 → 0.3.0
 
   - <N> engine paths refreshed from upstream/main
-  - migrations: 0001-rename-state-files, 0002-add-projects-frontmatter-field
+  - migrations: 0001-example-structural, 0002-example-heal
   - kept local: integrations/claude-code/skills/ztn-process/SKILL.md
 
 Follow-ups:

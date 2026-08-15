@@ -1,8 +1,11 @@
 # Folder Registry
 
-**Last Updated:** 2026-05-09
-
 Структура папок системы и правила маршрутизации.
+
+`_sources/` и `_system/` описаны точно — это одинаковый на каждой инсталляции
+каркас движка. Подпапки PARA-слоёв (`1_projects/` … `4_archive/`) —
+**иллюстрация**: их заводит владелец под свою жизнь по правилу «3+ заметки»
+внизу файла, и совпадать с примером они не обязаны.
 
 ---
 
@@ -49,49 +52,75 @@ zettelkasten/
 │                                 # domains: [time, work]. Privacy: is_sensitive: true (verbatim titles/URLs).
 │                                 # Never hand-edit (see _records/activity/README.md).
 │
-├── _system/                      # Системные файлы (Phase 4.75 layout, не для заметок)
+├── _system/                      # Системные файлы (не для заметок)
 │   ├── SOUL.md                   # identity + focus + working style
 │   ├── TASKS.md                  # автогенерируемый список задач
 │   ├── CALENDAR.md               # автогенерируемый календарь
 │   ├── POSTS.md                  # реестр опубликованных постов
+│   ├── long-form-playbook.md     # owner-рецепт лонгформа (читается по требованию)
 │   ├── docs/                     # платформенные документы (binding)
 │   │   ├── SYSTEM_CONFIG.md      # runtime config
-│   │   ├── ARCHITECTURE.md       # системный дизайн
+│   │   ├── ENGINE_DOCTRINE.md    # operating philosophy (symlinked from ~/.claude/rules/)
+│   │   ├── ARCHITECTURE.md       # системный дизайн как построен
 │   │   ├── CONVENTIONS.md        # documentation style rules (binding)
-│   │   ├── batch-format.md       # контракт batch формата
-│   │   ├── constitution-capture.md  # global hook (symlinked from ~/.claude/rules/)
+│   │   ├── batch-format.md       # контракт batch формата (нарратив)
+│   │   ├── manifest-schema/      # канонический JSON Schema манифеста + fixtures
+│   │   ├── biometric-lens-protocol.md  # общий протокол биометрических линз
+│   │   ├── communication-baseline.md   # universal presentation spine (symlinked from ~/.claude/rules/)
+│   │   ├── constitution-capture.md     # global hook (symlinked from ~/.claude/rules/)
 │   │   └── harness-setup.md      # per-machine install guide
+│   ├── roles/                    # standing roles
+│   │   ├── _run-frame.md         # механика одного прогона (engine)
+│   │   ├── _minder.md            # как роль пользуется базой (engine)
+│   │   └── {role-id}/            # один инстанс роли (owner data)
+│   │       ├── role.md           # назначение роли целиком
+│   │       ├── state/            # память роли между прогонами
+│   │       └── log.jsonl         # по строке на исполненный прогон
 │   ├── views/                    # авто-генерируемые представления (read-only)
 │   │   ├── CONSTITUTION_INDEX.md    # registry активных principles
 │   │   ├── constitution-core.md  # harness view (symlinked from ~/.claude/rules/)
 │   │   ├── HUB_INDEX.md          # индекс всех hub-заметок
 │   │   ├── INDEX.md              # surface catalog: knowledge + archive + constitution + hubs (faceted)
 │   │   ├── CURRENT_CONTEXT.md    # live state snapshot
-│   │   └── CONTENT_MAP.md        # content pipeline interface — view over hubs (writer: /ztn:maintain)
+│   │   ├── CONTENT_MAP.md        # content pipeline interface — view over hubs (writer: /ztn:maintain)
+│   │   ├── biometric/            # недельные биометрические сводки (writer: /ztn:maintain)
+│   │   └── activity/             # недельные сводки computer-usage (writer: /ztn:maintain)
 │   ├── state/                    # pipeline state (write-heavy)
 │   │   ├── BATCH_LOG.md          # index batch-операций
 │   │   ├── PROCESSED.md          # source → note маппинг
 │   │   ├── CLARIFICATIONS.md     # human-in-the-loop вопросы от скиллов
+│   │   ├── CLARIFICATIONS_ARCHIVE.md  # разрешённые вопросы (append-only)
 │   │   ├── OPEN_THREADS.md       # незакрытые стратегические нити
 │   │   ├── principle-candidates.jsonl  # append-only candidate buffer
+│   │   ├── people-candidates.jsonl     # append-only буфер неразрешённых имён
+│   │   ├── check-decision-runs.jsonl   # append-only телеметрия /ztn:check-decision
+│   │   ├── lens-resolution-history.jsonl  # прецеденты owner-решений по lens-хинтам
+│   │   ├── insights-config.yaml  # owner-настройки авто-применения lens-хинтов
+│   │   ├── secrets.enc.json      # per-value зашифрованные креды ролей (ключ — вне репо)
 │   │   ├── log_process.md        # хронологический лог /ztn:process
 │   │   ├── log_maintenance.md    # append-only лог /ztn:maintain + /ztn:bootstrap
 │   │   ├── log_lint.md           # append-only лог /ztn:lint runs
 │   │   ├── log_agent_lens.md     # append-only лог /ztn:agent-lens runs
 │   │   ├── agent-lens-runs.jsonl # машинный индекс agent-lens runs (one JSON per line)
 │   │   ├── agent-lens-rejected/  # raw Stage 2 outputs (validator rejected)
+│   │   ├── resolve-sessions/     # per-session логи /ztn:resolve-clarifications
+│   │   ├── biometric/            # σ-baselines по устройствам
+│   │   ├── activity/             # σ-baselines по источникам computer-usage
 │   │   ├── batches/              # полные batch-отчёты
 │   │   │   ├── {batch_id}.md            # human-readable markdown report (per-batch)
-│   │   │   ├── {batch_id}.json          # machine-parseable JSON manifest (Minder consumer contract)
+│   │   │   ├── {batch_id}.json          # machine-parseable JSON manifest (consumer contract)
 │   │   │   └── {batch_id}-maintain.json # /ztn:maintain manifest (per maintain integration batch)
 │   │   └── lint-context/         # Lint Context Store: daily/ (30d rolling) + monthly/ (forever)
 │   ├── agent-lens/               # agent-lens outputs (private, owner-only review)
 │   │   └── {lens-id}/{date}.md   # one snapshot per run per lens
 │   ├── scripts/                  # Python pipeline (см. scripts/README.md)
 │   └── registries/               # реестры сущностей
-│       ├── TAGS.md               # реестр тегов (`tags:` axis)
+│       ├── TAGS.md               # перепись тегов (`tags:` axis; рендерится скриптом)
 │       ├── SOURCES.md            # реестр источников
+│       ├── CONCEPTS.md           # перепись концептов (рендерится /ztn:maintain)
 │       ├── CONCEPT_NAMING.md     # canonical concept-name format (`concepts:` axis)
+│       ├── CONCEPT_TYPES.md      # зеркало downstream-энума типов концепта
+│       ├── DOMAINS.md            # `domains:` whitelist (канонические 13 + extensions)
 │       ├── AUDIENCES.md          # `audience_tags` whitelist (canonical 5 + extensions)
 │       ├── AGENT_LENSES.md       # agent-lens registry + concept + lifecycle
 │       ├── lenses/               # per-lens definitions
@@ -100,14 +129,14 @@ zettelkasten/
 │       │       └── prompt.md     # required; companion *.md files allowed
 │       └── FOLDERS.md            # этот файл
 │
-├── 0_constitution/               # Behavioural principles (Phase 4.5)
+├── 0_constitution/               # Behavioural principles
 │   ├── CONSTITUTION.md           # root doc
 │   ├── axiom/                    # Tier-1 axioms
 │   ├── principle/                # Tier-2 principles
 │   └── rule/                     # Tier-3 rules
 │
 ├── 1_projects/                   # Активные проекты с дедлайнами
-│   ├── PROJECTS.md               # реестр проектов (co-located since 4.75)
+│   ├── PROJECTS.md               # реестр проектов
 │   ├── learning-goal/
 │   └── acme-payments/
 │
@@ -135,16 +164,19 @@ zettelkasten/
 │   │   ├── business/             # Бизнес-идеи
 │   │   └── products/             # Продуктовые идеи
 │   └── people/                   # Профили людей
-│       └── PEOPLE.md             # реестр людей (co-located with profiles since 4.75)
+│       └── PEOPLE.md             # реестр людей
 │
 ├── 4_archive/                    # Архив завершённого
 │
 ├── 5_meta/                       # Мета-система
+│   ├── CONCEPT.md                # трёхслойная модель + философия
+│   ├── PROCESSING_PRINCIPLES.md  # 8 принципов + values profile
 │   ├── templates/                # Шаблоны заметок
-│   ├── workflows/                # Воркфлоу
+│   ├── starter-pack/             # стартовые аксиомы для новой базы
+│   ├── help/                     # owner-facing справка (посеяна в vault)
 │   └── mocs/                     # Maps of Content
 │
-├── 5_skills/                     # Skills
+├── 5_skills/                     # Карточки-шпаргалки по скиллам
 │
 └── 6_posts/                      # Опубликованный контент
 ```
@@ -153,12 +185,25 @@ zettelkasten/
 
 ## Routing Rules
 
+Единственный дом правил маршрутизации: `_system/docs/SYSTEM_CONFIG.md` ссылается
+сюда, не дублирует.
+
+Порядок разрешения — первый сработавший шаг выигрывает:
+`layer` (record / hub) → `types` по приоритету → `domain` → keywords контента.
+
+### По layer
+
+| Layer | Folder |
+|-------|--------|
+| record | по `kind` — строки `record (kind: …)` в таблице ниже; `kind` отсутствует → `_records/meetings/` |
+| hub | 5_meta/mocs/ |
+
 ### По типу (приоритет)
 
 | Type | Folder |
 |------|--------|
 | project | 1_projects/{project-id}/ |
-| meeting | 2_areas/work/meetings/ **[DEPRECATED — v3 only. New meetings → record type]** |
+| meeting | 2_areas/work/meetings/ **[DEPRECATED — новые встречи маршрутизируются как record]** |
 | planning | 2_areas/work/planning/ |
 | technical + work | 2_areas/work/technical/ |
 | technical + ideas | 3_resources/tech/ |

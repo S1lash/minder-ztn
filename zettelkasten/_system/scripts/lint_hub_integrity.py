@@ -91,7 +91,7 @@ def _scan_hub(path: Path, valid_ids: set[str]) -> None:
                ),
                "to_resolve": (
                    "Set hub_kind to project / trajectory / domain "
-                   "based on PROCESSING_PRINCIPLES §9 hub-kind table."
+                   "per the Identity Contract in SYSTEM_CONFIG."
                )})
         # don't return — keep checking other fields with default
         hub_kind = "project"
@@ -179,7 +179,7 @@ def _scan_hub(path: Path, valid_ids: set[str]) -> None:
                "reason": (
                    f"hub_kind={hub_kind} with chronological_map_mode: "
                    "derived. Trajectories and domains are intentionally "
-                   "curated (PROCESSING_PRINCIPLES §9 «Hub kinds» table) — "
+                   "curated (Identity Contract, SYSTEM_CONFIG) — "
                    "narrative arcs typically don't fit auto-derivation."
                ),
                "to_resolve": (
@@ -197,7 +197,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args(argv)
 
-    root = args.root or repo_root() / "zettelkasten"
+    # `repo_root()` already resolves to the zettelkasten base (or `ZTN_BASE`).
+    root = args.root or repo_root()
     if not root.exists():
         print(f"ERROR: root does not exist: {root}", file=sys.stderr)
         return 1

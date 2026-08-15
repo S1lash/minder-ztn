@@ -1,9 +1,9 @@
 ---
 name: ztn:regen-constitution
 description: >
-  Regenerate constitution derived views — CONSTITUTION_INDEX.md,
-  constitution-core.md (harness view), and SOUL.md Values auto-zone —
-  from the source tree at 0_constitution/. Thin wrapper over
+  Regenerate the derived views — CONSTITUTION_INDEX.md,
+  constitution-core.md (harness view), INDEX.md, the TAGS.md managed
+  zone, and the SOUL.md Values auto-zone. Thin wrapper over
   _system/scripts/regen_all.py. Deterministic, no LLM, idempotent.
   Call after any edit under 0_constitution/ and as the first step of
   every ZTN pipeline that reads a derived view.
@@ -12,8 +12,8 @@ disable-model-invocation: false
 
 # /ztn:regen-constitution — Regenerate Derived Views
 
-Orchestrates the three Python generators that produce the constitution's
-derived views. Deterministic, runs in ~100 ms on a small tree, and is safe
+Orchestrates the Python generators that produce the base's derived
+views. Deterministic, runs in ~100 ms on a small tree, and is safe
 to invoke from any environment (local Claude Code, scheduler task, friend's
 clone after pip install).
 
@@ -41,7 +41,7 @@ stale relative to its source.
 
 ## What it does
 
-Runs three generators in order, fail-fast:
+Runs five generators in order, fail-fast:
 
 1. `gen_constitution_index.py` → `_system/views/CONSTITUTION_INDEX.md` (registry
    table + stats for human browse)
@@ -49,27 +49,31 @@ Runs three generators in order, fail-fast:
    view; all scopes visible, filtered by `applies_to: claude-code` and
    `status != placeholder`). Users symlink
    `~/.claude/rules/constitution-core.md` to this file once per machine.
-3. `render_soul_values.py` → `_system/SOUL.md` auto-zone between markers
+3. `render_index.py` → `_system/views/INDEX.md` (surface catalog of the
+   knowledge, archive, constitution and hub layers)
+4. `render_tags.py` → the `AUTO-GENERATED: tag-registry` managed zone of
+   `_system/registries/TAGS.md` (census of the `tags:` axis)
+5. `render_soul_values.py` → `_system/SOUL.md` auto-zone between markers
    (the Values section loaded into pipeline system prompts)
 
 If any step fails, subsequent steps are not run. Failure exits non-zero
 with the specific script's error on stderr.
 
-If `_system/SOUL.md` does not yet contain the auto-zone markers, step 3 is
-**skipped with an info log** (not treated as failure). This keeps the skill
-usable on a fresh repo before SOUL integration lands.
+If `_system/SOUL.md` does not yet contain the auto-zone markers, step 5 is
+**skipped with an info log and exit 0** (not treated as failure). This keeps
+the skill usable on a fresh repo before SOUL integration lands. A caller that
+genuinely requires the SOUL step asks for a failure with `--strict-soul`.
 
 ## Invocation
 
 The skill has no arguments in its default form. For overrides, invoke the
 underlying script directly:
 
-```bash
-# Default — personal context, auto-detect SOUL marker presence
-python3 _system/scripts/regen_all.py
+Run from the zettelkasten base.
 
-# Work-repo context (shared scope only)
-python3 _system/scripts/regen_all.py --context work
+```bash
+# Default — auto-detect SOUL marker presence
+python3 _system/scripts/regen_all.py
 
 # Strict — fail if SOUL markers are missing (for post-integration sanity)
 python3 _system/scripts/regen_all.py --strict-soul
@@ -90,8 +94,6 @@ python3 _system/scripts/regen_all.py --write-soul-clarification
   (`_system/scripts/requirements.txt`).
 - Clone-safe: works identically on any machine that has Python ≥ 3.9 and
   PyYAML installed.
-- Single-context model: no `--context` flag. Scope narrowing returns
-  when multi-user sharing ships.
 
 ## Invariants preserved
 
@@ -101,17 +103,16 @@ python3 _system/scripts/regen_all.py --write-soul-clarification
   partial file on interrupt.
 - Placeholder-status notes are excluded from every derived view
   (CONSTITUTION.md §13 invariant #18).
-- SOUL.md hand-written zones outside the auto-markers are never touched
-  (HARD RULE from CONSTITUTION.md §13 invariant #11).
+- SOUL.md hand-written zones outside the auto-markers are never touched —
+  `render_soul_values.py` rewrites only the text between the markers.
 
 ## Failure modes
 
 | Exit code | Meaning |
 |---|---|
-| 0 | All steps succeeded, including the SOUL render |
+| 0 | Every applicable step succeeded — including a base whose SOUL.md has no auto-zone markers yet, where the SOUL step is skipped |
 | 1 | A generator raised a schema / parse / IO error; earlier steps may have succeeded (their outputs are valid) |
 | 2 | `--strict-soul` was set and SOUL markers are missing |
-| 3 | SOUL step was skipped gracefully (no markers yet); index and core ran OK |
 
 On non-zero exit, read stderr for the specific script name and line.
 
@@ -123,7 +124,7 @@ semantic change will still show a small diff on the timestamp lines:
 ```
 _system/views/CONSTITUTION_INDEX.md    | 2 +-  _Generated: line
 _system/views/constitution-core.md     | 2 +-  <!-- Generated: ... -->
-_system/SOUL.md                  | 2 +-  <!-- Last regenerated: ... -->
+_system/SOUL.md                        | 2 +-  <!-- Last regenerated: ... -->
 ```
 
 This is expected, not drift. If the diff is unwanted (the regen was
@@ -133,6 +134,8 @@ accidental, or you want the working tree to match HEAD), run:
 git checkout HEAD -- \
     zettelkasten/_system/views/CONSTITUTION_INDEX.md \
     zettelkasten/_system/views/constitution-core.md \
+    zettelkasten/_system/views/INDEX.md \
+    zettelkasten/_system/registries/TAGS.md \
     zettelkasten/_system/SOUL.md
 ```
 

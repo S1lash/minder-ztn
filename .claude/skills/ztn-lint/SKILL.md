@@ -35,6 +35,12 @@ format), `5_meta/PROCESSING_PRINCIPLES.md` (8 principles — slop
 detection calibrated against principle 1 Capture First, principle 5
 Evolution Tracking, principle 8 Texture).
 
+**Working directory:** the zettelkasten base. Every path in this file — every
+`python3 _system/scripts/…` invocation, every `_system/` / `5_meta/` / PARA
+reference — is relative to it. The two engine paths that live above the base
+(`scripts/lib/`, `scripts/scheduler/`) are reached through
+`git rev-parse --show-toplevel`, never through a `../` guess.
+
 **Documentation convention:** при любых edits этого SKILL соблюдай `_system/docs/CONVENTIONS.md` — файл описывает current behavior без version/phase/rename-history narratives.
 
 ## Arguments
@@ -47,6 +53,7 @@ Evolution Tracking, principle 8 Texture).
 - `--force` — bypass «lint ran recently (<6h)» warning
 - `--weekly` — force weekly/monthly-gated scan triggers (e.g. Scan F constitution reviews) even if not first run of UTC week
 - `--no-sync-check` — skip the data-freshness pre-flight (see below)
+- `--rescan-drift [--days N]` — owner-driven historical drift re-scan (Scan F.2 manual path, default `N=30`). Out-of-band: it does not bump the `f2_last_ran_at` marker the nightly auto-path reads
 
 ---
 
@@ -65,7 +72,10 @@ if git remote get-url origin >/dev/null 2>&1; then
   # `git_current_branch` (scripts/lib/git.sh) — NOT `rev-parse --abbrev-ref`,
   # which exits 0 and prints the literal string `HEAD` when HEAD is detached,
   # making the comparison ref `origin/HEAD` and the count meaningless.
-  . scripts/lib/git.sh 2>/dev/null || true
+  # Sourced by repo-root path: the run's cwd is the zettelkasten base, one
+  # level below, so a bare `scripts/lib/git.sh` silently resolves to nothing
+  # and leaves the whole check inert.
+  . "$(git rev-parse --show-toplevel)/scripts/lib/git.sh" 2>/dev/null || true
   branch=$(git_current_branch 2>/dev/null || true)
   if [ -n "$branch" ]; then
     remote_ahead=$(git rev-list --count "HEAD..origin/${branch}" 2>/dev/null || echo 0)
@@ -103,8 +113,9 @@ Read all seven lock files в order:
 2. `_sources/.maintain.lock` — exists → abort с `"/ztn:maintain running, try again later"`
 3. `_sources/.agent-lens.lock` — exists → abort с `"/ztn:agent-lens running, try again later"`
 4. `_sources/.content.lock` — exists → abort с `"/ztn:content running, try again later"`
-5. `_sources/.resolve.lock` — exists → abort с `"/ztn:resolve-clarifications running, try again later"` (owner is mid-interactive resolve; lint Pass 2 would stomp the resolve session lock at dispatch time)
-6. `_sources/.lint.lock` — exists → abort с `"another /ztn:lint run in progress"` (unless `--force`)
+5. `_sources/.roles.lock` — exists → abort с `"/ztn:roles running, try again later"` (a roles tick attributes every diff in its window to the running role; an autofix landing inside it is reverted by `roles_guard.py`)
+6. `_sources/.resolve.lock` — exists → abort с `"/ztn:resolve-clarifications running, try again later"` (owner is mid-interactive resolve; lint Pass 2 would stomp the resolve session lock at dispatch time)
+7. `_sources/.lint.lock` — exists → abort с `"another /ztn:lint run in progress"` (unless `--force`)
 
 Stale lock (>2 hours old, parse ISO timestamp from file content) → warn, report PID if present, **offer manual removal, do NOT auto-delete.**
 
@@ -142,198 +153,7 @@ Create `_sources/.lint.lock` with content:
 {ISO UTC timestamp} — lint run, PID {pid}, mode: {full|fast}, args: {$ARGUMENTS}
 ```
 
-**Finally semantics mandatory:** lock release in every exit path (normal, skip, exception, malformed abort). Wrap Steps 1–9 в try/finally; delete lock in finally. If crashed mid-run, next run detects stale lock + PID absent → safe to remove manually.
-
----
-
-## Step 1 — Migration Check (one-time)
-
-Before main context load.
-
-### 1.0 Check if migration already done (frontmatter flag)
-
-**Primary detection:** parse `_system/state/log_lint.md` YAML frontmatter. Read `migration_completed` map. Per migration step:
-- If `migration_completed.resolved_archive` present → skip §1.A (Resolved Archive migration done)
-- If `migration_completed.profile_schema` present → skip §1.B (Profile normalization done)
-- If both present → skip Step 1 entirely, proceed к Step 2
-
-**Why frontmatter (not string grep of body):**
-- Immune к copy-paste body poisoning (body text never queried for migration detection)
-- Survives log rotation (frontmatter migrates к new quarterly file atomically)
-- YAML-parseable — type-safe boolean/date values, не brittle regex
-- Explicit key naming prevents accidental collision with prose content
-
-**Migration completion protocol (post-success):**
-After §1.A + §1.B successfully complete, write/update `log_lint.md` frontmatter:
-```yaml
-migration_completed:
-  resolved_archive: YYYY-MM-DD
-  profile_schema: YYYY-MM-DD
-```
-Fallback к atomic write: full file rewrite with updated frontmatter + existing body preserved. Never partial-write.
-
-**Idempotency guarantee:** Migration steps use **frontmatter-flag post-completion** — flag set ТОЛЬКО после successful completion ВСЕХ подсекций. If crash mid-migration (e.g. 16/32 items migrated + crash before flag write):
-- Retry reads frontmatter, sees no `migration_completed.resolved_archive` → re-executes migration
-- **Duplicate-prevention safeguard:** before creating new entry в §1.A, grep `## Resolved Items` для match with same `Original-type + Original-subject + Resolution-date` — skip if match exists (idempotent append)
-- Profile schema normalization (§1.B) naturally idempotent (checks section presence before inserting)
-
-This ensures single crash mid-migration followed by retry produces same final state as clean single run. Body `### Migration (one-time...)` subsection still written к log entry for audit readability, but NOT used for detection.
-
-### 1.A — Legacy CLARIFICATIONS Resolved Archive migration
-
-Source: `_system/state/CLARIFICATIONS.md` → find section `## Resolved Archive` (legacy table format `| Date | Item | Resolution |`).
-
-For each row in table:
-
-1. Extract `Date`, `Item`, `Resolution` prose.
-2. LLM transformation prompt:
-   ```
-   Given legacy resolved CLARIFICATION:
-   - Date: {date}
-   - Item: {item text}
-   - Resolution: {resolution text}
-   
-   Infer and produce structured fields:
-   - Original-type: {one of: person-identity | people-bare-name | idea-ambiguous-match |
-     topic-classification | cross-domain-link | project-identity | 
-     evidence-trail-anomaly | process-compatibility | (unknown)}
-   - Original-subject: {primary entity — person-id, note-id, batch-id, or subject string}
-   - Resolution-action: {canonical verb — close-thread | keep-thread-open | close-partial |
-     promote-tier | demote-tier | merge-notes | dismiss-duplicate | 
-     backfill-evidence-trail | resolve-bare-name | create-profile | 
-     fix-process | dismiss | defer | (needs-review)}
-   - Resolution-target: {machine-readable id if derivable, else (none)}
-   - Resolution-payload: {YAML block с deriveable structured data, or empty if unclear}
-   - Confidence: high | medium | low
-   ```
-3. Write structured item под `## Resolved Items` section (create section if absent):
-   ```markdown
-   ### {resolution-date} — resolved: {original-type}: {original-subject}
-   
-   **Status:** resolved
-   **Original-type:** {type or (unknown)}
-   **Original-subject:** {subject}
-   **Original-raised:** (unknown — migrated from legacy table)
-   **Resolution-date:** {date from legacy}
-   **Resolution-action:** {canonical verb or (needs-review) if LLM uncertain}
-   **Resolution-target:** {target or (none)}
-   **Resolution-payload:**
-     ```yaml
-     {inferred YAML block or {} if empty}
-     ```
-   **Applied:** yes (pre-Phase-4, legacy) 
-   **Rationale:** {original Resolution prose verbatim — preserves owner's reasoning}
-   
-   _(Migrated from legacy Resolved Archive table on {YYYY-MM-DD} by ztn:lint; LLM confidence: {high|medium|low})_
-   ```
-4. If LLM confidence = low OR `Resolution-action: (needs-review)` → flag in migration low-confidence list.
-5. After all items written, **delete legacy `## Resolved Archive` table entirely** from CLARIFICATIONS.md.
-
-Raise CLARIFICATION `migration-item-needs-review` for each low-confidence item (surfaced tier — owner validates manually):
-
-```markdown
-### {YYYY-MM-DD} — migration-item-needs-review: {subject}
-
-**Type:** migration-item-needs-review
-**Subject:** {subject from legacy item}
-**Source:** lint-{run-id} (migration step)
-**Confidence tier:** surfaced
-**Suggested action:** validate-migration
-
-**Context:** Legacy Resolved Archive item migrated with low LLM confidence — Resolution-action unclear или Subject ambiguous. Original legacy text: «{Item}» resolved as «{Resolution}». LLM couldn't confidently map to canonical vocabulary. Owner validates manually, corrects Resolution-action field if needed.
-
-**To resolve:** Read migrated item в CLARIFICATIONS.md `## Resolved Items`, correct `Resolution-action` / `Resolution-target` / `Resolution-payload` fields; remove `(needs-review)` marker. Mark this migration-item-needs-review CLARIFICATION as resolved.
-
-**Uncertainty:** {LLM's specific doubt — что именно unclear}
-```
-
-### 1.B — Profile schema normalization
-
-Iterate `3_resources/people/*.md`:
-
-1. Parse frontmatter — ensure keys: `id`, `name`, `role`, `org`, `tags`. If missing any — flag for reviewed tier (ambiguous content), skip auto-fix.
-2. Parse body structure. Verify sections present в canonical order:
-   - `# {Name cyrillic}` (heading with name)
-   - `**Role:** {line}` (one-line role)
-   - `## Контекст`
-   - `## Мои наблюдения`
-   - `## Упоминания`
-3. For each missing section:
-   - `## Мои наблюдения` missing → insert placeholder: `## Мои наблюдения\n\n_(заполняется вручную)_\n\n` before `## Упоминания` (or at end if Упоминания also missing). **Silent tier** (structural schema fix, never generates private content).
-   - `## Упоминания` missing AND inbound references exist (grep record/note frontmatter for person-id in `people:`) → insert section with top 10 wikilinks chronologically. **Silent tier** (deterministic from data).
-   - `## Упоминания` missing AND no inbound references → insert empty section placeholder: `## Упоминания\n\n_(нет упоминаний)_\n`. **Silent tier**.
-   - `## Контекст` missing → do NOT auto-insert (content decision). Raise CLARIFICATION `profile-context-missing` (surfaced tier).
-   - `**Role:**` line missing but `role` in frontmatter → add line from frontmatter. **Silent tier**.
-   - `# {Name}` heading missing → derive from `name` frontmatter. **Silent tier**.
-4. Preserve existing content of any sections present — never overwrite.
-5. Record fix-id в log_lint.md Auto-Fixes entry (NO inline marker — single-source-of-truth, Step 4).
-
-Idempotent — re-running finds no missing sections → no writes.
-
-### 1.D — Privacy-trio backfill (one-time, autonomous)
-
-Gate: check `migration_completed.privacy_trio_backfill` flag in Step
-0 (same mechanism as 1.A / 1.B). Runs once on the first lint cycle
-that observes the flag absent; subsequent lints skip silently.
-
-Pipeline: invoke the SAME helper as Scan A.7 — Step 1.D and Scan A.7
-share one code path; the helper is idempotent and operates uniformly
-on the corpus regardless of whether it is a "first run" or a
-"steady-state" run. The flag distinction is purely log-bookkeeping.
-
-```bash
-python3 _system/scripts/lint_concept_audit.py \
-    --mode fix --root zettelkasten
-```
-
-The helper covers all backfill needs:
-- privacy-trio defaults inserted on every record / knowledge note /
-  hub / person profile / project profile that lacks the fields:
-  - `origin` is **path-derived**: `_records/meetings/*` and
-    `2_areas/work/*` → `work`; everything else → `personal`. The
-    derivation is deterministic and qualifies for autonomous resolution
-    per `ENGINE_DOCTRINE §3.1` (algorithm-driven, conservative-safe).
-    Owner refines manually after Step 1.D's first run if the path
-    heuristic mis-classifies any file (e.g. a personal reflection in
-    `2_areas/work/`).
-  - `audience_tags` defaults to `[]` (owner-only) — sharing intent is
-    owner-curated, never auto-assigned.
-  - `is_sensitive` defaults to `false` — content-driven judgment, owner
-    flips manually for therapy/health/family/financial/promotion content.
-- `concepts:` autofix on any pre-existing non-conformant entries (rare
-  in current corpus but possible after manual edits)
-- `audience_tags:` whitelist enforcement on any pre-existing entries
-
-**Migration log handling.** Step 1.C aggregates all events into a
-single migration log entry under
-`### Migration (one-time, completed {YYYY-MM-DD})`, marked
-`migration: privacy-trio-backfill`. Set
-`migration_completed.privacy_trio_backfill = {YYYY-MM-DD}` in the
-first-run log_lint.md frontmatter so subsequent runs gate-skip the
-"migration" framing while Scan A.7 continues to run on every cycle.
-
-Idempotent: a second `--mode fix` invocation finds no work — verified
-in tests (`test_fix_then_rerun_no_events`).
-
-### 1.C — Write Migration log entry
-
-Structured subsection для Step 7 log_lint.md entry:
-
-```markdown
-### Migration (one-time, completed {YYYY-MM-DD})
-
-- **Resolved Archive:** {N_migrated} items migrated to structured format
-  - High confidence: {N_high}
-  - Medium confidence: {N_med}
-  - Low confidence (flagged migration-item-needs-review): {N_low}
-  - Legacy table deleted: yes
-- **Profiles normalized:** {N_profiles_updated} / 61 profiles
-  - Missing `## Мои наблюдения` added: {N_moi}
-  - Missing `## Упоминания` added: {N_mentions}
-  - Missing `## Контекст` flagged (profile-context-missing): {N_context}
-  - Missing heading/role restored: {N_meta}
-- **Unified format achieved:** ✓ (all profiles match canonical schema; all resolved CLARIFICATIONS in structured format)
-```
+**Finally semantics mandatory:** lock release in every exit path (normal, skip, exception, malformed abort). Wrap Steps 2–9 в try/finally; delete lock in finally. If crashed mid-run, next run detects stale lock + PID absent → safe to remove manually.
 
 ---
 
@@ -350,7 +170,7 @@ Load into memory (streamed on-demand where noted):
 - `_system/state/OPEN_THREADS.md` (Active + recent Resolved — used by Scan B)
 - `_system/TASKS.md` (Waiting/Action/Delegate sections — thread activity detection)
 - `_system/CALENDAR.md` (next 7 + past 7 days)
-- `_system/state/CLARIFICATIONS.md` (Open Items + Resolved Items structured — post-migration)
+- `_system/state/CLARIFICATIONS.md` (Open Items + Resolved Items, both in the structured format)
 - `_system/state/BATCH_LOG.md` (last 30 days)
 
 **Log files (read-only для activity):**
@@ -385,7 +205,7 @@ Scans run sequentially (some feed each other: A-fixed links used by B; C-normali
 
 ### Suppression pre-check (applies к all scans before candidate-to-worklist routing)
 
-**Before** adding candidate к worklist as CLARIFICATION, run suppression check (§Principles §5):
+**Before** adding candidate к worklist as CLARIFICATION, run suppression check:
 
 1. Compute candidate's «suppression key» — deterministic signature:
    - Dedup pair: `dedup:{sorted([primary_id, secondary_id])}`
@@ -495,8 +315,10 @@ Pipeline:
 
 **A.6.2 Hub index completeness:**
 
-Deterministic drift check for `_system/views/HUB_INDEX.md` (LLM-maintained by
-`/ztn:maintain`, so it can silently lag the hub files at scale).
+Deterministic drift check for `_system/views/HUB_INDEX.md`. The view is
+rebuilt by `/ztn:maintain` Step 7.11 (`render_hub_index.py`) and appended to by
+`/ztn:process` §4.3 on hub create — between two maintain runs it can lag the
+hub files, and a base whose maintain step keeps failing lags indefinitely.
 
 Pipeline:
 1. Count hub files on disk: `5_meta/mocs/hub-*.md` (exclude `*.template.md`).
@@ -539,9 +361,14 @@ autofix, log entry only).
 
 ```bash
 python3 _system/scripts/lint_concept_audit.py \
-    --mode {{scan|fix}} \
-    --root zettelkasten
+    --mode {scan|fix} \
+    --root .
 ```
+
+Registries the helper reads: `_system/registries/AUDIENCES.md` (audience
+accept-set), `_system/registries/DOMAINS.md` (domain accept-set),
+`_system/registries/CONCEPTS.md` (the `Aliases` column, which is the
+concept alias map).
 
 - `--mode scan` (default) — emit JSONL events on stdout without
   writing; used for dry-run preview and scan-only diagnostics.
@@ -576,6 +403,14 @@ explicitly (`test_clean_state_zero_events`,
      with `{path}` + `{raw}` + reason. The `concepts:` list shrinks;
      other entries preserved.
 
+1b. **Concept-alias rewrite.** Build the alias map from the `Aliases`
+   column of `_system/registries/CONCEPTS.md` (each cell lists the
+   retired spellings of that row's canonical name). Any `concepts:`
+   entry matching an alias → `strong` floor, **silent autofix** to the
+   canonical name, fix-id `concept-alias-rewrite-autofix`. Collisions
+   dedupe to one entry; an alias claimed by two canonicals keeps the
+   first seen. Idempotent — a name already canonical is not an alias.
+
 2. **Concept-name conformance — manifest (by construction, no
    helper needed).** `/ztn:process` Step 4.7 and `/ztn:maintain` Step
    4 hub linkage both run every concept-name string through
@@ -606,6 +441,22 @@ explicitly (`test_clean_state_zero_events`,
      all entries dropped. Fail-closed: the engine never coins a new
      extension; AUDIENCES.md Extensions remains owner-curated outside
      the pipeline.
+
+3b. **`domains:` whitelist autofix.** Iterate every `.md` file with a
+   plural `domains:` field (the singular `domain:` on constitution
+   principles is parse-time validated elsewhere and out of scope here —
+   the constitution tree is excluded). Accept-set = canonical 13 ∪
+   active `_system/registries/DOMAINS.md` extensions. A canonical entry
+   passes untouched. A slash-compound (`work/learning`) is split and
+   filtered per part; kept parts are rewritten as separate entries →
+   `strong` floor, silent autofix, fix-id `domain-normalise-autofix`.
+   A part outside the accept-set, an unnormalisable value, a non-string
+   entry, or a non-list field → `strong` floor, **silent drop**, fix-id
+   `domain-drop-autofix` with the reason (`not-in-whitelist` /
+   `format-unfixable` / `non-string entry` / `invalid type`).
+   Fail-closed, same policy as audience tags: lint runs the
+   deterministic substrate only and never coins a domain. Remapping an
+   unmappable value is LLM work and belongs to `/ztn:process`.
 
 4. **Manifest audience-tag conformance — by construction.** Same
    producer-side guarantee as concepts. `/ztn:process` Step 3.4 Q16
@@ -640,86 +491,200 @@ views under `_system/views/`, raw transcripts under
 TASKS.md / CALENDAR.md / POSTS.md — see batch-format.md
 "Owner-curated registries" note).
 
-**A.8 Projects-array drift detection:**
+**A.8 Identity consistency — every surface of every registry identity:**
 
-Enforces the primary-topic-only semantic for `projects:` frontmatter
-arrays defined in `5_meta/PROCESSING_PRINCIPLES.md` §9.
+The nightly enforcement of the Identity Contract
+(`_system/docs/SYSTEM_CONFIG.md`), which owns the surface roles, the three
+surface classes, the five kinds of identity change, the successor-integrity
+rule and the exact-match rule.
+The project registry (`1_projects/PROJECTS.md`) is the sole existence
+authority for the identities in scope; a hub vouches for nothing and is read
+only to refine the diagnostic for an identifier the registry does not know.
+**Matching is exact identifier equality, never substring** — a longer
+identifier that contains a retired one is a different identity and is never
+reported as a surface of it.
 
-Iterate all records (`_records/`) and knowledge notes (PARA folders).
-For each note's `projects:` array:
+```bash
+python3 _system/scripts/identity_audit.py --root .
+python3 _system/scripts/identity_audit.py --report --json --root .
+```
 
-1. **Length check:**
-   - `projects.length == 0` → ignore (empty is valid).
-   - `projects.length == 1` → OK; no action.
-   - `projects.length == 2` → require body annotation indicating boundary
-     case. Acceptable markers (case-insensitive substring match):
-     `boundary case`, `cross-project`, `joint review`, `boundary:` (yaml
-     frontmatter field). If marker absent → `weak` floor, CLARIFICATION
+Lint runs both, because they answer different questions. The default mode is
+the drift event stream over the membership-field axis: array length, plus what
+each entry resolves to in the registry. `--report --json` resolves every
+declared surface of every registry identity and returns findings carrying
+`surface` (`field` / `tag` / `wikilink` / `node-card` / `node-container` /
+`hub`), `surface_class` (`live` / `derived`), `action` (`migrate` / `demote` /
+`renamespace` / `repoint` / `relocate` / `regenerate`), `current` and `target`.
+Lint never passes `--fail-on-residue`, deliberately: a scan that aborts on its
+first finding stops scanning, and lint is best-effort by contract — its job is
+to see everything and report it. Refusing is the gate's job, and the gates hold
+the flag: `/ztn:process`'s completion gate and the identity step in CI.
+
+Live findings are migration work; derived findings carry `action: regenerate`
+and route to the owning regenerator, never to a text fix; immutable surfaces
+are never walked. A **void** identity has no successor by rule, so its
+references are frozen where they stand and excluded from the residue check.
+
+**Successor resolution is transitive.** The target of any surface naming a
+retired identifier is the **terminal live successor** — follow the chain of
+retirement rows until an identity that is not itself retired, and write that.
+Resolving one hop produces fresh residue on the next nightly run. A chain that
+does not terminate is handled by (5) and produces no target at all: the walk
+is bounded by the number of registry rows and never revisits an identifier.
+
+1. **Membership-field axis (event stream).**
+   - length 0 → ignore; length 1 → OK.
+   - length 2 without a boundary annotation in the body — acceptable markers,
+     case-insensitive substring: `boundary case`, `cross-project`,
+     `joint review`, or a `boundary:` frontmatter field → `weak`,
      `projects-array-2-without-boundary-marker`.
-   - `projects.length >= 3` → `weak` floor, CLARIFICATION
-     `projects-array-overcount`. Fix-suggestion: pick primary, demote
-     others to `tags: [project/{slug}]`.
+   - length ≥ 3 → `weak`, `projects-array-overcount`. Fix: pick the primary,
+     demote the rest to `tags: [project/{slug}]`. (The primary-topic-only
+     semantic itself is `5_meta/PROCESSING_PRINCIPLES.md` §9.)
+   - entry resolves to a registered **trajectory** → `projects-array-non-project`.
+     Fix: drop from `projects:`, carry it as `tags: [trajectory/{slug}]`.
+   - entry resolves to a **retired** identifier → `projects-array-consolidated`.
+     Fix: replace with the declared successor.
+   - entry **absent from the registry** — the hub is consulted for the
+     diagnostic only: `hub_kind: project` (or absent) → `projects-array-orphan-hub`;
+     other-kind hub → `projects-array-non-project-hub`; no hub →
+     `projects-array-unknown-id`. All `weak`: an unregistered identifier has no
+     registry answer, so there is nothing deterministic to apply.
 
-2. **Identity resolution — PROJECTS.md is the single source of truth.**
-   Resolve each `projects:` entry against the registry's categories
-   (Active/Completed/Archived → `project`; Trajectories → `trajectory`;
-   Consolidated/superseded → `consolidated`; Template → skipped). A hub is
-   **never** an existence authority — it is consulted only to refine the
-   diagnostic for an ID that is absent from the registry entirely. Per
-   entry, first match wins:
-   - **registered project** → OK, no action. (A registered project needs
-     no hub — hubs appear at a topic-volume threshold; registration alone
-     proves existence.)
-   - **registered trajectory** → `weak`, CLARIFICATION
-     `projects-array-non-project`. Fix: drop from `projects:`; use
-     `tags: [trajectory/{slug}]`.
-   - **consolidated / superseded ID** → `weak`, CLARIFICATION
-     `projects-array-consolidated`. Fix: replace with the successor
-     project ID (see PROJECTS.md Consolidated table).
-   - **absent from the registry** → consult the hub:
-     - `hub_kind: project` (or absent → default) exists → `weak`,
-       CLARIFICATION `projects-array-orphan-hub`: a hub vouches for nothing;
-       the project is unregistered drift. Fix: register it in PROJECTS.md,
-       or remove the hub and drop the entry.
-     - other-kind hub (`trajectory` / `domain` / …) exists → `weak`,
-       CLARIFICATION `projects-array-non-project-hub`. Fix: drop from
-       `projects:`; add `tags: [{kind}/{slug}]` or `domains: [{slug}]`.
-     - no hub → `weak`, CLARIFICATION `projects-array-unknown-id`. Fix:
-       verify the slug, register it, or drop the entry.
+2. **Tag surface.** A `{namespace}/{id}` tag whose identifier part matches a
+   registry identity but whose namespace contradicts the registry's category →
+   `identity-tag-namespace`, target `{expected-namespace}/{id}`. A tag naming a
+   retired identifier → `identity-tag-retired`, target
+   `{namespace}/{successor}`.
 
-   **Degradation:** if PROJECTS.md is absent or empty, the SoT is missing —
-   identity resolution is skipped entirely (a friend mid-setup must not be
-   flooded). The length check (1) is registry-independent and still runs.
+3. **Wikilink surface.** A `[[id]]` — bare, labelled or sectioned — targeting a
+   retired identifier → `identity-wikilink-retired`. A link resolving to a node
+   this audit marks for relocation → `identity-wikilink-repoint`: the identity
+   stays live, only its node moves, so the target is the canonical node
+   (resolution order hub → card → container README), not a successor.
+
+4. **Node surfaces.** A node card, node container or hub belonging to a retired
+   identifier, or sitting under `1_projects/` while the registry classifies the
+   identifier as something else → `identity-node-relocate`, one finding per
+   node.
+
+5. **Registry-row integrity — evaluated before the surface walk.** The row is
+   the decision; a malformed one makes every surface finding point at nothing,
+   so it is judged first, reported **against the registry row** (`Source:` =
+   the registry path, `Surface:` = `registry-row`), and it blocks every autofix
+   for that identity. One finding per malformed row, never one per reference.
+
+   | Row state | Code |
+   |---|---|
+   | kind requires a successor (merge, rename) and the cell is empty | `identity-successor-undeclared` |
+   | kind forbids one (void) or the count is wrong for its kind (split with fewer than two) | `identity-successor-forbidden` |
+   | successor declared but does not resolve to a terminal live identity of the same registry — absent from it, foreign to it, terminating in a void, or on a cycle | `identity-successor-unresolvable`, reason string naming which of the four and printing the chain it walked |
+   | `Kind` cell holds a value outside the five the Identity Contract declares | `identity-kind-unknown` |
+
+   Every one of these is `strong` (the rule decides it outright) and none is
+   autofixable: the defect is a decision the owner made incompletely, and the
+   engine has no way to complete it.
+
+6. **Derived residue.** A derived surface still naming a retired identifier →
+   `identity-derived-stale`, fix-suggestion = run the regeneration that owns
+   that view. Never a text edit.
+
+7. **Hub-kind agreement.** For every `5_meta/mocs/hub-{id}.md` whose `{id}` is
+   a registry identity, the hub's `hub_kind` MUST equal the category the
+   registry declares for that row. Disagreement → `identity-hub-kind-mismatch`,
+   `Current:` = the hub's value, `Target:` = the registry's category, `strong`,
+   never autofixed. Which side is wrong is the owner's call and the answer
+   changes what the identity **is**: agreeing by rewriting the hub moves every
+   member note between the membership axis and a namespaced tag, which is a
+   reclassify, not a repair. A hub whose `{id}` is absent from the registry is
+   not a surface of anything and is out of scope here — A.9 reads it as a
+   document.
+
+8. **Split surfaces.** A live surface naming an identifier retired with
+   `kind: split` → `identity-split-undecided`, `Target:` = «one of
+   {successors}», `weak`, never autofixed. Which successor a reference means is
+   in the reference, not the registry; the finding exists so the residue is
+   counted and walked, not so it can be rewritten.
+
+9. **Retirement provenance.** For every `entity-retire` / `entity-reclassify`
+   resolution in `_system/state/CLARIFICATIONS_ARCHIVE.md` whose payload lacks
+   a `gate` block, or carries one with a non-zero `exit_code` →
+   `identity-gate-unproven`, `Subject:` = the entity id, `strong`, never
+   autofixed. Identity Contract Obligation 4 makes the recorded per-identity
+   scan part of the resolution; an archived change that does not carry it was
+   closed on the writer's word. Forward-only — resolutions predating the field
+   are not flagged. This scan is a backstop, not the gate: the gate lives in
+   `/ztn:resolve-clarifications` Class I.5, and the residue itself is caught by
+   (1)–(4) regardless of what any payload claims.
+
+**Degradation:** if PROJECTS.md is absent or empty the existence authority is
+missing — identity resolution is skipped entirely, so a friend mid-setup is not
+flooded. The length check in (1) is registry-independent and still runs.
 
 CLARIFICATION format:
 
 ```markdown
-### YYYY-MM-DD — projects-array drift in {note-id}
+### YYYY-MM-DD — {reason-code}: {identity} in {note-id}
 
-**Type:** projects-array-{overcount|2-without-boundary|non-project|consolidated|orphan-hub|non-project-hub|unknown-id}
-**Subject:** {note-id}
+**Type:** {reason-code}
+**Subject:** {identity}
 **Source:** {note-path}
 **File path:** {absolute path}
-**Action taken:** none — pipeline-level drift; surfaced for owner review
-**Quote:** _(none — frontmatter-level issue)_
-**Current `projects:`:** [{list}]
-**Reason:** {one-line explanation per check 1/2/3 above}
-**To resolve:** {specific suggestion based on check}
+**Surface:** {surface} ({surface_class}) — proposed action: {action}
+**Action taken:** none — surfaced for owner review
+**Quote:** _(none — frontmatter-level issue)_ | {line excerpt for a body surface}
+**Current:** {current}
+**Target:** {target or «none declared»}
+**Reason:** {the finding's own reason string}
+**To resolve:** {specific suggestion for this surface}
 ```
 
-This scan is **autofix-eligible only for `projects-array-non-project` when
-the entry is a registry-confirmed trajectory AND the note is a record (not
-a knowledge note)** — `medium` floor autofix, fix-id
-`projects-array-trajectory-demote` (demote `projects: [slug]` →
-`tags: [trajectory/slug]`). The registry is the SoT here, so the
-classification is certain. All other cases — including `orphan-hub`,
-`consolidated`, and hub-only `non-project-hub` (classification inferred
-from a hub, not the registry) — require owner review (no silent semantic
-change).
+**Autofix eligibility.** Eligibility is decided per surface and action against
+the doctrine's three-property rule for autonomous resolution
+(`_system/docs/ENGINE_DOCTRINE.md` §3.1) — deterministic algorithm,
+conservative-safe failure, low per-decision value. Only these qualify:
 
-Implementation: `_system/scripts/lint_projects_array.py` —
-single-pass scanner reading note frontmatter + hub frontmatter; emits
-CLARIFICATIONS via shared write helper.
+| Finding | Floor | Fix-id |
+|---|---|---|
+| `projects-array-non-project`, registry-confirmed trajectory, **note is a record** | `medium` | `projects-array-trajectory-demote` |
+| `identity-field-retired`, successor declared | `strong` | `identity-field-migrate-autofix` |
+| `identity-tag-namespace` | `strong` | `identity-tag-renamespace-autofix` |
+| `identity-tag-retired`, successor declared | `strong` | `identity-tag-migrate-autofix` |
+
+**Codes the report emits that the event stream does not.** Item 1 above is the
+event stream over `projects:` only, and its `projects-array-*` codes name that
+axis by shape. The report walks every registry, so a membership-field finding on
+a person cannot borrow a projects-shaped name without lying about what it found:
+
+| Code | What it is |
+|---|---|
+| `identity-field-retired` | a membership field names a retired identifier |
+| `identity-field-non-member` | a membership field names an identity its own category may not occupy |
+| `identity-registry-row-duplicate` | one identifier declared twice in a registry |
+| `identity-registry-row-unreadable` | a row whose identifier cell cannot be read |
+| `identity-registry-section-unknown` | a section heading the registry parser does not recognise — reported rather than defaulted, because a default would read every retired identifier in it as active |
+| `identity-surface-unclassified` | a path no classification rule claims; counted as residue, because an unscanned region is how a clean verdict becomes a statement about the scanner rather than about the base |
+
+Each is a metadata rewrite the registry determines exactly, reversible by one
+git op, and surfacing it would give the owner nothing to decide.
+
+The record-only qualifier on the first row is load-bearing, not a leftover.
+Dropping an identifier from the membership axis **removes** the note from a
+derived view; renaming a tag **moves** it within an axis and it stays findable
+under the correct name. Removal changes what a knowledge note is retrieved by,
+which is the owner's call — so on a knowledge note that one surfaces instead.
+
+Everything else is a CLARIFICATION:
+
+- **wikilink repointing** rewrites prose and the graph — a link inside a
+  sentence can be right as a target and false as a claim once repointed;
+- **node relocation** depends on what the node *contains*, which no registry
+  declares, and is irreversible in the sense that matters;
+- **hub-kind changes** reclassify what a hub is;
+- **an undeclared successor** leaves no deterministic target at all;
+- **unregistered identifiers** and the length checks are judgments the registry
+  cannot settle.
 
 **A.9 Hub frontmatter integrity (ARCH-B):**
 
@@ -761,21 +726,27 @@ For each `5_meta/mocs/hub-*.md`:
 
 5. **Trajectory / domain hubs with derived mode:**
    - If `hub_kind` is `trajectory` or `domain` AND
-     `chronological_map_mode: derived` — flag as policy violation.
-     Trajectories and domains are intentionally curated (per
-     `5_meta/PROCESSING_PRINCIPLES.md` §9 Q4 default). Override by
+     `chronological_map_mode: derived` — flag as policy violation. A
+     derived map is completeness over one primary topic; a trajectory or a
+     domain spans several, so its map is curated by intent. Override by
      explicit owner choice if the auto-derivation IS desired.
    - `weak`, CLARIFICATION `hub-trajectory-derived-policy`.
 
-A.9 is strictly informational at first ship — no autofix. Future:
-markers-missing → autofix by invoking renderer; arrays-length-mismatch
-→ truncate to shortest; etc. For now CLARIFICATIONs surface for owner
-audit.
+A hub is read here as a document. Whether it is also a *surface* of a
+registry identity, or an identity in its own right, is the Identity Contract's
+call (`_system/docs/SYSTEM_CONFIG.md`) and A.8's scan — a `hub_kind` change is
+never autofixed by either.
 
-Implementation: extend `_system/scripts/lint_projects_array.py` OR
-create `_system/scripts/lint_hub_integrity.py` — TBD when first ship
-runs against accumulated drift. Initial implementation may be deferred
-until /ztn:maintain Step 7.7 proves stable in production use.
+A.9 raises CLARIFICATIONs only — no autofix. Every candidate fix here either
+regenerates a derived body (owned by `/ztn:maintain` Step 7.7) or reclassifies
+what a hub is; neither is lint's to apply silently.
+
+Implementation — invoke the helper; JSONL on stdout, one event per finding
+(`kind` = the CLARIFICATION type above), exit 0 always:
+
+```bash
+python3 _system/scripts/lint_hub_integrity.py --root .
+```
 
 **A.10 Portable filename backstop:**
 
@@ -844,7 +815,7 @@ irrelevant). `story` is canonical and never touched.
 *method*, not the rows (no drift). Run it from the lint orchestrator:
 
 ```bash
-python3 _system/scripts/lint_content_markup.py --mode {{scan|fix}} --root zettelkasten
+python3 _system/scripts/lint_content_markup.py --mode {scan|fix} --root .
 ```
 
 `--mode scan` emits JSONL events without writing (dry-run preview);
@@ -996,27 +967,31 @@ Floor `strong` (threshold deterministically crossed) + LLM high verdict → prof
 - `strong` floor (deterministic condition) + LLM verdict → always surfaced tier (never apply tier changes per HARD RULE)
 - CLARIFICATION `tier-demote-candidate`
 
-**C.3 Orphan bare-name resolution — three-surface scan:**
+**C.3 Orphan bare-name resolution:**
 
-Bare names can appear at three levels in notes; ALL three must be fixed together for consistency (partial fix creates broken state):
+Resolving a bare name to a person-id is an identity change of the `rename`
+kind, so it is atomic across live surfaces and leaves zero residue per the
+Identity Contract (`_system/docs/SYSTEM_CONFIG.md`). The person registry
+declares three live surfaces:
 
 1. **Frontmatter `people:` array entries** matching bare-name pattern (no `-lastname`)
 2. **Frontmatter `tags:` array entries** matching `person/{bare-name}` pattern
 3. **Body inline wikilinks** `[[{bare-name}]]` — these point к non-existent files (broken wikilinks) until fixed
 
-For each bare name encountered:
+What is C.3's own, and needs judgment, is the resolution itself:
+
 - Grep all three surfaces across entire ZTN base
 - LLM semantic resolution: bare name → candidate person-id using SOUL + PEOPLE + recent records
 - If unambiguous (single `{bare}-*` candidate in PEOPLE.md) + LLM high verdict → `reviewed` tier (apply ALL three surfaces + validate via CLARIFICATION)
 - If multiple candidates → surfaced tier `orphan-bare-name-surfaced` с per-file disambiguation
 
-**Three-surface apply logic:**
+**Apply logic:**
 - For each file containing bare name at any surface:
   - Frontmatter `people:` → replace bare с full-id
   - Frontmatter `tags:` person/{bare} → person/{full-id}
   - Body `[[{bare}]]` → `[[{full-id}]]`
 - Each surface = separate fix-id with qualifier `bare-name-resolve-frontmatter` / `bare-name-resolve-tag` / `bare-name-resolve-wikilink`
-- **Completion Gate check:** per resolved name, grep all three surfaces → 0 residual bare references. If grep returns non-zero → abort fix (surface) + raise surfaced CLARIFICATION for remaining occurrences.
+- Residue check per resolved name at the Completion Gate. Non-zero → abort fix (surface) + raise surfaced CLARIFICATION for remaining occurrences.
 
 **CLARIFICATION for reviewed-tier apply:**
 Aggregated per resolved name с explicit sub-surface counts:
@@ -1102,7 +1077,12 @@ Pipeline:
      --buffer _system/state/people-candidates.jsonl \
      --archive-dir _system/state/lint-context/weekly
    ```
-   The script needs to support per-buffer archive naming. If the current `archive_buffer.py` hardcodes `principle-candidates`, extend it to use the buffer filename stem as archive prefix (`people-candidates.jsonl` → `{YYYY-WW}-people-candidates-archived.jsonl`). **R5 (held) entries** must be preserved — re-write them back to the buffer after archive (the hold-subset write is the final step).
+   The script derives the archive name from the buffer's filename stem
+   (`people-candidates.jsonl` → `{YYYY-WW}-people-candidates-archived.jsonl`),
+   so the same helper serves C.5 and F.3. **R5 (held) entries** must be
+   preserved — re-write them back to the buffer after archive (the hold-subset
+   write is the final step; the script clears the buffer, it does not
+   re-populate it).
 
 6. **Exit code 2 from archive → `lint-archive-failure` CLARIFICATION** with stderr message; buffer is NOT cleared so data persists for next week's retry.
 
@@ -1557,7 +1537,7 @@ Validate the optional `cognitive_axes` field on principles (the field that power
 `5_meta/mocs/hub-cognitive-model.md`). Deterministic, no LLM:
 
 ```bash
-python3 _system/scripts/lint_cognitive_axes.py
+python3 _system/scripts/lint_cognitive_axes.py --root .
 ```
 
 JSONL on stdout, one event per finding, exit 0 always. The script reads the axis
@@ -1572,6 +1552,9 @@ slug SoT (the `<!-- cognitive-axes:begin -->` block in
 - `cognitive-hub-sensitivity-mismatch` — a `scope: sensitive` principle is tagged
   but the hub is not `is_sensitive: true` / owner-only (`audience_tags: []`),
   which would expose the sensitive principle if the hub is shared or surfaced.
+- `axis-sot-unreadable` — the axis SoT block itself could not be read or parsed.
+  Emitted alone (no per-principle findings are possible without it), so this
+  one reports the scan as unrun rather than the principles as clean.
 
 Route each finding to a CLARIFICATION of the matching type (Subject = the
 `principle_id`, Quote = the offending slug / value, To resolve = "fix the slug
@@ -1622,6 +1605,7 @@ Targets and the canonical archived sub-table per registry (per `SYSTEM_CONFIG.md
 | `_system/registries/SOURCES.md` | `## Deprecated Sources` | every row |
 | `3_resources/people/PEOPLE.md` | `## Stale People` | every row |
 | `1_projects/PROJECTS.md` | `## Archived Projects` | every row |
+| `1_projects/PROJECTS.md` | `## Retired Identifiers` | every row — the `Successor` cell is what Form A requires here; a `split` row lists all of them, comma-separated |
 | `_system/registries/AGENT_LENSES.md` | `## Paused/Archived Lenses` | every row |
 
 For each row:
@@ -1715,13 +1699,11 @@ If `lint_manifest_schema.py` exits non-zero (schemas-dir missing, batches-dir mi
 
 All Scan H output is additive to the existing worklist; Step 4 routes via the standard confidence-tier table. All H CLARIFICATION classes are surfaced tier (never auto-resolve), `weak` floor.
 
-New CLARIFICATION types introduced by Scan H:
+CLARIFICATION types Scan H emits (registered in `SYSTEM_CONFIG.md → Canonical CLARIFICATION types`):
 - `manifest-schema-violation` (H.1)
 - `manifest-schema-unknown-version` (H.1)
 - `validator-internal-error` (H.1)
 - `validator-helper-failed` (H.2)
-
-These types must be added to `SYSTEM_CONFIG.md → Canonical CLARIFICATION types` if not present.
 
 #### Why a separate scan, not a sub-check inside Scan A
 
@@ -1775,7 +1757,7 @@ Positives − Negatives → verdict:
 
 **NO inline markers** in target files regardless of tier — see §«No inline markers в target files» below. `log_lint.md` is the single source of truth for audit trail; notes остаются clean reading state.
 
-### HARD RULES override (§1 Принципы, non-negotiable)
+### HARD RULES override (non-negotiable)
 
 Regardless of tier routing:
 - Thread closure (move OPEN_THREADS Active → Resolved + hub coordination) → NEVER apply, max tier `surfaced`
@@ -1820,7 +1802,7 @@ Components:
 - `YYYYMMDD` — UTC date of lint run start (no dashes)
 - `run-seq` — 3-digit counter per day (`001`, `002`, ...)
 - `p{PID}` — **only when `--force` flag active** — OS process ID prevents collision between parallel `--force` runs bypassing lock
-- `operation-qualifier` — **mandatory** — operation class identifier (kebab-case). Examples: `scan-a`, `scan-b`, `scan-c`, `scan-d-trail`, `dedup`, `dedup-backlink-redirect`, `profile-schema`, `migration-profile`, `migration-resolved`, `bare-name-resolve-frontmatter`, `bare-name-resolve-tag`, `bare-name-resolve-wikilink`
+- `operation-qualifier` — **mandatory** — operation class identifier (kebab-case). Examples: `scan-a`, `scan-b`, `scan-c`, `scan-d-trail`, `dedup`, `dedup-backlink-redirect`, `bare-name-resolve-frontmatter`, `bare-name-resolve-tag`, `bare-name-resolve-wikilink`
 - `op-seq` — sequential counter per qualifier within run
 
 Examples:
@@ -2051,7 +2033,7 @@ Output CLARIFICATION:
 
 ## Step 7 — Write log_lint.md Entry
 
-Append ONE entry к `_system/state/log_lint.md` (aggregate across all scans + migration):
+Append ONE entry к `_system/state/log_lint.md` (aggregate across all scans):
 
 ```markdown
 ## {ISO UTC timestamp} | lint | by: ztn:lint | batch: lint-{YYYYMMDD}-{NNN} | manifest: {YYYYMMDD-HHmmss}
@@ -2062,6 +2044,9 @@ Append ONE entry к `_system/state/log_lint.md` (aggregate across all scans + mi
 - Scan C (people): {...}
 - Scan D (notes): {...}
 - Scan E (focus): {...}
+- Scan F (constitution): {...}
+- Scan G (archive contract): {...}
+- Scan H (manifest schema): {... incl. `degraded: true` when the deep validator was unavailable}
 
 ### Auto-Fixes
 - Silent tier: {N} applied — {breakdown by operation}
@@ -2086,11 +2071,6 @@ Append ONE entry к `_system/state/log_lint.md` (aggregate across all scans + mi
 ### Hidden (verbose audit)
 - {N} items hidden (LLM verdict = skip / 2+ counter-evidence). Listed below для audit — NOT surfaced к CLARIFICATIONS.
   - {reason-code}: {subject} — {one-line LLM reasoning}
-
-### Migration (one-time, completed {YYYY-MM-DD}) — present ONLY in first run that performed migration
-- Resolved Archive: {N} items migrated, {K} low-confidence flagged
-- Profiles normalized: {M} files updated, {P} flagged for manual Контекст
-- Unified format achieved: ✓
 
 ### Lint Context Store
 - Daily: {created {dates} | skipped (exists)}
@@ -2239,6 +2219,9 @@ Write to stdout:
 - C (people): {counts}
 - D (notes): {counts}
 - E (focus): {counts}
+- F (constitution): {counts}
+- G (archive contract): {counts}
+- H (manifest schema): {counts}
 
 ### Auto-Fixes Applied: {total}
 - Silent: {N} — {operations summary}
@@ -2248,10 +2231,6 @@ Write to stdout:
 ### CLARIFICATIONS Raised: {total}
 - Surfaced: {N} — {reason codes + subjects summary}
 - Reviewed (apply + validate): {N} — {reason codes + subjects summary}
-
-### Migration (first run only)
-- Resolved Archive: {N migrated} ({K low-confidence})
-- Profiles: {M normalized} ({P flagged context-missing})
 
 ### State Changes
 - Files modified: {N}
@@ -2268,11 +2247,10 @@ Write to stdout:
 - [x] log_lint.md entry written
 - [x] Lint Context Store updated
 - [x] No writes to forbidden territories (HARD RULES invariant)
-- [x] Unified format achieved (migration done OR already-migrated)
 - [x] **Bare-name three-surface consistency** — for each resolved bare-name, grep frontmatter/tags/body wikilinks → 0 residual bare references
+- [x] **Identity autofix residue** — for each identifier A.8 autofixed, re-run `identity_audit.py --report --json` → 0 live findings on the surfaces that were written
 - [x] **Dedup backlink invariant** — for each deleted secondary, grep `[[{deleted-id}]]` in non-audit files → 0 results
 - [x] **Suppression via Resolved Items** — no surfaced CLARIFICATION raised для subject matching resolved suppression entry within active window
-- [x] **Migration flag frontmatter integrity** — `log_lint.md` frontmatter `migration_completed` map present + parseable if any migration ran
 
 ### Next Actions for Owner
 Run `/ztn:resolve-clarifications` to review the queue interactively. {N} items accumulated:
@@ -2335,7 +2313,6 @@ The skill clusters items by theme, reminds context + verbatim quotes inline, and
 - `soul-update-advice` — monthly structured SOUL review
 
 **Profile normalization:**
-- `profile-context-missing` — existing profile без `## Контекст`, semantic content needed
 - `profile-non-canonical-sections` — profile has extra sections beyond canonical template (surfaced — policy decision pending between strict / allowed extensions / whitelist)
 
 **Concept and audience autofix (A.7) — autonomous, fix-codes only.**
@@ -2352,6 +2329,14 @@ takes no action.
 - `concept-drop-autofix` — concept-name entry dropped silently
   (non-ASCII residue, bare type-enum word, or otherwise
   unnormalisable). The `concepts:` list shrinks; other entries kept.
+- `concept-alias-rewrite-autofix` — concept-name entry rewritten from a
+  retired alias to its canonical name, per the `Aliases` column of
+  `_system/registries/CONCEPTS.md`.
+- `domain-normalise-autofix` — `domains:` entry rewritten (slash-compound
+  expanded to its whitelisted parts)
+- `domain-drop-autofix` — `domains:` entry dropped (not in canonical 13 ∪
+  active DOMAINS.md extensions, unnormalisable, or wrong type). Fail-closed:
+  the engine never coins a domain.
 - `audience-tag-normalise-autofix` — audience-tag rewritten to
   normalised form when normalised version is in canonical 5 or
   AUDIENCES.md Extensions
@@ -2382,13 +2367,10 @@ takes no action.
 construction in `/ztn:process` §4.7 and `/ztn:maintain` Step 4 hub
 linkage — no separate manifest fix-ids needed.)
 
-**Migration (first run only):**
-- `migration-item-needs-review` — legacy Resolved Archive item migrated with low LLM confidence
-
 **Anomalies (malformed handling):**
 - `lint-malformed-frontmatter` / `hub-dangling-reference` / `person-unknown-in-frontmatter` / `log-malformed-entry` / `lint-context-daily-unreadable` / `lint-scan-exceeded-soft-timeout-surfaced`
 
-Parsable fields stable per Q0. Forward-compat: new codes append-only.
+Parsable fields are a stable contract (per `_system/docs/SYSTEM_CONFIG.md` CLARIFICATIONS format). Forward-compat: new codes append-only.
 
 ---
 
@@ -2413,12 +2395,12 @@ Check during adversarial audit:
 1. **HARD RULES (never auto-apply):** thread closure, PEOPLE.md Tier column, SOUL.md, record/note body вне dedup-merge, PEOPLE.md Mentions non-drift, TASKS.md/CALENDAR.md/BATCH_LOG.md/batches/ writes
 2. **Confidence tier routing:** silent requires strong+high, noted requires strong+confident (or strong+high with concern), without rule-floor max tier `surfaced`
 3. **CLARIFICATIONS:** all items MUST have `**Context:**` field; parsable fields stable (canonical Resolution-action vocabulary); Resolved items structured format с `Applied` field
-4. **Idempotency:** second run on unchanged state → Migration absent (already done), only new daily summary diff если new UTC day, else zero state changes
+4. **Idempotency:** second run on unchanged state → only a new daily summary diff если new UTC day, else zero state changes
 5. **Best-effort:** single malformed file never aborts run; missing Lint Context Store first run handled gracefully
 6. **Dedup safety:** no unique content lost (LLM confirmation required); frontmatter lists union (no deletion); Evidence Trail entry prepended; post-merge backlink redirect invariant
 7. **Rollback via git:** every lint run produces diff-able changes; fix-id → git diff hunk
 8. **Lint Context Store:** daily для every past day (quiet с template); monthly sealed first run new UTC month; retention purge > 30 days only; monthly never deleted
-9. **Parsable Resolved:** ALL resolved items structured format; no legacy `## Resolved Archive` table
+9. **Parsable Resolved:** ALL resolved items structured format
 10. **Empty-run safe:** always ≥ 1 daily summary + 1 log_lint.md entry; zero auto-fixes + zero CLARIFICATIONS = valid healthy run
 11. **Cross-skill exclusion symmetric:** process/maintain/lint — любой other lock exists → abort
 12. **Log file ownership:** log_lint.md written ONLY by /ztn:lint; others read-only
@@ -2428,6 +2410,7 @@ Check during adversarial audit:
 16. **Suppression via Resolved Items:** no surfaced CLARIFICATION raised для subject matching resolved suppression entry within active window
 17. **Bare-name three-surface consistency:** per resolved bare-name, grep frontmatter/tags/wikilinks → 0 residual bare references
 18. **Dedup backlink integrity:** post-merge grep `[[{deleted-id}]]` in non-audit files → 0 results
+19. **Identity autofix residue:** per autofixed identifier, re-audit → 0 live findings on the written surfaces
 
 ---
 
@@ -2437,6 +2420,5 @@ Lint consumes artifacts produced by other skills:
 - `_system/docs/batch-format.md` — batch output contract
 - `/ztn:process` inline Mentions increment in PEOPLE.md
 - `/ztn:maintain` threads + hub linkage
-- Log files с frontmatter migration-flag structure
 
 Forward-compatible: Resolved structured format + canonical `Resolution-action` vocabulary + confidence tier enum — all append-only evolution. New reason codes append-only. Downstream `/ztn:resolve-clarifications` consumer reads structured Resolved Items directly.

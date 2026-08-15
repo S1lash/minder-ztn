@@ -2,9 +2,16 @@
 """Append a principle candidate to `_system/state/principle-candidates.jsonl`.
 
 Invoked by the `/ztn:capture-candidate` skill from any session (personal,
-work, external). Schema-validates inputs, enriches with origin + session
-id + date, appends atomically. No LLM, no reasoning — just a clean buffer
-write so the capture path is predictable regardless of session context.
+work, external), and by any other producer that spots a candidate —
+`/ztn:maintain` Step 7.5 mines recurring decision rationale the same way.
+Schema-validates inputs, enriches with origin + session id + date, appends
+atomically. No LLM, no reasoning — just a clean buffer write so the capture
+path is predictable regardless of session context.
+
+`captured_by` is declared by the caller, never assumed. Provenance is read
+at F.5 promotion, where only some origins qualify for auto-merge, and a
+buffer line that names the wrong producer is a line whose promotion is
+decided on the wrong evidence.
 
 Schema of each JSONL line:
 
@@ -18,7 +25,7 @@ Schema of each JSONL line:
       "origin": "personal | work | external",
       "session_id": "...",
       "record_ref": "[[...]]" | null,
-      "captured_by": "ztn:capture-candidate"
+      "captured_by": "<producer>"    # default: "ztn:capture-candidate"
     }
 
 Usage:
@@ -29,6 +36,7 @@ Usage:
         --suggested-type principle \\
         --suggested-domain tech \\
         [--origin personal|work|external] \\
+        [--captured-by ztn:maintain] \\
         [--session-id ...] \\
         [--record-ref "[[...]]"] \\
         [--dry-run]
@@ -59,6 +67,10 @@ BUFFER_FILENAME = "principle-candidates.jsonl"
 ALLOWED_SUGGESTED_TYPES: frozenset[str] = frozenset(ALLOWED_TYPES | {"unknown"})
 ALLOWED_SUGGESTED_DOMAINS: frozenset[str] = frozenset(ALLOWED_DOMAINS | {"unknown"})
 ALLOWED_ORIGINS: frozenset[str] = frozenset({"personal", "work", "external"})
+
+# The producer that ran when none is declared. Open on purpose — a new
+# producer names itself with a flag, it does not get a row in an enum here.
+DEFAULT_CAPTURED_BY = "ztn:capture-candidate"
 
 
 def parse_applies_in_concepts(raw: str | None) -> list[str]:
@@ -113,7 +125,7 @@ def build_entry(args: argparse.Namespace) -> dict:
         "origin": resolve_origin(args.origin),
         "session_id": args.session_id or default_session_id(),
         "record_ref": args.record_ref,
-        "captured_by": "ztn:capture-candidate",
+        "captured_by": (args.captured_by or "").strip() or DEFAULT_CAPTURED_BY,
     }
 
 
@@ -182,6 +194,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--origin", default=None,
                         help=f"one of {sorted(ALLOWED_ORIGINS)}; "
                              "default: 'personal'")
+    parser.add_argument("--captured-by", default=None,
+                        help="the producer appending this line, e.g. "
+                             "'ztn:maintain'. Read at F.5 promotion, so a "
+                             f"wrong value decides promotion on the wrong "
+                             f"evidence; default: {DEFAULT_CAPTURED_BY!r}")
     parser.add_argument("--session-id", default=None,
                         help="session or source identifier; default: timestamp")
     parser.add_argument("--record-ref", default=None,

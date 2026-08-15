@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:ztn:manifest-schema:v2.2",
   "title": "ZTN engine batch manifest — v2.x",
-  "description": "Universal output contract emitted by every ZTN engine skill that produces persistent state changes (/ztn:process, /ztn:maintain, /ztn:lint, /ztn:agent-lens). Single shape, distinguished by the top-level `processor` field. SemVer per ARCHITECTURE.md §8.12.2: MAJOR breaks consumers, MINOR additive (new optional fields, sections, entity types). Forward-compat slot `section_extras: jsonb` lives both top-level and per-section. Audience-tag whitelist enforcement happens at the ZTN registry layer (lint scan A.7 against AUDIENCES.md, owner-extensible per tenant) — this schema enforces type only. Concept-name format conformance is producer-side guarantee (ZTN normalisers in `_system/scripts/_common.py`); this schema does not re-validate the regex. Privacy trio (`origin`, `audience_tags`, `is_sensitive`) is required-slot on every Tier 0/1/2 entity emission with conservative-safe defaults applied at emission time.",
+  "description": "Universal output contract emitted by every ZTN engine skill that produces persistent state changes (/ztn:process, /ztn:maintain, /ztn:lint, /ztn:agent-lens). Single shape, distinguished by the top-level `processor` field. SemVer: MAJOR breaks consumers, MINOR additive (new optional fields, sections, entity types). Forward-compat slot `section_extras: jsonb` lives both top-level and per-section. Audience-tag whitelist enforcement happens at the ZTN registry layer (lint scan A.7 against AUDIENCES.md, owner-extensible per tenant) — this schema enforces type only. Concept-name format conformance is producer-side guarantee (ZTN normalisers in `_system/scripts/_common.py`); this schema does not re-validate the regex. Privacy trio (`origin`, `audience_tags`, `is_sensitive`) is required-slot on every Tier 0/1/2 entity emission with conservative-safe defaults applied at emission time.",
 
   "type": "object",
   "required": ["batch_id", "timestamp", "format_version", "processor"],
@@ -73,7 +73,7 @@
   "$defs": {
     "batch_id": {
       "type": "string",
-      "description": "UTC timestamp prefix `YYYYMMDD-HHMMSS`. Sortable as string, monotonically non-decreasing per skill, stable from concurrency-lock acquisition through manifest write. Filename of the manifest file is `{batch_id}-{skill}.json` (chronological consumer ordering by filename prefix per ARCHITECTURE.md §8.11.2).",
+      "description": "UTC timestamp prefix `YYYYMMDD-HHMMSS`. Sortable as string, monotonically non-decreasing per skill, stable from concurrency-lock acquisition through manifest write. Filename of the manifest file is `{batch_id}-{skill}.json` (chronological consumer ordering by filename prefix).",
       "pattern": "^[0-9]{8}-[0-9]{6}(-[0-9]+)?$"
     },
     "iso8601_utc": {
@@ -83,17 +83,17 @@
     },
     "format_version": {
       "type": "string",
-      "description": "Semantic version `MAJOR.MINOR`. MAJOR breaks consumers; MINOR additive. Worker `v2.X` accepts manifest `v2.Y` for any Y; rejects `v3.*` (ARCHITECTURE.md §8.12.2).",
+      "description": "Semantic version `MAJOR.MINOR`. MAJOR breaks consumers; MINOR additive. Worker `v2.X` accepts manifest `v2.Y` for any Y; rejects `v3.*`.",
       "pattern": "^[0-9]+\\.[0-9]+$"
     },
     "processor": {
       "type": "string",
-      "description": "Which ZTN engine skill emitted this manifest (universal contract per ARCHITECTURE.md §8.11.1).",
+      "description": "Which ZTN engine skill emitted this manifest (universal contract).",
       "enum": ["ztn:process", "ztn:maintain", "ztn:lint", "ztn:agent-lens"]
     },
 
     "section_extras": {
-      "description": "Forward-compat slot for fields not yet promoted to schema. Top-level and per-section. Worker logs unknown contents but does not fail (ARCHITECTURE.md §8.12.2).",
+      "description": "Forward-compat slot for fields not yet promoted to schema. Top-level and per-section. Worker logs unknown contents but does not fail.",
       "type": "object",
       "additionalProperties": true
     },
@@ -120,7 +120,7 @@
 
     "origin": {
       "type": "string",
-      "description": "Provenance — where this entity was captured. ARCHITECTURE.md §8.10.2. The `personal | work | external` core values plus the bootstrap-* / sync-* prefixes for synthetic origins (bootstrap-raw-scan, bootstrap-profile, sync-jira, etc.). Default `personal` (fail-closed).",
+      "description": "Provenance — where this entity was captured. The `personal | work | external` core values plus the bootstrap-* / sync-* prefixes for synthetic origins (bootstrap-raw-scan, bootstrap-profile, sync-jira, etc.). Default `personal` (fail-closed).",
       "anyOf": [
         { "enum": ["personal", "work", "external"] },
         { "pattern": "^bootstrap-[a-z0-9-]+$" },
@@ -129,12 +129,12 @@
     },
     "audience_tags": {
       "type": "array",
-      "description": "Whitelist enforcement lives in `/ztn:lint` Scan A.7 reading `_system/registries/AUDIENCES.md` (canonical 5 + tenant-extensible Extensions table). Schema cannot enumerate dynamic per-tenant extensions; type-only check here. Default `[]` (owner-only — ARCHITECTURE.md §8.10.2).",
+      "description": "Whitelist enforcement lives in `/ztn:lint` Scan A.7 reading `_system/registries/AUDIENCES.md` (canonical 5 + tenant-extensible Extensions table). Schema cannot enumerate dynamic per-tenant extensions; type-only check here. Default `[]` (owner-only).",
       "items": { "type": "string" }
     },
     "is_sensitive": {
       "type": "boolean",
-      "description": "Extra-friction modifier on share. Orthogonal to `audience_tags` — does NOT narrow the audience. Default `false` (ARCHITECTURE.md §8.10.2)."
+      "description": "Extra-friction modifier on share. Orthogonal to `audience_tags` — does NOT narrow the audience. Default `false`."
     },
     "privacy_trio_required": {
       "type": "object",
@@ -149,7 +149,7 @@
 
     "checksum_sha256": {
       "type": "string",
-      "description": "Hex-encoded SHA-256 over the file's bytes at emission time. Drives consumer's idempotency (skip re-ingest on unchanged checksum) and graph-edge reconciliation (delta-aware diff on change — ARCHITECTURE.md §8.11.6 invariant 1).",
+      "description": "Hex-encoded SHA-256 over the file's bytes at emission time. Drives consumer's idempotency (skip re-ingest on unchanged checksum) and graph-edge reconciliation (delta-aware diff on change invariant 1).",
       "pattern": "^[0-9a-f]{64}$"
     },
 
@@ -215,10 +215,10 @@
         "concept_hints":   { "$ref": "#/$defs/concept_name_list" },
         "people":          { "type": "array", "items": { "type": "string" }, "description": "Resolved person IDs (kebab-case slugs from PEOPLE.md)." },
         "projects":        { "type": "array", "items": { "type": "string" } },
-        "supersedes":      { "type": "array", "items": { "type": "string" }, "description": "Knowledge-note IDs this note supersedes. Edge `SUPERSEDES` in graph (ARCHITECTURE.md §8.11.4)." },
+        "supersedes":      { "type": "array", "items": { "type": "string" }, "description": "Knowledge-note IDs this note supersedes. Edge `SUPERSEDES` in graph." },
         "superseded_by":   { "type": ["string", "null"] },
         "merged_from":     { "type": "array", "items": { "type": "string" } },
-        "status":          { "type": "string", "description": "Lifecycle: active | archived | superseded | dormant. Append-only — no hard-deletes (ARCHITECTURE.md §8.11.6 invariant 2)." },
+        "status":          { "type": "string", "description": "Lifecycle: active | archived | superseded | dormant. Append-only — no hard-deletes." },
         "origin":          { "$ref": "#/$defs/origin" },
         "audience_tags":   { "$ref": "#/$defs/audience_tags" },
         "is_sensitive":    { "$ref": "#/$defs/is_sensitive" },
@@ -272,7 +272,7 @@
         "subtype":           { "anyOf": [{ "$ref": "#/$defs/concept_name" }, { "type": "null" }] },
         "related_concepts":  { "$ref": "#/$defs/concept_name_list" },
         "previous_slugs":    { "$ref": "#/$defs/concept_name_list" },
-        "status":            { "enum": ["active", "deprecated"], "description": "Default `active`. /ztn:lint emits `deprecated` after multi-step CLARIFICATION review (ARCHITECTURE.md §8.11.4)." },
+        "status":            { "enum": ["active", "deprecated"], "description": "Default `active`. /ztn:lint emits `deprecated` after multi-step CLARIFICATION review." },
         "section_extras":    { "$ref": "#/$defs/section_extras" }
       }
     },
@@ -289,12 +289,12 @@
       "required": ["slug", "type"],
       "properties": {
         "slug": { "type": "string" },
-        "type": { "type": "string", "description": "REFINES | NESTED_UNDER | SUPERSEDES | CONTRADICTS — see ARCHITECTURE.md §6.4.0 graph relationships." }
+        "type": { "type": "string", "description": "REFINES | NESTED_UNDER | SUPERSEDES | CONTRADICTS — constitution graph relationships." }
       }
     },
     "principle_upsert_entry": {
       "type": "object",
-      "description": "Tier 0 constitution principle (axiom / principle / rule). Full schema per SD012 + ARCHITECTURE.md §6.4.0.",
+      "description": "Tier 0 constitution principle (axiom / principle / rule).",
       "required": ["slug", "tier", "origin", "audience_tags", "is_sensitive"],
       "properties": {
         "id":                       { "type": "string", "description": "Stable UUID across syncs (consumer-assigned if absent)." },
@@ -316,7 +316,7 @@
         "applies_in_concepts":      { "$ref": "#/$defs/concept_name_list" },
         "relates_to_principles":    { "type": "array", "items": { "$ref": "#/$defs/principle_relation" } },
         "revision":                 { "type": "integer", "minimum": 1 },
-        "extras":                   { "type": "object", "additionalProperties": true, "description": "Forward-compat jsonb (ARCHITECTURE.md §6.4.0)." },
+        "extras":                   { "type": "object", "additionalProperties": true, "description": "Forward-compat jsonb." },
         "section_extras":           { "$ref": "#/$defs/section_extras" }
       }
     },
@@ -377,7 +377,7 @@
                 "fields": {
                   "type": "object",
                   "additionalProperties": true,
-                  "description": "working_style, goals_work, goals_personal, current_focus_work, current_focus_personal — see ARCHITECTURE.md §6.4.0 SOUL companion."
+                  "description": "working_style, goals_work, goals_personal, current_focus_work, current_focus_personal — see SOUL companion."
                 },
                 "section_extras":  { "$ref": "#/$defs/section_extras" }
               }
@@ -476,7 +476,7 @@
     },
     "tier1_person_entry": {
       "type": "object",
-      "description": "People upserts. Privacy trio NOT required at row level (PEOPLE.md is owner-curated registry — see batch-format.md `Owner-curated registries`); accepted opportunistically. `tier_suggested` is /ztn:maintain's soft suggestion (separate from `tier`) — applied only after owner approval via `/ztn:resolve-clarifications` (ARCHITECTURE.md §8.11.3).",
+      "description": "People upserts. Privacy trio NOT required at row level (PEOPLE.md is owner-curated registry — see batch-format.md `Owner-curated registries`); accepted opportunistically. `tier_suggested` is /ztn:maintain's soft suggestion (separate from `tier`) — applied only after owner approval via `/ztn:resolve-clarifications`.",
       "required": ["id"],
       "properties": {
         "id":                    { "type": "string" },
@@ -633,7 +633,7 @@
         { "$ref": "#/$defs/tier1_entity_base" },
         {
           "type": "object",
-          "description": "Tier 2 lens-observation per ARCHITECTURE.md §8.11.5 + §6.4.2. `identity_fields: [lens_name, observed_on]` — schema documents but does not enforce uniqueness (downstream consumer enforces).",
+          "description": "Tier 2 lens-observation. `identity_fields: [lens_name, observed_on]` — schema documents but does not enforce uniqueness (downstream consumer enforces).",
           "required": ["lens_name", "observed_on", "is_hypothesis"],
           "properties": {
             "id":                       { "type": "string" },
@@ -641,7 +641,7 @@
             "observed_on":              { "type": "string", "description": "YYYY-MM-DD." },
             "observation_period":       { "type": "string", "description": "Free-form: \"last 4 weeks\", \"since 2026-04-01\"." },
             "body_markdown":            { "type": "string" },
-            "is_hypothesis":            { "type": "boolean", "const": true, "description": "Always true — lens output is hypothesis, not fact (ARCHITECTURE.md §8.11.6 invariant 3)." },
+            "is_hypothesis":            { "type": "boolean", "const": true, "description": "Always true — lens output is hypothesis, not fact." },
             "generated_by_lens_run":    { "type": "string", "description": "Reference to entry in `_system/state/agent-lens-runs.jsonl`." },
             "related_concepts":         { "$ref": "#/$defs/concept_name_list" },
             "related_entity_refs":      { "type": "object", "additionalProperties": true, "description": "Free-form jsonb — references to decisions/threads/people analysed." },
@@ -694,7 +694,7 @@
 
     "stats": {
       "type": "object",
-      "description": "Per-skill counters. Per-skill semantics differ — see ARCHITECTURE.md §8.11. Schema accepts unknown keys via additionalProperties so new counters land without a major bump.",
+      "description": "Per-skill counters. Per-skill semantics differ — see the per-skill emission table in README.md. Schema accepts unknown keys via additionalProperties so new counters land without a major bump.",
       "additionalProperties": true
     }
   }

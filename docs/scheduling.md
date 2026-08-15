@@ -297,27 +297,29 @@ own log and can intervene if needed.
 ## How skills reach the scheduler agent
 
 The scheduler agent is just a Claude Code session running your prompt
-body. For the slash invocations (`/ztn:process`, `/ztn:lint`,
-`/ztn:agent-lens --all-due`, `/ztn:sync-data`) to actually fire, ZTN
-skills must be visible in the session's skill registry.
+body. For the slash invocations (`/ztn:sync-data`, `/ztn:process`,
+`/ztn:maintain`, `/ztn:agent-lens --all-due`, `/ztn:lint`,
+`/ztn:content --maintain`, `/ztn:roles`) to actually fire, ZTN skills
+must be visible in the session's skill registry.
 
 - **Cloud Routines / `/schedule`** — clone the repo fresh and look at
-  `.claude/skills/<name>/SKILL.md` at the repo root. The repo ships
-  committed symlinks there pointing into
-  `integrations/claude-code/skills/<name>/`, so all skills load
+  `.claude/skills/<name>/SKILL.md` at the repo root. Your clone ships
+  those as **real files** (see «Skill discovery — the Step 0 preflight»
+  above for why they are not symlinks), so all skills load
   automatically. Nothing to configure.
-- **Local cron / launchd / GitHub Actions** — same `.claude/skills/`
-  symlinks load when the runner has the repo as CWD. If the runner
-  invokes `claude` from a different CWD, also run
+- **Local cron / launchd / GitHub Actions** — the same
+  `.claude/skills/` tree loads when the runner has the repo as CWD. If
+  the runner invokes `claude` from a different CWD, also run
   `bash integrations/claude-code/install.sh` once on the runner so
   user-level `~/.claude/skills/` symlinks cover the case.
 
-The bash helpers under `scripts/scheduler/` (`pin-main.sh`,
-`lock-check.sh`, `stage.sh`, `finalize-tick.sh`, `ship-failure-note.sh`)
+The bash helpers under `scripts/scheduler/` (`ensure-skills.sh`,
+`pin-main.sh`, `lock-check.sh`, `stage.sh`, `finalize-tick.sh`,
+`ship-failure-note.sh`, plus `ensure-roles-deps.sh` for the roles tick)
 are repo-local — every prompt body invokes them via
-`bash scripts/scheduler/<name>.sh`. They handle git plumbing +
-cross-skill lock detection + single-commit delivery so the prompt
-bodies stay thin and identical across the three ticks.
+`bash scripts/scheduler/<name>.sh`. They handle skill-layout preflight +
+git plumbing + cross-skill lock detection + single-commit delivery so the
+prompt bodies stay thin and near-identical across all five ticks.
 
 ## Plug-in — Claude Code `/schedule`
 

@@ -44,8 +44,11 @@ the single home of both the derivation and the reason the base
 directory's name is never assumed. Then:
 
 ```bash
-python3 "$BASE/_system/scripts/roles_run.py" due --base "$BASE" --repo .
+python3 "$BASE/_system/scripts/roles_run.py" due --base "$BASE" --repo "$REPO"
 ```
+
+Both paths absolute, from that same derivation — a bare `.` makes the
+answer depend on where the session happens to stand.
 
 One JSON row per role: `id`, `name`, `due`, `reason`, `status`. This is
 the only enumeration — never glob the roles directory.
@@ -64,8 +67,8 @@ For every role in the roster, read two more things:
 - its `role.md` — the assignment says what it watches; the frontmatter
   says when it wakes and what it may change;
 - the last line of its `log.jsonl` — when it last ran, how it ended
-  (`ok` did work, `idle` found nothing to do, `error` failed), and its
-  one-line note. No log, or no line in it, means no run has ever
+  (`ok` did work, `idle` found nothing to do, `degraded` delivered with
+  part of the job unverified, `error` failed), and its one-line note. No log, or no line in it, means no run has ever
   completed — read the rendering rule below before calling that «new».
 
 A role whose `role.md` is malformed comes back with `status: "unknown"`
@@ -95,6 +98,10 @@ roster:
   in the active group — they are standing, they are just not healthy.
 - **`idle` is not a problem.** A role whose check found nothing to do
   did the right thing. Do not render it as a failure.
+- **`degraded` is neither.** The role ran and delivered; part of its job
+  went unverified. Render it as it is, with the note — folded into «ok»
+  it disappears, and a limit hit every night hollows the role out while
+  the roster still reads healthy.
 - **Never print a bare «never run».** A role with no run history is
   either brand new or its wake-up never comes due — a schedule carrying
   a time of day only fires if a tick runs at or after that hour, and a
@@ -119,7 +126,7 @@ worth naming with `/ztn:role:ask` or `/ztn:role:edit` as the next step.
 
 | Symptom | Cause | What to do |
 |---|---|---|
-| Roster is empty | No roles yet, or the base path is wrong | Offer `/ztn:role:add`; confirm the command ran from the repo root |
+| Roster is empty | No roles yet, or `$BASE` came back empty because the derivation found zero bases or more than one | Offer `/ztn:role:add`; if the derivation did not resolve one base, repeat its reason rather than reporting «no roles» |
 | A role shows as `unknown` | Its `role.md` is malformed | Report it in one line, point at `/ztn:role:edit` |
 | «Last run» is missing for everything | The tick has never run on this machine | Say so plainly — a role only runs where its scheduler runs |
 | One role alone has never run | Brand new, or its wake-up hour never comes due | Name both; `/ztn:role:edit` is where the schedule is settled |

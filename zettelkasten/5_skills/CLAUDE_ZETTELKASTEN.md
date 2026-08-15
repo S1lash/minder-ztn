@@ -6,7 +6,7 @@ tags:
 - type/reference
 - topic/zettelkasten
 - topic/claude-code
-modified: '2026-04-26'
+modified: '2026-08-15'
 ---
 
 # Claude Code: Zettelkasten Quick Reference
@@ -18,20 +18,22 @@ modified: '2026-04-26'
 ### Обязательно прочитать:
 
 ```
-1.  _system/docs/SYSTEM_CONFIG.md         ← Runtime config (форматы, routing, типы)
-2.  5_meta/PROCESSING_PRINCIPLES.md  ← 8 принципов обработки + values profile
-3.  _system/SOUL.md                  ← Identity + Current Focus + Working Style
+0.  _system/docs/ENGINE_DOCTRINE.md        ← Загружается ПЕРВЫМ — обязывающая рамка для всех шагов
+1.  _system/docs/SYSTEM_CONFIG.md          ← Runtime config (форматы, routing, типы)
+2.  5_meta/PROCESSING_PRINCIPLES.md        ← 8 принципов обработки + values profile
+3.  _system/SOUL.md                        ← Identity + Current Focus + Working Style
 4.  _system/views/CURRENT_CONTEXT.md       ← Live state — что актуально сейчас
 5.  _system/state/OPEN_THREADS.md          ← Незакрытые стратегические нити
-6.  3_resources/people/PEOPLE.md     ← Реестр людей (Tier/Mentions/Last)
-7.  1_projects/PROJECTS.md   ← Реестр проектов
-8.  _system/registries/TAGS.md       ← Реестр тегов
+6.  3_resources/people/PEOPLE.md           ← Реестр людей (Tier/Mentions/Last)
+7.  1_projects/PROJECTS.md                 ← Реестр проектов
+8.  _system/registries/TAGS.md             ← Перепись тегов
 9.  _system/registries/CONCEPT_NAMING.md   ← Concept-name format spec (autonomous resolution)
 10. _system/registries/AUDIENCES.md        ← `audience_tags` whitelist (canonical 5 + extensions)
-11. _system/views/HUB_INDEX.md             ← Индекс хабов
-12. _system/views/INDEX.md                 ← Surface catalog (knowledge + archive + constitution + hubs, faceted)
-13. _system/state/PROCESSED.md             ← Что обработано
-14. _system/state/CLARIFICATIONS.md        ← Pending clarifications
+11. _system/registries/DOMAINS.md          ← `domains:` whitelist (canonical 13 + extensions)
+12. _system/registries/SOURCES.md          ← Whitelist источников инбокса
+13. _system/views/HUB_INDEX.md             ← Индекс хабов
+14. _system/state/PROCESSED.md             ← Что обработано
+15. _system/state/CLARIFICATIONS.md        ← Pending clarifications
 ```
 
 ### Pipeline (Steps 0-6):
@@ -47,12 +49,13 @@ modified: '2026-04-26'
    3.4 16-Question Classification (incl. Q14 content potential, Q15 CONCEPTS — translate non-English / never transliterate, Q16 PRIVACY TRIO inference)
    3.5 Create Outputs (records, knowledge notes, hubs, ideas as living docs)
    3.6 Structural Verification (concept format autofix, trio defaults)
-   3.7 Adversarial Source Audit
+   3.7 Self-Review (subagent-internal coverage check)
    3.8 People Profile Enrichment
    3.9 System Updates
+   3.10 Verify Source Integrity
 4. Post-Processing — TASKS, CALENDAR, HUB_INDEX, content potential verification, concepts.upserts aggregation, sensitive_entities aggregation
 5. Completion Gate — mandatory checklist
-5.5 Batch Artifacts — emit `{batch-id}.md` (markdown) + `{batch-id}.json` (manifest via emit_batch_manifest.py)
+5.5 Batch Artifacts — emit `{batch-id}-process.md` (markdown) + `{batch-id}-process.json` (manifest via emit_batch_manifest.py). Суффикс processor'а обязателен — каталог `batches/` общий для process / maintain / lint / agent-lens
 6. Report — текстовый отчёт о processed files + audit stats + clarifications
 ```
 
@@ -77,10 +80,10 @@ modified: '2026-04-26'
 5. **Обновлять registry** при создании новых
 6. **Source section** — ссылка на `_sources/processed/`, НЕ дублирование транскрипта
 7. **Рабочие встречи** → `_records/meetings/` (kind: meeting); **соло Plaud** → `_records/observations/` (kind: observation). НЕ `2_areas/work/meetings/`
-8. **Adversarial audit** — обязателен для КАЖДОГО транскрипта
+8. **Self-review** (3.7) — обязателен для КАЖДОГО транскрипта; целостность источника проверяется отдельно в 3.10
 9. **Идеи** — living documents (поиск существующих перед созданием)
 10. **Люди** — обязательное обогащение профиля при новом контексте
-11. **CLARIFICATIONS HARD RULE** — при `confidence < threshold` не принимать решение молча; писать вопрос в `_system/state/CLARIFICATIONS.md`, использовать conservative default, продолжать работу. **Layer-specific exception:** concept-name format issues и `audience_tags` whitelist mismatches resolves autonomously через `_common.py` нормализаторы — никогда не raise CLARIFICATION (см. ENGINE_DOCTRINE §3.1)
+11. **CLARIFICATIONS HARD RULE** — при `confidence < threshold` не принимать решение молча; писать вопрос в `_system/state/CLARIFICATIONS.md`, использовать conservative default, продолжать работу. **Layer-specific exception:** несколько детерминированных слоёв разрешаются автономно и никогда не поднимают CLARIFICATION — квалифицированный список и три критерия допуска живут в ENGINE_DOCTRINE §3.1, здесь не дублируются
 12. **Privacy trio per entity** — каждый record / knowledge note / hub / person profile / project profile несёт `origin` (personal/work/external) + `audience_tags[]` (canonical 5 + AUDIENCES.md extensions, default `[]`) + `is_sensitive` (bool). Hub trio auto-derived через `recompute_hub_trio` (preserve owner edits)
 
 ---
@@ -90,24 +93,16 @@ modified: '2026-04-26'
 - **Files**: `YYYYMMDD-short-semantic-name.md`
 - **Tags**: `category/specific-tag` (kebab-case OK; **distinct axis** from `concepts:`)
 - **Concepts**: `snake_case_ascii` (English-only; per CONCEPT_NAMING.md). Translation, never transliteration; engine drops on impossibility
-- **People**: `firstname-lastname` (transliterated, lowercase, dash). Bare first name = CLARIFICATION
+- **People**: `firstname-lastname` (transliterated, lowercase, dash). Голое имя без фамилии — НЕ CLARIFICATION: уходит в `_system/state/people-candidates.jsonl`, `/ztn:lint` C.5 еженедельно поднимает только повторяющиеся
 - **Projects**: `short-descriptive-name`
 
 ---
 
 ## Folder Routing
 
-| Type | Folder |
-|------|--------|
-| record (kind: meeting — work meeting) | `_records/meetings/` |
-| record (kind: observation — solo Plaud) | `_records/observations/` |
-| hub | `5_meta/mocs/` |
-| planning | `2_areas/work/planning/` |
-| technical (work) | `2_areas/work/technical/` |
-| technical (ideas) | `3_resources/tech/` |
-| idea | `3_resources/ideas/` |
-| reflection | `2_areas/personal/reflection/` |
-| person | `3_resources/people/` |
+Правила живут в реестре папок — `_system/registries/FOLDERS.md` → `## Routing Rules`.
+Он владеет порядком разрешения и всеми таблицами. Читай их там; если файл
+недоступен — не угадывай папку, подними CLARIFICATION.
 
 ---
 
@@ -121,6 +116,12 @@ modified: '2026-04-26'
 | `/ztn:bootstrap` | One-shot populator системных файлов. Disposable. Три режима: established / fresh-onboarding / mixed |
 | `/ztn:recap` | Session recap → `_sources/inbox/claude-sessions/`; адаптивно сохраняет verbatim-артефакты (тост/письмо/пост) в `_sources/inbox/crafted/` (`--crafted` / `--crafted-only`), двусторонняя связь |
 | `/ztn:search` | Поиск по базе |
+| `/ztn:agent-lens` | Прогон линз «взгляда со стороны» по их каденции → `_system/agent-lens/{id}/{date}.md` |
+| `/ztn:agent-lens-add` | Консьерж создания линзы: разговор на обычном языке → готовая линза (папка + строка в реестре) |
+| `/ztn:capture-candidate` | Append одного кандидата-принципа в `_system/state/principle-candidates.jsonl`. Fire-and-forget, без локов |
+| `/ztn:check-decision` | Проверка решения против активного дерева конституции; вердикт + цитаты + запись Evidence Trail |
+| `/ztn:regen-constitution` | Регенерация производных представлений (CONSTITUTION_INDEX, constitution-core, INDEX, TAGS-зона, SOUL Values) |
+| `/ztn:source-add` | Регистрация нового типа источника: строка в SOURCES.md + парные папки inbox/processed |
 | `/ztn:content` | Status из CONTENT_MAP · `--draft <topic>` · `--maintain` (draft-maintainer: живые черновики в 6_posts/drafts/) |
 | `/ztn:resolve-clarifications` | Interactive разбор очереди CLARIFICATIONS — кластеризация по темам, numbered questions, hypothesis pre-forming против constitution-core, archive resolved |
 | `/ztn:save` | Категоризованный commit + push в `origin`. Owner-friendly обёртка над git, без auto-chain из других скиллов |
@@ -151,7 +152,7 @@ contract`). Всё это живёт в git log. Файл описывает IS,
 → `_system/docs/SYSTEM_CONFIG.md` — runtime config
 → `_system/docs/batch-format.md` — batch output contract
 → `5_meta/CONCEPT.md` — архитектура + ADRs
-→ `5_meta/PROCESSING_PRINCIPLES.md` — 8 принципов обработки
+→ `5_meta/PROCESSING_PRINCIPLES.md` — 8 принципов обработки + `projects:`-ось
 → `~/.claude/skills/ztn-process/SKILL.md` — pipeline /ztn:process
 → `~/.claude/skills/ztn-maintain/SKILL.md` — pipeline /ztn:maintain
 → `~/.claude/skills/ztn-lint/SKILL.md` — pipeline /ztn:lint

@@ -4,8 +4,10 @@
 Runs the generators in dependency order:
     1. gen_constitution_index   → _system/views/CONSTITUTION_INDEX.md
     2. gen_constitution_core    → _system/views/constitution-core.md
-    3. render_soul_values       → _system/SOUL.md auto-zone (between markers)
-    4. render_index             → _system/views/INDEX.md (knowledge + archive + constitution + hubs surface catalog)
+    3. render_index             → _system/views/INDEX.md (knowledge + archive + constitution + hubs surface catalog)
+    4. render_hub_index         → _system/views/HUB_INDEX.md managed zone (hub registry)
+    5. render_tags              → _system/registries/TAGS.md managed zone (`tags:` axis census)
+    6. render_soul_values       → _system/SOUL.md auto-zone (between markers)
 
 Exit status: 0 when every applicable step succeeded — including the documented
 skip of the SOUL step on a base whose SOUL.md has no auto-zone markers yet
@@ -108,7 +110,24 @@ def main(argv: list[str] | None = None) -> int:
         print("regen_all: render_index failed", file=sys.stderr)
         return rc
 
-    # Step 4: SOUL — may be skipped if markers aren't in place yet
+    # Step 4: HUB_INDEX — registry of the hub files on disk. Reads hub
+    # frontmatter only; ordered after INDEX so the two hub surfaces are
+    # rendered from the same tree in one call.
+    rc = _run_step("render_hub_index.py", [], args.dry_run)
+    if rc != 0:
+        print("regen_all: render_hub_index failed", file=sys.stderr)
+        return rc
+
+    # Step 5: TAGS — census of the `tags:` axis. Reads note frontmatter across
+    # the knowledge layer; no dependency on the prior steps. Placed before the
+    # SOUL step because that step returns early on a base without auto-zone
+    # markers, and the tag census must run on such a base too.
+    rc = _run_step("render_tags.py", [], args.dry_run)
+    if rc != 0:
+        print("regen_all: render_tags failed", file=sys.stderr)
+        return rc
+
+    # Step 6: SOUL — may be skipped if markers aren't in place yet
     from _common import system_dir  # local import — avoids polluting module load
     soul_path = system_dir() / "SOUL.md"
     if not _soul_has_markers(soul_path):
