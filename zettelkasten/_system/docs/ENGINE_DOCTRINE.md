@@ -304,6 +304,7 @@ indistinguishable from no lock at all.
 | `_system/state/PROCESSED.md` | `/ztn:process` | yes |
 | `_system/state/agent-lens-runs.jsonl` | `/ztn:agent-lens` | yes |
 | `_system/state/check-decision-runs.jsonl` | `/ztn:check-decision` (run + optional followup lines per invocation) | yes |
+| `_system/state/identity-gate.jsonl` | `identity_gate.py`, from `/ztn:resolve-clarifications` Class I.5 (one line per per-identity residue scan) | yes |
 | `_system/roles/{id}/log.jsonl` | `/ztn:roles` (one line per **executed** run — a role whose cadence has not elapsed writes nothing) | yes |
 | Knowledge note `## Evidence Trail` | every skill that touches the note | yes |
 
@@ -458,9 +459,9 @@ change to integrate. The contract is engine-level, not skill-level.
 - Working memory (`OPEN_THREADS.md` — until focus engine arrives)
 - HITL queues (`CLARIFICATIONS.md`)
 - Audit trails (`log_*.md`, `agent-lens-runs.jsonl`,
-  `check-decision-runs.jsonl`) — owner-internal
-  feedback substrate; consumed by lenses + future cross-source
-  analysis, not by Minder backend
+  `check-decision-runs.jsonl`, `identity-gate.jsonl`) — owner-internal
+  feedback substrate; consumed by lenses, by `/ztn:lint` A.8 (9) and by
+  future cross-source analysis, not by Minder backend
 - Derived/regenerable views (`CURRENT_CONTEXT.md`,
   `lint-context/{daily,monthly}/*`)
 - The cognitive-model hub (`5_meta/mocs/hub-cognitive-model.md`). It is a
@@ -568,6 +569,7 @@ buffers) take the writer named here.
 | `_system/state/principle-candidates.jsonl` | `/ztn:capture-candidate`, `/ztn:bootstrap`, `/ztn:lint` (F.5 archive) | Append-only principle buffer |
 | `_system/state/people-candidates.jsonl` | `/ztn:process`, `/ztn:bootstrap`, `/ztn:lint` (dismiss/archive) | Append-only people buffer |
 | `_system/state/check-decision-runs.jsonl` | `/ztn:check-decision` | Append-only audit substrate (run + followup lines per invocation); consumed by `decision-review` lens + future cross-source autonomy analysis |
+| `_system/state/identity-gate.jsonl` | `identity_gate.py`, from `/ztn:resolve-clarifications` Class I.5 | Append-only record that a per-identity residue scan actually ran — command, exit code, residue count, HEAD. Identity Contract Obligation 4's proof; `/ztn:lint` A.8 (9) matches an archived resolution against a line here rather than against a number the resolution wrote about itself |
 | `_system/views/CURRENT_CONTEXT.md` | `/ztn:bootstrap`, `/ztn:maintain` | Auto-generated focus snapshot |
 | `_system/views/HUB_INDEX.md` | `/ztn:maintain` (rebuild) + `/ztn:process` (additive on hub create) | Hub registry (auto-generated) |
 | `_system/views/INDEX.md` | `/ztn:maintain` (via `render_index.py`) | Surface-line catalog of knowledge + archive + constitution + hubs (auto-generated, faceted by PARA / domains / cross-domain). Records and posts intentionally out of scope — own pipelines |

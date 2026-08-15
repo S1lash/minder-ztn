@@ -52,13 +52,24 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # The base directory name is the owner's choice — resolve it rather than
 # assuming `zettelkasten`, the same way roles_config and the scheduler
 # helpers do.
+# Two candidates is not a case to guess through: the notice below would be
+# computed against the wrong base, and exiting 0 would record this heal as
+# applied and never retry it. Exit 2 leaves it `partial` for the next update.
 BASE_NAME=""
 for d in "$REPO_ROOT"/*/; do
     [ -f "$d/_system/scripts/roles_run.py" ] || continue
-    [ -n "$BASE_NAME" ] && BASE_NAME="" && break
+    if [ -n "$BASE_NAME" ]; then
+        echo "[migration 021] More than one ZTN base here — resolve by hand." >&2
+        exit 2
+    fi
     BASE_NAME="$(basename "${d%/}")"
 done
-[ -z "$BASE_NAME" ] && BASE_NAME="zettelkasten"
+[ -z "$BASE_NAME" ] && [ -d "$REPO_ROOT/zettelkasten" ] && BASE_NAME="zettelkasten"
+
+if [ -z "$BASE_NAME" ]; then
+    echo "021: no ZTN base found — nothing to announce (fresh install)."
+    exit 0
+fi
 
 STATE="$REPO_ROOT/$BASE_NAME/_system/state"
 

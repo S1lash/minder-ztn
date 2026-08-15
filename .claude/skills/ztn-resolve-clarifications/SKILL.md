@@ -1160,8 +1160,17 @@ undone by the next rebuild.
 **I.5 — completion gate (per identity, recorded).** Run exactly:
 
 ```bash
-python3 _system/scripts/identity_audit.py --report --json --fail-on-residue --identity {entity-id}
+python3 _system/scripts/identity_gate.py --identity {entity-id}
 ```
+
+`identity_gate.py` holds no opinion of its own: it shells `identity_audit.py`
+with `--report --json --fail-on-residue --identity {entity-id}` and passes that
+exit code straight through. What it adds is the record — one append-only line in
+`_system/state/identity-gate.jsonl` naming the command, the exit code, the
+residue count and the commit it ran against, and the same line on stdout. That
+line is the difference between a proof and a claim: without it the number in the
+resolution is something the writer said about its own work, and afterwards
+nothing can tell an honest run from a remembered one.
 
 `--identity` is what makes this gate about **this** change: it restricts the
 report, the residue count and the exit code to that identifier's buckets and
@@ -1173,11 +1182,13 @@ not run. **Exit 1 is a failure, never a pass.** Its ordinary causes are a
 mistyped id and a registry row that never landed, and a gate that reads
 «unknown» as «clean» closes the change against nothing.
 
-Copy the invocation and its result into the resolution as `gate: {command,
-exit_code, residue_count}` — from the run's output, never from memory. Identity
-Contract Obligation 4 makes this recorded scan part of the resolution; a
-resolution archived without it is unproven, and `/ztn:lint` A.8 (9) raises
-`identity-gate-unproven` against it.
+Copy `ts`, `command`, `exit_code` and `residue_count` **out of the JSON line the
+gate printed** into the resolution as `gate: {ts, command, exit_code,
+residue_count}` — never from memory, and never `--no-record` here. `ts` is what
+lets `/ztn:lint` A.8 (9) match the archived resolution against the log line
+rather than against a number that appeared in a payload. Identity Contract
+Obligation 4 makes this recorded scan part of the resolution; a resolution
+archived without it is unproven.
 
 - **Exit 0** → the row is final. Archive the item with `Resolution-action:
   entity-retire`, payload `{registry, entity_id, kind, successor | successors,
@@ -1565,12 +1576,13 @@ If clean → print «Working tree clean — nothing to commit». Exit.
   review.** Items tagged `origin: work` or `origin: bootstrap-raw-scan`
   go through the diff gate even if the round logic could otherwise
   auto-archive them. Constitution stays signal-only.
-- **Identity change is interactive-only and gated on a scan.** `entity-retire`
-  and `entity-reclassify` never run under `--auto-mode` or `--dry-run`, and the
-  item is never archived while `identity_audit.py --fail-on-residue --identity
+- **Identity change is interactive-only and gated on a recorded scan.**
+  `entity-retire` and `entity-reclassify` never run under `--auto-mode` or
+  `--dry-run`, and the item is never archived while `identity_gate.py --identity
   {id}` returns anything but 0 — the work stays in the tree and the item stays
-  open. The scan's exit code is recorded in the resolution; nightly A.8 checks
-  both the residue and the record.
+  open. The gate appends its own line to `_system/state/identity-gate.jsonl` and
+  the resolution carries that line's `ts` and exit code; nightly A.8 checks the
+  residue, the record, and that the two agree.
 - **No re-render of stored blocks.** When archiving, the block markdown
   is copied verbatim plus a `**Resolution:**` line. Never normalise
   fields, never strip whitespace — preserves audit trail.

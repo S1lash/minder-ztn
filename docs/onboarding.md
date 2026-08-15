@@ -20,6 +20,9 @@ You'll have a working system. The rest is enrichment.
 
 ## 1. Clone
 
+Replace `<maintainer>/minder-ztn` with the URL of the repo you are reading
+this in — the one whoever shared it with you pointed you at.
+
 ```bash
 gh repo create my-ztn --template <maintainer>/minder-ztn --private --clone
 cd my-ztn

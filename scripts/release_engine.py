@@ -189,10 +189,13 @@ def _copy_deref_symlink(src: Path, dst: Path, dry_run: bool, label: Path) -> int
 
 
 # Lenses that ship `status: draft` to the skeleton even though the maintainer
-# runs them `active` locally, because they are prerequisite-gated: friends lack
-# the source data (biometric records from a health-collector adapter) and an
-# active lens would otherwise burn LLM budget on empty runs. They flip to
-# `active` once the friend wires up the source and opts in.
+# runs them `active` locally, because they are prerequisite-gated: their input
+# comes from a collector the engine does not ship, so a friend's base has no
+# such records at all. The runner has no empty-input short-circuit — it makes
+# the call first and records `status: empty` after — so an active lens over an
+# absent source burns LLM budget on every scheduled run and can only ever
+# return nothing. They flip to `active` once the friend wires up the source
+# and opts in.
 #
 # Identity/values proposers are NOT gated here: `cognitive-model` mines private
 # reflections but only APPENDS to the high-recall `principle-candidates.jsonl`
@@ -205,10 +208,13 @@ def _copy_deref_symlink(src: Path, dst: Path, dry_run: bool, label: Path) -> int
 # provision first). Do NOT add a lens merely because it reads private content —
 # the buffer-append + owner-promotion gate already protects that surface.
 DEMOTE_LENSES_ON_RELEASE: tuple[str, ...] = (
+    # health-collector adapter — biometric records
     "biometric-anomaly-narrator",
     "biometric-cross-domain",
     "training-load-trend",
     "biometric-life-synthesis",
+    # local ActivityWatch collector — computer-usage activity records
+    "time-allocation",
 )
 
 
@@ -390,6 +396,11 @@ def main() -> int:
         for label, script, failure in (
             ("personal-data linter", "check_no_personal_data.py", "linter found leaks"),
             ("portability gate", "check_portability.py", "portability violations found"),
+            # Release is the only moment this can still be fixed cheaply. Once a
+            # version ships, every clone that takes it holds the undeclared file
+            # for good — and a half-declared removal breaks the survivors that
+            # import what was retired.
+            ("retirement gate", "check_retirements.py", "shipped paths deleted but undeclared"),
         ):
             print(f"running {label}...")
             rc = subprocess.run(

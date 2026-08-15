@@ -147,6 +147,7 @@ When engine behaviour changes, these are the docs that must move with it. Drift 
 | `scripts/manifest_paths.py` | Emits one manifest section as LF-separated lines for a shell caller. Exists so `sync_engine.sh` has no inline `python3 - <<'PY'` heredoc on the boundary — that heredoc printed with a bare `print()`, and python's text-mode stdout writes CRLF on Git Bash, which is what made `/ztn:update` silently apply nothing there |
 | `scripts/run_migrations.py` | The migration runner. Honours each migration's declared `# migration-kind:` — a `structural` failure aborts, a `heal` failure is recorded and the update continues. Called by `sync_engine.sh` and by `/ztn:update` |
 | `scripts/check_seed_contract.py` | Seed-contract gate — enforces the contract at release + CI; add a new seed's invariant here if you introduce a new seeding kind |
+| `scripts/check_retirements.py` | Retirement gate — proves every shipped path this engine deleted is declared in `retired:`. Runs in CI and inside `release_engine.py`. Exists because no content scan can see it: the absence of a file is not a file, and a half-declared removal is worse than none — the survivors go on importing what was retired, so the update meant to clean the tree is what breaks it. Refuses on a shallow clone rather than reporting clean |
 | `scripts/retire_paths.py` | Removes what the manifest lists as `retired:`. A sync copies what upstream HAS and cannot express what it no longer has, so without this a deleted module lives on every clone forever. Runs on every update rather than as a one-off migration, so it converges a clone at any version |
 | `.engine-manifest.yml` | Engine boundary; what ships to skeleton. Header comment above `template:` is the **SoT for the seed contract** (strip-seed / skill-seed / layered) |
 | `CONTRIBUTING.md` | Contribution rules |
@@ -178,6 +179,12 @@ python3 scripts/release_engine.py --target /tmp/skeleton-check --dry-run
 # Run after touching `.engine-manifest.yml → template:/seed_skill` or the
 # threshold/config seed files. CI runs it too.
 python3 scripts/check_seed_contract.py
+
+# Retirement gate — every shipped path we deleted is declared in `retired:`,
+# so it actually leaves a friend's clone. Needs full git history; refuses on a
+# shallow checkout instead of passing. Run after deleting or renaming any
+# engine path. CI runs it too.
+python3 scripts/check_retirements.py
 ```
 
 If the change touches a SKILL contract, also bump `integrations/VERSION` (semver). For breaking changes add a migration under `scripts/migrations/NNN-short-slug.sh` (see `scripts/migrations/README.md`).

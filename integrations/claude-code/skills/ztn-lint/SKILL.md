@@ -608,15 +608,31 @@ is bounded by the number of registry rows and never revisits an identifier.
    counted and walked, not so it can be rewritten.
 
 9. **Retirement provenance.** For every `entity-retire` / `entity-reclassify`
-   resolution in `_system/state/CLARIFICATIONS_ARCHIVE.md` whose payload lacks
-   a `gate` block, or carries one with a non-zero `exit_code` →
+   resolution in `_system/state/CLARIFICATIONS_ARCHIVE.md`, the payload's `gate`
+   block must be corroborated by the gate's own record. Raise
    `identity-gate-unproven`, `Subject:` = the entity id, `strong`, never
-   autofixed. Identity Contract Obligation 4 makes the recorded per-identity
-   scan part of the resolution; an archived change that does not carry it was
-   closed on the writer's word. Forward-only — resolutions predating the field
-   are not flagged. This scan is a backstop, not the gate: the gate lives in
-   `/ztn:resolve-clarifications` Class I.5, and the residue itself is caught by
-   (1)–(4) regardless of what any payload claims.
+   autofixed, when any of these holds:
+   - the payload lacks a `gate` block, or its `exit_code` is non-zero;
+   - the payload's `gate` block carries a `ts` and no line in
+     `_system/state/identity-gate.jsonl` matches it on both `identity` == the
+     entity id and `ts` — the payload asserts a scan the gate never recorded;
+   - such a line matches but disagrees with the payload on `exit_code` or
+     `residue_count`.
+
+   The match is the whole point. A payload is written by the same run that did
+   the work, so on its own it is the writer's account of itself; the log line is
+   written by the gate as a side effect of actually running, and afterwards
+   nothing else can distinguish an honest run from a remembered one. Identity
+   Contract Obligation 4 makes that recorded per-identity scan part of the
+   resolution.
+
+   Forward-only, and `gate.ts` is what makes it so. A resolution archived before
+   the gate existed carries a `gate` block with no `ts`, and no log line it
+   could ever match — flagging those would fault a base for the shape its own
+   engine asked of it at the time. Such a block is judged on presence and exit
+   code alone. A matching pair is not flagged either. This scan is a backstop, not the gate: the
+   gate lives in `/ztn:resolve-clarifications` Class I.5, and the residue itself
+   is caught by (1)–(4) regardless of what any payload claims.
 
 **Degradation:** if PROJECTS.md is absent or empty the existence authority is
 missing — identity resolution is skipped entirely, so a friend mid-setup is not

@@ -32,22 +32,34 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
-# The base folder name is the owner's choice, not a constant.
+# The base folder name is the owner's choice, not a constant. Two candidates is
+# not a case to guess through: repairing the wrong base does nothing to the
+# right one, and exiting 0 would record this heal as applied and never retry it.
+# Exit 2 leaves it `partial`, so the next update tries again.
 BASE=""
 for d in */; do
     [ -f "$d/_system/scripts/roles_run.py" ] || continue
-    [ -n "$BASE" ] && BASE="" && break
+    if [ -n "$BASE" ]; then
+        echo "[migration 019] More than one ZTN base here — resolve by hand." >&2
+        exit 2
+    fi
     BASE="${d%/}"
 done
-[ -z "$BASE" ] && BASE="zettelkasten"
+[ -z "$BASE" ] && [ -d "zettelkasten" ] && BASE="zettelkasten"
 
-if [ ! -d "$BASE/_system" ]; then
+if [ -z "$BASE" ] || [ ! -d "$BASE/_system" ]; then
     echo "019-portability-repair: no ZTN base found — nothing to repair (fresh install)."
     exit 0
 fi
 
 SCRIPTS="$BASE/_system/scripts"
 BATCHES="$BASE/_system/state/batches"
+
+# Set when a step fails. The ledger records a non-zero `heal` as `partial` and
+# retries it next update; exit 0 records `applied` and it never runs again. So
+# a step that failed must not be reported through a zero exit — that is the
+# script telling the ledger a story about itself.
+FAILED=0
 
 # --- 1. Finish the manifest retrofit ----------------------------------------
 if [ -d "$BATCHES" ] && [ -f "$SCRIPTS/rewrite_manifest_violations.py" ]; then
@@ -58,6 +70,7 @@ if [ -d "$BATCHES" ] && [ -f "$SCRIPTS/rewrite_manifest_violations.py" ]; then
     else
         echo "019-portability-repair: manifest retrofit reported failures (see above)." >&2
         echo "  Nothing is lost; the update continues and this migration is retried next time." >&2
+        FAILED=1
     fi
 else
     echo "019-portability-repair: no batches to retrofit."
@@ -73,6 +86,7 @@ case "$(uname -s 2>/dev/null || echo unknown)" in
             else
                 echo "019-portability-repair: installer reported a problem (see above)." >&2
                 echo "  Re-run it by hand: bash integrations/claude-code/install.sh" >&2
+                FAILED=1
             fi
         fi
         ;;
@@ -80,5 +94,11 @@ case "$(uname -s 2>/dev/null || echo unknown)" in
         echo "019-portability-repair: not Git Bash — installer re-run not needed."
         ;;
 esac
+
+# 2, not 1: `partial` in the ledger, retried next update — which is what the
+# messages above promise the reader.
+if [ "$FAILED" -ne 0 ]; then
+    exit 2
+fi
 
 exit 0

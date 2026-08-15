@@ -2,6 +2,63 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.63.0 — Files this engine deleted finally leave your clone, and a proof stops being a claim
+
+An update copies what the engine HAS. There is no way for it to say what the
+engine no longer has — so removing a file upstream does nothing to your copy
+unless the removal is declared. Forty-three deletions were never declared, and
+the survivors have been sitting on every clone that ever received them.
+
+**A removal that was declared in half is the one that actually hurts.** The
+roles subsystem was replaced wholesale, and about half of it was marked for
+removal. Six modules that were not marked import one that was. On a clone
+carrying that generation, updating would have deleted the imported half and
+kept the importers — turning a tree that was merely dead into one where the
+test suite cannot even start collecting. All forty-five are declared now, so
+the next update clears them.
+
+**And the quiet version of that hole is now closed.** Every other check this
+engine runs reasons about files it has — it scans them for leaks, for
+portability, for seed shape. None of them can see a deletion, because the
+absence of a file is not a file. There is now a check that compares the
+engine's own history against what it declared: delete a shipped file without
+declaring it and the release fails, whether or not you removed its manifest
+line in the same commit. It is not a proof against every way a file can stop
+shipping — rewriting history out from under it still hides one — but it closes
+the ordinary way, which is the way this happened. On a truncated clone it
+refuses outright instead of finding nothing and calling that clean.
+
+**Retiring a name now leaves evidence, not testimony.** When you merge or
+rename a project or a person, the change closes only against a scan proving no
+mention of the old name survives. Until now that proof was a number written
+into the record by the same run that did the work — a claim about itself,
+indistinguishable afterwards from a fact. The scan now writes its own line as
+a side effect of actually running, and the nightly check matches the record
+against that line rather than against the number. A resolution that asserts a
+scan which never happened is now visible.
+
+**Three repairs stopped claiming a success they could not prove.** If a repair
+could not tell which folder held your base, it guessed, announced that there
+was nothing to do, and marked itself permanently done — so the thing it was
+meant to fix survived and was never looked at again. One of them did the same
+after a repair step actually failed, while printing that it would be retried.
+They now say they could not tell, and are retried. Note the limit honestly: a
+repair already recorded as done is never re-run, so on a clone that already
+hit this, the fix arrives but does not reach backwards. What it protects is
+every clone from here on.
+
+**A lens that cannot have anything to read ships off.** The computer-usage
+rhythm lens needs records from a collector that is not part of this engine.
+Left on, it made a scheduled call every week that could only ever come back
+empty. It now arrives as a draft, like the biometric lenses, and turns on when
+you wire up the source. One wrinkle it shares with them: the lens registry is
+engine-owned, so switching it back to active is undone by your next update
+until you re-apply it.
+
+**The quickstart says out loud that it is a placeholder.** The first command
+in the README and in onboarding names a repository that does not exist; now it
+tells you to put your own there first.
+
 ## 0.62.0 — The checks that kept telling you everything was fine now actually look
 
 An audit read every engine document against the code behind it. Almost every

@@ -51,6 +51,7 @@ are owner-gated; the engine never silently elevates.
 
 ```bash
 # 1. Create your own ZTN repo from this template
+#    Replace <maintainer>/minder-ztn with this repo's own URL
 gh repo create my-ztn --template <maintainer>/minder-ztn --private --clone
 cd my-ztn
 

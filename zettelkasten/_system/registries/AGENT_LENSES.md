@@ -75,7 +75,6 @@ will be visible in `global-navigator` as gaps.
 | global-navigator | Global Navigator | meta | lens-outputs | weekly (mon) | longitudinal | active |
 | weekly-insights | Weekly Insights | meta | multi-source | weekly (mon) | longitudinal | active |
 | content-synthesis | Content Synthesis | meta | multi-source | weekly (mon) | longitudinal | active |
-| time-allocation | Time Allocation (computer-usage rhythm) | mechanical | records | weekly (mon) | longitudinal | active |
 | cognitive-model | Cognitive Model | psyche | records | biweekly (mon) | longitudinal | active |
 | opportunity | Opportunity | psyche | multi-source | weekly (fri) | longitudinal | active |
 
@@ -87,6 +86,7 @@ will be visible in `global-navigator` as gaps.
 | biometric-cross-domain | Biometric Cross-Domain | psyche | records | weekly (thu) | longitudinal | draft |
 | training-load-trend | Training Load Trend | mechanical | records | weekly (mon) | longitudinal | draft |
 | biometric-life-synthesis | Biometric × Life Synthesis | meta | multi-source | weekly (mon) | longitudinal | draft |
+| time-allocation | Time Allocation (computer-usage rhythm) | mechanical | records | weekly (mon) | longitudinal | draft |
 
 ## Lens summaries
 

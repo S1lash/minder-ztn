@@ -32,13 +32,25 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # The base directory name is the owner's choice — resolve it rather than
 # assuming `zettelkasten`, the same way roles_config and the scheduler
 # helpers do.
+# Two candidates is not a case to guess through: the dead log would be looked
+# for in the wrong base and reported absent, and exiting 0 would record this
+# heal as applied — so the real log survives forever. Exit 2 leaves it
+# `partial` for the next update.
 BASE_NAME=""
 for d in "$REPO_ROOT"/*/; do
     [ -f "$d/_system/scripts/roles_run.py" ] || continue
-    [ -n "$BASE_NAME" ] && BASE_NAME="" && break
+    if [ -n "$BASE_NAME" ]; then
+        echo "[migration 022] More than one ZTN base here — resolve by hand." >&2
+        exit 2
+    fi
     BASE_NAME="$(basename "${d%/}")"
 done
-[ -z "$BASE_NAME" ] && BASE_NAME="zettelkasten"
+[ -z "$BASE_NAME" ] && [ -d "$REPO_ROOT/zettelkasten" ] && BASE_NAME="zettelkasten"
+
+if [ -z "$BASE_NAME" ]; then
+    echo "022: no ZTN base found — nothing to retire (fresh install)."
+    exit 0
+fi
 
 DEAD_LOG="$REPO_ROOT/$BASE_NAME/_system/state/log_roles.md"
 

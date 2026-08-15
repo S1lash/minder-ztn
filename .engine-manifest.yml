@@ -396,31 +396,51 @@ retired:
   # 0.49.0 still carries every one of them — dead modules beside the live
   # `roles_*.py`, and dead tests that pytest still collects.
   - zettelkasten/_system/roles/_frame.md
-  - zettelkasten/_system/roles/ROLES_STATUS.md
   - zettelkasten/_system/scripts/minder_query.py
   - zettelkasten/_system/scripts/render_roles_registry.py
   - zettelkasten/_system/scripts/role_state_hash.py
+  - zettelkasten/_system/scripts/roles_act.py
+  - zettelkasten/_system/scripts/roles_activity.py
   - zettelkasten/_system/scripts/roles_archetype_assessment.py
   - zettelkasten/_system/scripts/roles_archetype_ledger.py
   - zettelkasten/_system/scripts/roles_archetype_metrics.py
   - zettelkasten/_system/scripts/roles_archetype_narrative.py
   - zettelkasten/_system/scripts/roles_archetype_registry.py
   - zettelkasten/_system/scripts/roles_archetype_stance.py
+  - zettelkasten/_system/scripts/roles_budget.py
   - zettelkasten/_system/scripts/roles_common.py
+  - zettelkasten/_system/scripts/roles_inbox.py
+  - zettelkasten/_system/scripts/roles_mandate.py
   - zettelkasten/_system/scripts/roles_persist.py
+  - zettelkasten/_system/scripts/roles_tool_http.py
+  - zettelkasten/_system/scripts/roles_tool_mcp.py
+  - zettelkasten/_system/scripts/roles_tool_stage.py
+  - zettelkasten/_system/scripts/roles_tools.py
+  - zettelkasten/_system/scripts/roles_triggers.py
   - zettelkasten/_system/scripts/tests/test_minder_query.py
+  - zettelkasten/_system/scripts/tests/test_minder_query_lock.py
   - zettelkasten/_system/scripts/tests/test_render_roles_registry.py
   - zettelkasten/_system/scripts/tests/test_role_state_hash.py
+  - zettelkasten/_system/scripts/tests/test_roles_act.py
+  - zettelkasten/_system/scripts/tests/test_roles_activity.py
   - zettelkasten/_system/scripts/tests/test_roles_assessment.py
+  - zettelkasten/_system/scripts/tests/test_roles_budget.py
   - zettelkasten/_system/scripts/tests/test_roles_common.py
   - zettelkasten/_system/scripts/tests/test_roles_composite.py
+  - zettelkasten/_system/scripts/tests/test_roles_inbox.py
   - zettelkasten/_system/scripts/tests/test_roles_ledger.py
   - zettelkasten/_system/scripts/tests/test_roles_metrics.py
   - zettelkasten/_system/scripts/tests/test_roles_narrative.py
   - zettelkasten/_system/scripts/tests/test_roles_parts_seam.py
   - zettelkasten/_system/scripts/tests/test_roles_persist.py
+  - zettelkasten/_system/scripts/tests/test_roles_persist_acts.py
   - zettelkasten/_system/scripts/tests/test_roles_registry.py
   - zettelkasten/_system/scripts/tests/test_roles_stance.py
+  - zettelkasten/_system/scripts/tests/test_roles_tool_http.py
+  - zettelkasten/_system/scripts/tests/test_roles_tool_stage.py
+  - zettelkasten/_system/scripts/tests/test_roles_tools.py
+  - zettelkasten/_system/scripts/tests/test_roles_tools_schema.py
+  - zettelkasten/_system/scripts/tests/test_roles_triggers.py
   # Superseded by the identity contract. The project-card genre it taught no
   # longer exists — a project's canonical node is its hub, so a clone that
   # keeps this template keeps being told to create the one shape the contract
@@ -430,3 +450,49 @@ retired:
   - zettelkasten/5_meta/templates/project-template.md
   - zettelkasten/_system/scripts/lint_projects_array.py
   - zettelkasten/_system/scripts/tests/test_lint_projects_array.py
+
+  # Skills the engine no longer has. `release_engine.py` dereferences the
+  # `.claude/skills/` symlinks into real directories, so a clone that adopted
+  # them keeps a discoverable slash-command whose pipeline is gone — Claude
+  # Code goes on offering it, and the SKILL.md it reads describes a contract
+  # nothing honours.
+  - .claude/skills/ztn-check-content
+  - .claude/skills/ztn-sync-pull
+  - integrations/claude-code/skills/ztn-backfill-concepts/SKILL.md
+  - integrations/claude-code/skills/ztn-check-content/SKILL.md
+  - integrations/claude-code/skills/ztn-sync-pull/SKILL.md
+  - zettelkasten/_system/scripts/backfill_concepts_lib.py
+  - zettelkasten/_system/scripts/tests/test_backfill_concepts_lib.py
+  - zettelkasten/_system/scripts/tests/test_plugin_host.py
+  - zettelkasten/_system/scripts/tests/test_plugin_host_sync_pull.py
+
+  # Scheduler shape that was replaced wholesale. A stale prompt is worse than
+  # a missing one: a scheduler still pointed at it runs the old pipeline
+  # against the current base, and the save scripts it calls no longer match
+  # how a tick commits.
+  - integrations/claude-code/scheduler-prompts/agent-lens-scheduled.md
+  - integrations/claude-code/scheduler-prompts/nightly-combined.md
+  - integrations/claude-code/scheduler-prompts/resolve-auto.md
+  - scripts/scheduler-fallback-save.sh
+  - scripts/scheduler/cleanup-sandbox.sh
+  - scripts/scheduler/recover-stranded.sh
+  - scripts/scheduler/save.sh
+
+  # One-off data migrations that have since moved, and the spec of a derived
+  # shape the engine no longer renders. Left in place they are runnable
+  # scripts that rewrite frontmatter to a schema the current pipeline does
+  # not use.
+  - zettelkasten/_system/docs/derived-chronological-map-spec.md
+  - zettelkasten/_system/scripts/migrate_legacy_frontmatter.py
+  - zettelkasten/_system/scripts/tests/test_migrate_legacy_frontmatter.py
+
+  # The plugin system, paused. Its production surface was removed from the
+  # engine; a clone that took it keeps a dispatcher and an adapter contract
+  # for a subsystem nothing drives, and a registry the engine no longer reads.
+  - zettelkasten/_system/plugins
+  - zettelkasten/_system/registries/TOOLS.template.md
+
+  # The MCP integration under its former name. It ships now as
+  # `integrations/minder-ztn-mcp/`; the old directory left behind is a second
+  # copy of instructions that no longer match the tool.
+  - integrations/claude-mcp
