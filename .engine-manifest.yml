@@ -212,6 +212,10 @@ template:
   # System layer
   - zettelkasten/_system/SOUL.template.md
   - zettelkasten/_system/long-form-playbook.template.md
+  # On-demand protocol for decisions with a third party / high stakes /
+  # irreversibility. Seeds once, then becomes the friend's own file —
+  # the hot stance it implements is engine (`_system/docs/advisory-baseline.md`).
+  - zettelkasten/_system/decision-advisory-playbook.template.md
   - zettelkasten/_system/TASKS.template.md
   - zettelkasten/_system/CALENDAR.template.md
   - zettelkasten/_system/POSTS.template.md
@@ -320,6 +324,7 @@ exclude:
   # Live system files (templates ship instead)
   - zettelkasten/_system/SOUL.md
   - zettelkasten/_system/long-form-playbook.md
+  - zettelkasten/_system/decision-advisory-playbook.md
   - zettelkasten/_system/TASKS.md
   - zettelkasten/_system/CALENDAR.md
   - zettelkasten/_system/POSTS.md

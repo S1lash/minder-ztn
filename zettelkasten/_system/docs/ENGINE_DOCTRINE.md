@@ -425,13 +425,16 @@ by top-level `processor` field. It carries:
   projects,content}`, `tier2_objects.{inventory,wardrobe,
   lens-observation,biometric,activity,...}`, `concepts`, `constitution.principles`,
   `constitution.constitution_core_view`, `constitution.soul`)
-  - Note: the universal `communication-baseline` (engine behavioral floor at
-    `_system/docs/communication-baseline.md`) is part of the Tier-0 behavioral
-    contract an actor needs, but is NOT emitted — the owner's deltas reach
-    actors via `constitution_core_view`, the universal floor does not. When the
-    first actor consumer exists, carry it via
-    `constitution.section_extras.communication_baseline` (a MINOR add).
-    Deferred-not-dropped: emitting it with no consumer is speculative plumbing.
+  - Note: the two universal baselines (engine behavioral floors at
+    `_system/docs/communication-baseline.md` — how a result is presented — and
+    `_system/docs/advisory-baseline.md` — how it is reached) are part of the
+    Tier-0 behavioral contract an actor needs, but neither is emitted — the
+    owner's deltas reach actors via `constitution_core_view`, the universal
+    floors do not. When the first actor consumer exists, carry them via
+    `constitution.section_extras.communication_baseline` /
+    `.advisory_baseline` (a MINOR add each).
+    Deferred-not-dropped: emitting them with no consumer is speculative
+    plumbing.
 - Privacy trio per entity: `origin`, `audience_tags`, `is_sensitive`
   (defaults `personal / [] / false`)
 - Format version (`format_version: "MAJOR.MINOR"`) for evolution
@@ -545,6 +548,35 @@ overwritten without diffing for what the owner put there, and a credential
 found in an unexpected place is carried forward intact before anything else is
 discussed. An automated change that silently drops one of these breaks a system
 the engine cannot see and did not build.
+
+### 3.11 Build the reference result; report the difference
+
+Two rules that read as opposites and are not, because they govern different
+halves of the same delivery. Getting them backwards is the common case, and it
+degrades the engine from both ends at once.
+
+**What is built is the reference result for here and now, not a patch on the
+last one.** When a mechanism is reworked, the target is what it should be given
+everything now known — not the smallest edit that closes the immediate
+complaint. A shape kept only because replacing it would enlarge the diff is
+technical debt that the diff itself concealed; ten such increments produce a
+component nobody designed, whose current form no document explains. This is why
+the engine ships migrations, retirement declarations and a seed contract at
+all: they exist precisely so a component CAN be replaced rather than patched
+forever, and a change that avoids them to stay small is avoiding the mechanism
+built for it.
+
+**What is reported is the difference from what the reader already holds.** The
+reader has read the previous version; its shape is in their head. Handing them
+a fresh full text and letting them re-derive what moved charges them twice for
+one change, and the second charge buys nothing. So the report leads with what
+was kept, what was refined, what was rejected and on what grounds, and what is
+newly proposed — each against the state they already know. The presentation
+contract for this is in `communication-baseline`.
+
+The two never trade against each other. «The diff would be large» is not a
+reason to build less; «the result is new» is not a reason to report it as if
+nothing preceded it.
 
 ---
 

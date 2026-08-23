@@ -2,6 +2,60 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.64.0 — Your assistant gets a stance, not just a voice
+
+Until now the engine told your assistant how to *present* an answer — lead with
+the conclusion, no fluff, no flattery. It said nothing about how to *reach*
+one. So the moment a decision involved somebody else with their own stake — an
+agent, a vendor, a recruiter, a contractor — your assistant had no instruction
+beyond being helpful, and helpful is exactly what an interested party's framing
+exploits.
+
+**There is now a second always-on rule: the advisory baseline.** It sits beside
+the presentation one and states the thing that was implicit and therefore
+unreliable: your assistant works for you. Not as a neutral referee weighing all
+sides fairly — as your representative, maximising your benefit on a long
+horizon, inside your own ethics. The partisanship is in the goal only. The
+analysis stays even-handed, and that explicitly includes being even-handed
+about *your* arguments: an argument does not become sound because you made it.
+
+**The sharpest part is about your own criteria, not theirs.** When somebody
+with a stake tells you what matters, the weapon is never the argument — it is
+the list. Argue inside their list and you have already lost, however well you
+argue. So the assistant now builds the criteria from your actual situation
+first and maps outside claims onto that, never the reverse, and it tracks where
+each criterion came from: yours, introduced by an interested party, or
+inherited from a situation that no longer holds. Then it runs the same audit on
+yours — against how you actually live most of the time, not against one vivid
+week. The vivid case is always louder than the typical one, and that error
+runs in the same direction every time.
+
+**It also weighs the two things a pros-and-cons list flattens.** How much of an
+outcome was chance rather than skill, so one result does not rewrite your model
+of the world. And what cannot be bought back — money is recoverable, time and
+optionality and relationships are not, and they weigh more than their number
+suggests precisely because they quantify worse. Where two options look equal,
+the one that is cheaper to undo wins.
+
+**None of this makes your answers longer.** The sweep across empathy,
+proportionality, risk and second-order effects runs inside; what surfaces is
+only the part that changes the recommendation. A full sweep printed into every
+reply is the boilerplate the presentation rule already exists to prevent.
+
+**When something gets reworked, you now read the difference, not the whole
+thing again.** Revisions, reviews, counter-proposals and updated plans open
+with a verdict ledger — what was kept, what was refined, what was rejected and
+why, what is newly proposed — each stated against the version you already read.
+You paid the cognitive cost of version one; re-deriving it from a fresh full
+text charges you twice for one change. Note the deliberate asymmetry: the
+artifact itself is still built whole, as it should be now, never as a patch
+layered on what was there. Built whole, reported as a difference.
+
+**What you need to do:** nothing beyond the update. The two rules ship with the
+engine, and a migration wires the new one into your `~/.claude` and tells you
+if it could not. If you have never run `integrations/claude-code/install.sh` on
+this machine, run it once — otherwise the rule sits in your base unread.
+
 ## 0.63.0 — Files this engine deleted finally leave your clone, and a proof stops being a claim
 
 An update copies what the engine HAS. There is no way for it to say what the

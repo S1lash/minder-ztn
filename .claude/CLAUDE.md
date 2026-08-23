@@ -58,7 +58,7 @@ Notably **not** engine, though they sit beside these: `AGENTS.md` (the Codex-fac
 | `zettelkasten/0_constitution/{axiom,principle,rule}/` | `/ztn:capture-candidate` → `/ztn:lint` F.5 promotion → `/ztn:regen-constitution` |
 | `zettelkasten/{1_projects,2_areas,3_resources,4_archive}/` (excluding READMEs) | `/ztn:process`, `/ztn:maintain` |
 | `zettelkasten/5_meta/mocs/`, `zettelkasten/6_posts/` | `/ztn:maintain` (incl. `hub-cognitive-model.md`: its `<!-- AUTO-GENERATED: cognitive-model-hub -->` zone is rendered by `render_cognitive_model_hub.py` Step 7.9 — never hand-edit the table; the prose «portrait» above the markers is owner-curated) |
-| `zettelkasten/_system/{SOUL,POSTS,long-form-playbook}.md` | owner-curated; engine reads, surfaces clarifications, never silently overwrites |
+| `zettelkasten/_system/{SOUL,POSTS,long-form-playbook,decision-advisory-playbook}.md` | owner-curated; engine reads, surfaces clarifications, never silently overwrites |
 | `zettelkasten/_system/{TASKS,CALENDAR}.md` | `/ztn:process` — derived aggregates over note `- [ ]` / `📅` items (owner owns only the TASKS `## Stale` section). Not hand-edited; completeness enforced by `reconcile_tasks.py` / `reconcile_calendar.py` |
 | `zettelkasten/_system/registries/{TAGS,SOURCES}.md` | `/ztn:maintain`, `/ztn:lint` |
 | `zettelkasten/3_resources/people/PEOPLE.md` | `/ztn:process` (rows + mentions), `/ztn:bootstrap`, `/ztn:lint` (dedup/audit); tier only via `/ztn:resolve-clarifications` |
@@ -140,7 +140,8 @@ When engine behaviour changes, these are the docs that must move with it. Drift 
 | `zettelkasten/_system/docs/manifest-schema/fixtures/` | Per-skill sanitized example manifests; regression test for schema evolution — schema changes MUST keep these validating |
 | `zettelkasten/_system/docs/batch-format.md` | Markdown batch-summary format (`{ts}-{skill}.md` next to each JSON manifest); narrative side only — JSON contract canonical lives in `manifest-schema/` |
 | `zettelkasten/_system/docs/constitution-capture.md` | In-the-moment capture trigger spec |
-| `zettelkasten/_system/docs/communication-baseline.md` | Universal presentation spine; hot-loaded into every session (symlinked to `~/.claude/rules/`) |
+| `zettelkasten/_system/docs/communication-baseline.md` | Universal presentation spine — how a result is DELIVERED; hot-loaded into every session (symlinked to `~/.claude/rules/`) |
+| `zettelkasten/_system/docs/advisory-baseline.md` | Universal reasoning spine — how a result is REACHED: objective function, advocate-with-unbiased-instrument, interested-party ledger, criteria provenance + regime test, sweep gate, variance and irreversibility. Hot-loaded beside its sibling. Owner deltas layer on top in their `ai-interaction` principles; the heavy protocol is the owner's on-demand `_system/decision-advisory-playbook.md` |
 | `zettelkasten/_system/docs/harness-setup.md` | Harness setup |
 | `zettelkasten/5_meta/CONCEPT.md` | Three-layer model; long-form philosophy |
 | `zettelkasten/5_meta/PROCESSING_PRINCIPLES.md` | The 8 processing principles |

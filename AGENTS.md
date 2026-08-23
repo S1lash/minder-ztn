@@ -60,7 +60,7 @@ When you find these in conflict, the higher one wins. When a rule is absent ever
 | `zettelkasten/0_constitution/{axiom,principle,rule}/` | `/ztn:capture-candidate` → `/ztn:lint` F.5 promotion → `/ztn:regen-constitution` |
 | `zettelkasten/{1_projects,2_areas,3_resources,4_archive}/` (excluding READMEs) | `/ztn:process`, `/ztn:maintain` |
 | `zettelkasten/5_meta/mocs/`, `zettelkasten/6_posts/` | `/ztn:maintain` (incl. `hub-cognitive-model.md`: only the zone between the `<!-- AUTO-GENERATED: cognitive-model-hub -->` markers, rendered by `render_cognitive_model_hub.py` Step 7.9 — the prose «portrait» above them is owner-curated) |
-| `zettelkasten/_system/{SOUL,POSTS,long-form-playbook}.md` | owner-curated; engine reads, surfaces clarifications, never silently overwrites |
+| `zettelkasten/_system/{SOUL,POSTS,long-form-playbook,decision-advisory-playbook}.md` | owner-curated; engine reads, surfaces clarifications, never silently overwrites |
 | `zettelkasten/_system/{TASKS,CALENDAR}.md` | `/ztn:process` — derived aggregates over note `- [ ]` / `📅` items (owner owns only the TASKS `## Stale` section). Not hand-edited; completeness enforced by `reconcile_tasks.py` / `reconcile_calendar.py` |
 | `zettelkasten/_system/registries/{TAGS,SOURCES}.md` | `/ztn:maintain`, `/ztn:lint` |
 | `zettelkasten/3_resources/people/PEOPLE.md` | `/ztn:process` (rows + mentions), `/ztn:bootstrap`, `/ztn:lint` (dedup/audit); tier only via `/ztn:resolve-clarifications`, and the `## Removed` retirement section only via `/ztn:resolve-clarifications` + owner, per Identity Contract |
@@ -138,6 +138,8 @@ When engine behaviour changes, these are the docs that must move with it. Drift 
 | `zettelkasten/_system/registries/CONCEPT_NAMING.md` | Canonical concept-name format (snake_case ASCII; rules + normalisation algorithm + heuristics) |
 | `zettelkasten/_system/registries/AUDIENCES.md` | `audience_tags` privacy whitelist (canonical five + owner extensions + spec) |
 | `zettelkasten/_system/registries/AGENT_LENSES.md` | Agent-lens registry + frame contract |
+| `zettelkasten/_system/docs/communication-baseline.md` | Universal presentation spine — how a result is DELIVERED; hot-loaded into every session (symlinked to `~/.claude/rules/`) |
+| `zettelkasten/_system/docs/advisory-baseline.md` | Universal reasoning spine — how a result is REACHED: objective function, advocate-with-unbiased-instrument, interested-party ledger, criteria provenance + regime test, sweep gate, variance and irreversibility. Hot-loaded beside its sibling. Owner deltas layer on top in their `ai-interaction` principles; the heavy protocol is the owner's on-demand `_system/decision-advisory-playbook.md` |
 | `zettelkasten/_system/roles/_run-frame.md` | The per-run mechanics handed to every role — allowed writes, credentials, the two-line return |
 | `zettelkasten/_system/roles/_minder.md` | How a role uses the base — layer shapes, registries, the inbox-note shape `/ztn:process` picks up |
 | `zettelkasten/5_skills/CLAUDE_ZETTELKASTEN.md`, `zettelkasten/5_skills/ztn-*.md` | Engine quick-reference cards |

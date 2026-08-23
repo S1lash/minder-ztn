@@ -167,6 +167,12 @@ link "$MINDER_ZTN_BASE/_system/views/constitution-core.md" "$TARGET_RULES/consti
 # Communication baseline — universal presentation spine, hot in every session.
 # Owner's calibration layers on top: SOUL → Context for Agents + the long-form playbook.
 link "$MINDER_ZTN_BASE/_system/docs/communication-baseline.md" "$TARGET_RULES/communication-baseline.md"
+# Advisory baseline — universal reasoning spine (objective, stance toward third
+# parties, criteria, variance). Sibling of the presentation spine above: that one
+# governs how an answer is delivered, this one how it is reached. Owner's
+# calibration layers on top: their ai-interaction principles + the on-demand
+# decision-advisory playbook.
+link "$MINDER_ZTN_BASE/_system/docs/advisory-baseline.md" "$TARGET_RULES/advisory-baseline.md"
 # Engine doctrine — operating philosophy auto-loaded in every session.
 # Every /ztn:* skill reads it; the symlink ensures it flows into ad-hoc
 # Claude Code sessions in this repo too (e.g. when owner is debugging
@@ -232,6 +238,9 @@ $BEGIN_MARK
 ## Communication baseline — how to present information
 - @~/.claude/rules/communication-baseline.md
 
+## Advisory baseline — how to reason, weigh, and advise
+- @~/.claude/rules/advisory-baseline.md
+
 ## Constitution — auto-loaded values & principles
 - @~/.claude/rules/constitution-core.md
 $END_MARK
@@ -288,6 +297,7 @@ Wired into ~/.claude/CLAUDE.md (managed block):
   - @~/.claude/rules/ztn.md                    (search triggers, decision-check discovery)
   - @~/.claude/rules/constitution-capture.md   (global capture hook)
   - @~/.claude/rules/communication-baseline.md (universal presentation spine)
+  - @~/.claude/rules/advisory-baseline.md      (universal reasoning spine)
   - @~/.claude/rules/constitution-core.md      (axioms / principles / rules)
 
 Obsidian vault config:

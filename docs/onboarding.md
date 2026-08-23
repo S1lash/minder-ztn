@@ -227,14 +227,22 @@ calling `claude` headless.
 ## 10. (Optional) Tune how the assistant talks to you
 
 After install the assistant already answers you **conclusion-first, no fluff,
-and stays critical** by default — the shipped *communication baseline*. You
-don't have to do anything for it.
+and stays critical** by default — the shipped *communication baseline*. And it
+already works *for you* rather than refereeing between you and the world — the
+shipped *advisory baseline*: it treats a claim from someone with a stake in the
+outcome as a claim rather than a fact, builds the decision criteria from your
+situation before adopting anyone else's list, and checks your own criteria
+against how you actually live rather than one vivid week. You don't have to do
+anything for either.
 
 To make it yours: put how you like praise and criticism in
-`zettelkasten/_system/SOUL.md → ## Context for Agents`, and your recipe for long
+`zettelkasten/_system/SOUL.md → ## Context for Agents`, your recipe for long
 pieces (reports, audiobooks, debriefs) in
-`zettelkasten/_system/long-form-playbook.md` (loaded on demand, only for an
-actual long-form piece). Both ship with filled examples.
+`zettelkasten/_system/long-form-playbook.md`, and how you want a decision with
+someone else's interest in it worked through in
+`zettelkasten/_system/decision-advisory-playbook.md`. Both playbooks load on
+demand — only for an actual long piece or an actual decision — so an ordinary
+answer never pays for them. All three ship with filled examples.
 
 The assistant also *learns* your style over time through the `cognitive-model`
 lens, which is **on by default**. Every other Monday it reads your own

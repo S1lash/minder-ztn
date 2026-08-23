@@ -125,7 +125,8 @@ touch:
   `6_posts/` — your knowledge notes (the PARA layout, except the
   README explainers).
 - `0_constitution/{axiom,principle,rule}/` — your personal principles.
-- `_system/SOUL.md`, `long-form-playbook.md`, `TASKS.md`,
+- `_system/SOUL.md`, `long-form-playbook.md`,
+  `decision-advisory-playbook.md`, `TASKS.md`,
   `CALENDAR.md`, `POSTS.md`, and the registries (`PEOPLE.md`,
   `PROJECTS.md`, `TAGS.md`, `SOURCES.md`, `AUDIENCES.md`,
   `DOMAINS.md`) — each seeded once from its `.template` sibling and
