@@ -3,8 +3,10 @@ name: ztn:check-decision
 description: >
   Check a pending decision or observed behaviour against the active
   constitution tree at 0_constitution/. Returns a verdict — aligned,
-  violated, tradeoff, or no-match — with citations to specific principles
-  and prose rationale. Opus-backed reasoning. Auto-appends Evidence Trail
+  violated, tradeoff, no-match, or no-basis — with citations to specific
+  principles and prose rationale. Never answers «nothing matched» and stops:
+  where the constitution is silent it reads the situation against the shipped
+  advisory baseline instead, and says which of the two it is giving you. Opus-backed reasoning. Auto-appends Evidence Trail
   citations on every cited principle and bumps their last_applied field
   (L1 autonomous write — the one thing this skill modifies under
   0_constitution/, never the principle body).
@@ -77,7 +79,7 @@ should ignore them. **Skill never fails for missing self-report fields.**
 |---|---|---|
 | `intent` | 1-2 sentences | why the caller invoked the skill (counterfactual seed for autonomy analysis) |
 | `pre_confidence` | `low \| medium \| high` | caller's certainty about the right action **before** the verdict |
-| `expected_verdict` | `aligned \| violated \| tradeoff \| no-match \| unknown` | what the caller expected the skill to return |
+| `expected_verdict` | `aligned \| violated \| tradeoff \| no-match \| no-basis \| unknown` | what the caller expected the skill to return |
 
 ### Pipeline integration flag
 
@@ -129,6 +131,22 @@ lens treats absence as observable, not as a contract violation.
    | `violated` | The situation breaks the principle — would degrade or ignore it. |
    | `tradeoff` | The situation trades one principle for another — surface both sides. |
 
+   **Two ways the tree can come back silent, and they are not the same
+   verdict.** Decide by how many principles STEP 2 actually loaded, not by how
+   the situation feels:
+
+   | Loaded | Applied | Verdict | What it asserts |
+   |---|---|---|---|
+   | ≥ 1 | ≥ 1 | `aligned` / `violated` / `tradeoff` | the constitution has a position |
+   | ≥ 1 | 0 | `no-match` | principles exist and none bear on this — the constitution genuinely does not object |
+   | 0 | — | `no-basis` | nothing was loaded, so nothing could object; this is not approval |
+
+   The distinction is load-bearing downstream, not cosmetic:
+   `/ztn:resolve-clarifications` promotes a `no-match` candidate to
+   `auto-apply` and holds a `no-basis` one in the queue. Emitting `no-match`
+   on an empty tree tells that skill an empty constitution approved the
+   action — on a base nobody has populated yet, that is every action.
+
    Conflict resolution inside a tier:
    - Explicit `contradicts: [other-id]` in either frontmatter → higher
      `confidence` wins (`proven > working > experimental`).
@@ -141,7 +159,7 @@ lens treats absence as observable, not as a contract violation.
 
    ```json
    {
-     "verdict": "aligned | violated | tradeoff | no-match",
+     "verdict": "aligned | violated | tradeoff | no-match | no-basis",
      "citations": [
        { "id": "axiom-identity-001", "relation": "aligned" }
      ],
@@ -158,7 +176,11 @@ lens treats absence as observable, not as a contract violation.
    - `verdict` is the overall call; `citations` list every principle the
      verdict leans on.
    - `tradeoffs` is empty unless `verdict == "tradeoff"`.
-   - `no-match` = no candidate applies; still emit with `citations: []`.
+   - `no-match` = principles were loaded, none apply; `citations: []`.
+   - `no-basis` = none were loaded at all; `citations: []`. Never emitted
+     when the tree is non-empty, whatever the situation.
+   - On both, `rationale` carries the baseline read below rather than
+     stopping at «nothing matched».
    - `run_id` is the substrate join-key; deterministic for the
      invocation, present even on failed-status runs.
    - `followup_hint` is informational, not a contract — the caller
@@ -289,48 +311,66 @@ run are allowed (lens uses the latest).
 - Never create a new principle — that is `/ztn:capture-candidate`'s job.
 - Never change any frontmatter field except `last_applied:`.
 - Never write outside `0_constitution/` and the console.
-- Never invent a principle, and never present the universal floor as one
-  of the owner's. When `query_constitution.py` returns empty or nothing
-  applies, say so plainly — «no active principle covers this» — and then give
-  the baseline read described below. The two are different claims and are
+- Never invent a principle, and never present the universal floor as one of
+  the owner's. When nothing is loaded or nothing applies, say so plainly and
+  then give the baseline read described above. The two are different claims,
   labelled differently; collapsing them is the failure this invariant exists
   to prevent.
+- Never emit `no-match` on an empty tree. Zero principles loaded is
+  `no-basis`, always — downstream skills route the two oppositely, and the
+  wrong one reads an empty constitution as approval.
 - Only reason about principles actually present in the query output.
   Never cite a principle you did not load. `citations: []` stays empty on a
   baseline-only answer — the floor is not a citation.
 
-## The baseline read — what a `no-match` still owes the owner
+## The baseline read — what a silent constitution still owes the owner
 
-A fresh base has no principles, and a mature one has gaps. Returning bare
-`no-match` there is technically correct and useless: the owner asked about a
-real decision and got told their filing system is empty.
+A fresh base has no principles; a mature one has gaps. Stopping at «nothing
+matched» is technically correct and useless: the owner asked about a real
+decision and got told about their filing system.
 
 The engine ships a universal reasoning floor for exactly this —
 `_system/docs/advisory-baseline.md`, loaded hot in every session. It is not the
-owner's principle and is never cited as one, but it is a legitimate basis for
-an answer. So whenever `citations` comes back empty, the rationale carries a
-short baseline read instead of stopping:
+owner's principle and is never cited as one, but it is a legitimate basis for an
+answer. Give it in three situations:
 
-- **Who has a stake** besides the owner, and how that bends what each party
-  claims. Motive reads stay hypotheses with a confidence level.
+| When | What the rationale carries |
+|---|---|
+| `no-basis` — nothing loaded | the baseline read, and one line that their constitution is empty so this is the floor talking, not them |
+| `no-match` — nothing applied | the baseline read, framed as «no principle of yours covers this» |
+| `aligned` / `violated` / `tradeoff` with a dimension the citations do not touch — a third party with a stake, an irreversible step, criteria that came from outside | the citations first, then the uncovered dimension from the baseline, marked as such |
+
+The third row is what makes this useful to an owner who already has a
+constitution: theirs will rarely cover every axis of a live decision, and the
+gap is where the expensive mistakes are.
+
+**What the read contains** — only what changes the answer:
+
+- **Who else has a stake**, and how it bends what they claim. Motive reads stay
+  hypotheses with a confidence level (`rule-ai-interaction-003` where the owner
+  keeps one; the baseline requires it regardless).
 - **Where the criteria came from** — the owner's own, introduced by an
-  interested party, or inherited from a situation that no longer holds; and
-  the regime test on the owner's own.
-- **What is unrecoverable** here (time, optionality, a relationship) as
-  against what is merely expensive, and which option is cheaper to undo.
-- **The falsifier** — what would have to be true for the recommendation to be
-  wrong, and which observation shows it first.
+  interested party, or inherited from a situation that has ended; plus the
+  regime test on the owner's own.
+- **What is unrecoverable** here — time, optionality, a relationship — as
+  against merely expensive, and which option is cheaper to undo.
+- **The falsifier** — what would have to be true for this to be wrong, and
+  which observation shows it first.
 
-Keep it to what changes the answer; the sweep runs internally and the output
-is gated exactly as `advisory-baseline` requires. Two lines that move the
-decision beat a rendered checklist.
+The sweep runs internally and the output is gated exactly as
+`advisory-baseline` requires. Two lines that move the decision beat a rendered
+checklist; a full sweep printed into every verdict is the boilerplate
+`communication-baseline` exists to prevent.
 
-**Say which one you are giving.** «No principle of yours covers this — reading
-it against the shipped baseline instead» is honest and useful. Presenting the
-same paragraph as though the owner's constitution produced it is the one thing
-this must never do. When the baseline read surfaces something the owner
-clearly holds as a rule, that is a `/ztn:capture-candidate` moment, not a
-principle this skill writes.
+**Always say which one you are giving.** «No principle of yours covers this —
+reading it against the shipped baseline instead» is honest and useful. The same
+paragraph presented as though the owner's constitution produced it is the one
+thing this skill must never do, and it is the reason `citations` stays empty on
+a baseline-only answer: the floor is not a citation.
+
+**When the read surfaces something the owner clearly holds as a rule**, that is
+a `/ztn:capture-candidate` moment — mention it in one clause. This skill never
+writes a principle.
 
 ## Output contract — exact shape
 
@@ -357,7 +397,8 @@ appear. Missing fields should not appear — use empty arrays / `null`.
 | Condition | Skill behaviour |
 |---|---|
 | `regen_all.py` step fails | Telemetry line written with `status: "failed_regen"`, then return non-zero with stderr |
-| `query_constitution.py` returns empty, situation cannot be classified | Emit `verdict: "no-match"` with `citations: []`, and put the **baseline read** (below) in the rationale rather than stopping at «nothing matched»; telemetry `status: "ok"`, `tree_size: 0` (signal: no principles available — the no-match is structural, not absent-coverage) |
+| `query_constitution.py` returns empty (no principles at all) | Emit `verdict: "no-basis"` with `citations: []` and the **baseline read** in the rationale; telemetry `status: "ok"`, `tree_size: 0`. Never `no-match` here — see the invariant above |
+| Principles loaded, none apply | Emit `verdict: "no-match"` with `citations: []` and the **baseline read** in the rationale; telemetry `status: "ok"`, `tree_size: N` |
 | Two tier-1 principles conflict with equal `confidence` | Emit `verdict: "tradeoff"` with both in `between` |
 | `Edit` cannot find `## Evidence Trail` in a cited principle | Telemetry line written with `status: "failed_edit"`, then skill errors out; the principle file is malformed per `CONSTITUTION.md` §4 — fix it, then re-run |
 | User passes an empty `situation` | Skill asks the user to supply one sentence, then stops; no telemetry line written (no run actually started) |
@@ -424,3 +465,31 @@ Situation: *"Should I name this service billing-api or payments-api?"*
 Expected verdict: `no-match`. Naming is not covered by any constitution
 principle in the current tree; belongs to team conventions, not
 identity-layer.
+
+**D. No-basis (fresh base).**
+Situation: *"The agent selling me this flat says being next to a shop is
+a big plus and I should decide this week."*
+
+Constitution tree is empty — nothing has been written yet. Expected
+verdict: `no-basis`, `citations: []`, and a rationale that says so and
+then gives the baseline read: the agent's fee depends on the sale
+closing, so «big plus» is their claim rather than a fact; «next to a
+shop» is a criterion they introduced, not one brought in; the week-long
+window is pressure, not information; and the money here is recoverable
+while the years lived in the wrong place are not.
+
+Two things this must NOT be: `no-match` (which would tell
+`/ztn:resolve-clarifications` an empty constitution approved something),
+and a rationale phrased as though one of the owner's own principles
+produced it.
+
+**E. Partial coverage.**
+Situation: *"I'll take the vendor's word that their SLA covers this and
+sign today."*
+
+Expected verdict: `aligned` or `violated` on whatever principles the
+owner holds about vendor trust — plus, in the same rationale, the axis
+none of them touch: the vendor has a stake in the answer, so their SLA
+reading is a claim; and signing today forecloses the option of not
+signing, which is the part that cannot be undone. Citations carry the
+owner's principles; the added paragraph is marked as the baseline.

@@ -561,10 +561,22 @@ queue.
 |---|---|---|---|
 | `aligned` | any | `auto-apply` | `auto_applied` (with `from_escalation: true`) |
 | `no-match` | any | `auto-apply` | `auto_applied` (with `from_escalation: true`) |
+| `no-basis` | any | stays `queue` (fail-closed; annotate «no principles loaded — the constitution could not weigh in») | normal queue |
 | `violated` | ≥ 0.7 | `block-veto` (with `veto_reason` from check-decision) | `constitution_vetoed` (with `from_escalation: true`) |
 | `violated` | < 0.7 | stays `queue` (annotate `**Smart_resolve reasoning:**` with the borderline verdict) | normal queue |
 | `tradeoff` | any | stays `queue` (annotate with the two principles in tension) | normal queue |
 | error / empty visible tree | — | stays `queue` (fail-closed) | normal queue |
+
+`no-basis` and `no-match` look alike and route oppositely, which is the whole
+reason the verdict is split. `no-match` means principles were loaded and none
+applied — the constitution genuinely does not object, and promoting is the
+«build precedent without bothering the owner» path. `no-basis` means none were
+loaded, so nothing could have objected: reading that as approval turns an empty
+constitution into blanket consent, and on a base that has not been populated
+yet — every friend's first weeks — it would auto-apply the entire queue. The
+row above already promised fail-closed on an empty tree; before the split it
+was unreachable, because check-decision returned `no-match` and this table
+matched that first.
 
 The `escalations` accumulator captures one row per check-decision
 invocation regardless of outcome (the audit trail). The

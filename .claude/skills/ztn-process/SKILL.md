@@ -2092,6 +2092,7 @@ the constitution.
 | `violated` with per-decision confidence ≥ 0.8 | Raise CLARIFICATION of type `principle-drift`. Include: quote from the record, the violated principle id, short "why this looks like drift" rationale, options to resolve (confirm deviation → refine principle; reconsider decision; mark exception). |
 | `tradeoff` | Raise CLARIFICATION of type `principle-tradeoff` (info-level). Include: the two principles in tension, the direction the record chose, invitation to log explicit reasoning back into the record. |
 | `no-match` | No CLARIFICATION. Not every decision touches the constitution. |
+| `no-basis` | No CLARIFICATION either — but for the opposite reason: nothing was loaded to match against. Silent here on purpose, because this fires on EVERY record of a base whose constitution is still empty, and one clarification per record would bury a new owner on their first run. The signal is not lost: telemetry carries `tree_size: 0`, and the `decision-review` lens reports the run of them as one observation. |
 
 **CLARIFICATION item format** — same schema as other items under `## Open Items`:
 

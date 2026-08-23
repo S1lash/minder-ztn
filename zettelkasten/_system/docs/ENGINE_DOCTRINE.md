@@ -364,7 +364,14 @@ This is consistent with §3.6, not an exception to it, because:
    `queue_reason ∈ {uncertainty, no-precedent}` to
    `/ztn:check-decision`; aligned / no-match upgrades to auto-apply,
    `violated ≥ 0.7` upgrades to block-veto, `tradeoff` and low-
-   confidence `violated` stay in queue. Queue reasons that encode
+   confidence `violated` stay in queue. **`no-basis` — the tree loaded
+   nothing — stays in queue, fail-closed, and is the one silence that
+   must never read as approval:** on a base whose constitution is still
+   empty it is the answer to every escalation, so promoting it would
+   auto-apply the whole queue on the strength of principles nobody has
+   written yet. `no-match` is the opposite case (principles exist, none
+   bear on this) and remains a genuine «the constitution does not
+   object». Queue reasons that encode
    prior owner authority — `anti-flip-flop` (owner rejected a similar
    proposal recently) and `config-never-auto` (owner pinned the class
    to never-auto in `insights-config.yaml`) — are NOT escalated; the

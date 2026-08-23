@@ -49,6 +49,56 @@ def _common_run_args(jsonl: Path, run_id: str = VALID_RUN_ID) -> list[str]:
     ]
 
 
+class VerdictEnum(unittest.TestCase):
+    """`no-basis` is a distinct verdict, and the enum is what enforces it.
+
+    Downstream skills route the two silences oppositely: `/ztn:resolve-
+    clarifications` promotes a `no-match` candidate to auto-apply and holds a
+    `no-basis` one in the queue. If the enum ever loses `no-basis`, the skill
+    that emits it fails closed here rather than silently degrading to the
+    verdict that reads an empty constitution as approval.
+    """
+
+    def test_no_basis_is_accepted_and_recorded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = make_fixture(Path(tmp))
+            jsonl = fx.system / "state" / "check-decision-runs.jsonl"
+            args = _common_run_args(jsonl)
+            args[args.index("--verdict") + 1] = "no-basis"
+            args[args.index("--tree-size") + 1] = "0"
+            args[args.index("--citations") + 1] = "[]"
+            rc = et.main(args)
+            self.assertEqual(rc, 0)
+            entry = _read(jsonl)[0]
+            self.assertEqual(entry["verdict"], "no-basis")
+            self.assertEqual(entry["tree_size"], 0)
+            self.assertEqual(entry["citations"], [])
+
+    def test_no_match_still_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = make_fixture(Path(tmp))
+            jsonl = fx.system / "state" / "check-decision-runs.jsonl"
+            args = _common_run_args(jsonl)
+            args[args.index("--verdict") + 1] = "no-match"
+            args[args.index("--citations") + 1] = "[]"
+            self.assertEqual(et.main(args), 0)
+            self.assertEqual(_read(jsonl)[0]["verdict"], "no-match")
+
+    def test_both_silences_are_expectable_verdicts(self):
+        for verdict in ("no-basis", "no-match"):
+            with self.subTest(verdict=verdict):
+                self.assertIn(verdict, et.EXPECTED_VERDICTS)
+
+    def test_unknown_verdict_still_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = make_fixture(Path(tmp))
+            jsonl = fx.system / "state" / "check-decision-runs.jsonl"
+            args = _common_run_args(jsonl)
+            args[args.index("--verdict") + 1] = "no-opinion"
+            with self.assertRaises(SystemExit):
+                et.main(args)
+
+
 class EmitTelemetryRunMode(unittest.TestCase):
     def test_happy_path_run_writes_one_line(self):
         with tempfile.TemporaryDirectory() as tmp:

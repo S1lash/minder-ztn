@@ -65,7 +65,15 @@ MECHANICAL_PIPELINES = frozenset({
     "/ztn:resolve-clarifications",
 })
 
-VERDICTS = frozenset({"aligned", "violated", "tradeoff", "no-match"})
+# `no-match` and `no-basis` are NOT interchangeable and consumers route them
+# differently: `no-match` means principles were loaded and none applied — a
+# real "the constitution does not object". `no-basis` means none were loaded
+# at all, so there is nothing that could have objected. Collapsing the two
+# reads an empty constitution as universal approval, which is how a fresh
+# base ends up auto-applying everything it is asked about.
+VERDICTS = frozenset({
+    "aligned", "violated", "tradeoff", "no-match", "no-basis",
+})
 EXPECTED_VERDICTS = VERDICTS | {"unknown"}
 CONFIDENCES = frozenset({"low", "medium", "high"})
 RUN_STATUSES = frozenset({

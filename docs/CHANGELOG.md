@@ -2,6 +2,44 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.66.0 — An empty constitution stops counting as a yes
+
+0.65 made `/ztn:check-decision` useful before you have written anything.
+Wiring that up surfaced something worse sitting underneath it, which this
+release fixes.
+
+**The skill had one word for two opposite situations.** «None of your
+principles apply here» and «you have no principles» both came back as
+`no-match`. To you reading the answer that difference is obvious. To the
+skills downstream it was invisible — and one of them acts on it:
+`/ztn:resolve-clarifications`, when it hits a decision it would otherwise have
+queued for you, asks the constitution and promotes the item to auto-apply on
+`no-match`, on the reasoning that your principles were consulted and did not
+object. On a base whose constitution is still empty, that answer comes back for
+*every* item. The queue would have applied itself, on the strength of
+principles nobody had written yet. Its own rules already said an empty tree
+must fail closed; that line was unreachable, because the verdict it needed
+never existed.
+
+It exists now. `no-basis` means nothing was loaded, so nothing could object,
+and it holds the item in the queue where you will see it. `no-match` keeps its
+old meaning — principles exist, none bear on this — and still promotes, because
+there the constitution genuinely was consulted. During bulk processing
+`no-basis` stays silent rather than raising one clarification per record, which
+on a fresh base would bury you on the first run; the run shows up in your
+monthly decision review instead.
+
+**And both silences now come with an actual answer.** Neither verdict stops at
+«nothing matched» any more. You get the read: who else has a stake in this and
+how that bends what they are telling you, which of the criteria on the table
+are yours and which arrived with someone else, what here is unrecoverable as
+against merely expensive, and what would have to be true for the advice to be
+wrong. The same applies when your principles *do* cover part of a decision but
+miss an axis — a third party, a step with no way back — and that gap is where
+the expensive mistakes live. Every time, it says which of the two you are
+getting: your principle, or the shipped floor. Passing one off as the other
+remains the one thing it must never do.
+
 ## 0.65.0 — The stance starts working on day one, and your own version of it grows by itself
 
 0.64 gave every session a reasoning floor. This makes it reachable from a base
