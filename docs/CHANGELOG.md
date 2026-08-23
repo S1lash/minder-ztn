@@ -2,6 +2,45 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.65.0 — The stance starts working on day one, and your own version of it grows by itself
+
+0.64 gave every session a reasoning floor. This makes it reachable from a base
+that has nothing in it yet, and makes your own departures from it accumulate
+without you having to know that is what you are doing.
+
+**`/ztn:check-decision` stops answering «nothing matched».** On a fresh base it
+had exactly one thing to say — your constitution is empty, come back in a few
+months. Technically true and useless: you asked about a real decision and got
+told about your filing system. It now falls back to the shipped baseline and
+gives you the actual read — who else has a stake and how that bends what they
+say, where each criterion came from, what is unrecoverable here as against
+merely expensive, and what would have to be true for the recommendation to be
+wrong. It says which one it is giving you, every time. «No principle of yours
+covers this, reading it against the baseline instead» is an honest answer; the
+same paragraph passed off as your own principle would not be, and that remains
+the one thing the skill must never do.
+
+**And the capture hook now hears you decide.** It already knew to catch how you
+like to be told things — that is what keeps your presentation principles alive
+instead of frozen at whatever you wrote on day one. It was deaf to the other
+half: the moment you throw out a criterion because it was the other side's, not
+yours; the moment you throw out one of your *own* because it belonged to a
+situation that has ended («that mattered on holiday, not in ordinary life»); the
+moment you treat a conversation as a negotiation rather than a collaboration;
+the moment you weigh time or a relationship against money and the money loses.
+Those now land in your review buffer like anything else, and become your
+principles when you approve them. The baseline is the floor everyone gets;
+these are where you turn out to differ from it, collected while you work rather
+than recalled later.
+
+**One thing to look at if you took the starter pack.** Migration 027 checks
+whether any starter axiom has been acting as a standing principle without you
+ever adopting it — the defect 0.64.1 fixed in the shipped pack could not reach
+a copy already in your constitution, because a migration is not allowed to edit
+what is yours. If it finds one you get a clarification explaining it and two
+ways out, and nothing is changed on your behalf. If you never took the pack,
+you will not hear from it.
+
 ## 0.64.1 — The new rule actually reaches a fresh install, and starter axioms stop going hot uninvited
 
 Two delivery holes and one older defect, found reviewing what 0.64.0 shipped.

@@ -110,6 +110,11 @@ it as a migration of its own (`pending()` globs `*.sh`).
   can never disagree. It reports an inventory with paths, never a copy: the files
   are the source of truth and sit beside the plan.
 
+- `_027_starter_axiom_audit.py` — migration `027`'s detector: adopted starter
+  axioms still carrying `claude-code` while unedited. Reports to the owner's
+  clarification queue; never edits the constitution, which migrations may not
+  touch.
+
 - `_023_owner_persona.py` · `_024_retirement_schema.py` ·
   `_025_identity_report.py` — the three identity migrations: the owner's
   registry row and assembled profile, the retirement tables reaching the

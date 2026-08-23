@@ -289,12 +289,48 @@ run are allowed (lens uses the latest).
 - Never create a new principle — that is `/ztn:capture-candidate`'s job.
 - Never change any frontmatter field except `last_applied:`.
 - Never write outside `0_constitution/` and the console.
-- Fail loudly (non-zero-style error, explicit to the user) if
-  `query_constitution.py` returns empty while the situation clearly
-  needs a verdict — tell the user "no active principles available; the
-  tree is empty, populate Stage 2 first". Do not fabricate principles.
+- Never invent a principle, and never present the universal floor as one
+  of the owner's. When `query_constitution.py` returns empty or nothing
+  applies, say so plainly — «no active principle covers this» — and then give
+  the baseline read described below. The two are different claims and are
+  labelled differently; collapsing them is the failure this invariant exists
+  to prevent.
 - Only reason about principles actually present in the query output.
-  Never cite a principle you did not load.
+  Never cite a principle you did not load. `citations: []` stays empty on a
+  baseline-only answer — the floor is not a citation.
+
+## The baseline read — what a `no-match` still owes the owner
+
+A fresh base has no principles, and a mature one has gaps. Returning bare
+`no-match` there is technically correct and useless: the owner asked about a
+real decision and got told their filing system is empty.
+
+The engine ships a universal reasoning floor for exactly this —
+`_system/docs/advisory-baseline.md`, loaded hot in every session. It is not the
+owner's principle and is never cited as one, but it is a legitimate basis for
+an answer. So whenever `citations` comes back empty, the rationale carries a
+short baseline read instead of stopping:
+
+- **Who has a stake** besides the owner, and how that bends what each party
+  claims. Motive reads stay hypotheses with a confidence level.
+- **Where the criteria came from** — the owner's own, introduced by an
+  interested party, or inherited from a situation that no longer holds; and
+  the regime test on the owner's own.
+- **What is unrecoverable** here (time, optionality, a relationship) as
+  against what is merely expensive, and which option is cheaper to undo.
+- **The falsifier** — what would have to be true for the recommendation to be
+  wrong, and which observation shows it first.
+
+Keep it to what changes the answer; the sweep runs internally and the output
+is gated exactly as `advisory-baseline` requires. Two lines that move the
+decision beat a rendered checklist.
+
+**Say which one you are giving.** «No principle of yours covers this — reading
+it against the shipped baseline instead» is honest and useful. Presenting the
+same paragraph as though the owner's constitution produced it is the one thing
+this must never do. When the baseline read surfaces something the owner
+clearly holds as a rule, that is a `/ztn:capture-candidate` moment, not a
+principle this skill writes.
 
 ## Output contract — exact shape
 
@@ -321,7 +357,7 @@ appear. Missing fields should not appear — use empty arrays / `null`.
 | Condition | Skill behaviour |
 |---|---|
 | `regen_all.py` step fails | Telemetry line written with `status: "failed_regen"`, then return non-zero with stderr |
-| `query_constitution.py` returns empty, situation cannot be classified | Emit `verdict: "no-match"` with explicit rationale; telemetry `status: "ok"`, `tree_size: 0` (signal: no principles available — the no-match is structural, not absent-coverage) |
+| `query_constitution.py` returns empty, situation cannot be classified | Emit `verdict: "no-match"` with `citations: []`, and put the **baseline read** (below) in the rationale rather than stopping at «nothing matched»; telemetry `status: "ok"`, `tree_size: 0` (signal: no principles available — the no-match is structural, not absent-coverage) |
 | Two tier-1 principles conflict with equal `confidence` | Emit `verdict: "tradeoff"` with both in `between` |
 | `Edit` cannot find `## Evidence Trail` in a cited principle | Telemetry line written with `status: "failed_edit"`, then skill errors out; the principle file is malformed per `CONSTITUTION.md` §4 — fix it, then re-run |
 | User passes an empty `situation` | Skill asks the user to supply one sentence, then stops; no telemetry line written (no run actually started) |

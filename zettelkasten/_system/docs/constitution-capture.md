@@ -39,7 +39,19 @@ principle behind it. The owner decides on review whether it is real or noise.
   time», «don't recap, tell me what it means») — the reason is implicit (so it
   lands for the owner), so it clears trigger (a)/(d) without an explicit
   «because».
-- Task-execution decisions without philosophical content.
+- Task-execution decisions without philosophical content. **NOT
+  task-execution — capture it:** how the owner decides when someone else has a
+  stake in the outcome. Four shapes, all `suggested_domain: ai-interaction`:
+  they reject a criterion an interested party introduced («that's her
+  argument, not mine»); they overturn one of *their own* criteria as belonging
+  to a situation that no longer holds («that mattered on holiday, not in
+  ordinary life» — the regime test); they name a context as adversarial or
+  cooperative and treat it differently; they weigh something unrecoverable
+  (time, optionality, a relationship) against something recoverable. These are
+  the lived signal that keeps the owner's advisory deltas alive, exactly as the
+  presentation carve-out above does for how they want to be told things. The
+  universal floor is in `advisory-baseline`; what belongs in the buffer is
+  where THIS owner departs from it.
 - Facts about people — those go through `/ztn:process` → PEOPLE.md.
 - The entire session content — that is `/ztn-recap`.
 
