@@ -12,7 +12,7 @@ framing: positive
 binding: hard
 core: true
 scope: shared
-applies_to: [work, relationships, code-review]
+applies_to: [ztn]
 derived_from: []
 contradicts: []
 confidence: starter

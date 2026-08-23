@@ -13,7 +13,7 @@ framing: positive
 binding: soft
 core: true
 scope: shared
-applies_to: [code, infrastructure, processes, integrations]
+applies_to: [ztn]
 derived_from: []
 contradicts: []
 confidence: starter

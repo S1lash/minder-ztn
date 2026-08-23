@@ -2,6 +2,34 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.64.1 — The new rule actually reaches a fresh install, and starter axioms stop going hot uninvited
+
+Two delivery holes and one older defect, found reviewing what 0.64.0 shipped.
+
+**A brand-new base would not have heard of the advisory baseline.** The seed
+`SOUL.md` tells you where your presentation tuning and your long-form recipe
+live; it said nothing about the reasoning stance or the decision playbook, so
+someone starting fresh got the rule loaded but never learned it was theirs to
+shape. Both are named there now, and `/ztn:bootstrap` points at the decision
+playbook where it already pointed at the long-form one.
+
+**And `/ztn:update` would not have told you to finish the install.** Its
+follow-up table watched the integration folder for changes that need
+`install.sh` re-run, but a hot rule ships from `_system/docs/` — a path the
+table did not cover. A migration wired this particular rule, but the next one
+would have landed silently. The table covers that shape now, and says nothing
+when a migration already did the work.
+
+**Older, and the one worth knowing about: a starter axiom went hot the moment
+you adopted the pack.** The starter axioms exist as drafts you edit into your
+own voice, and their README is explicit that they do not auto-load into the
+always-on core view — you opt one in by adding `claude-code` to its
+`applies_to`. One of the six shipped with `claude-code` already there, so
+adopting the pack put an unedited draft straight into every session. The other
+five were held back only by accident: their `applies_to` values were not real
+values at all (`code`, `work`, `architecture`, `hiring`), silently discarded by
+anything reading them. All six now ship as the README always claimed.
+
 ## 0.64.0 — Your assistant gets a stance, not just a voice
 
 Until now the engine told your assistant how to *present* an answer — lead with

@@ -12,7 +12,7 @@ framing: positive
 binding: hard
 core: true
 scope: shared
-applies_to: [architecture, hiring, processes, contracts]
+applies_to: [ztn]
 derived_from: []
 contradicts: []
 confidence: starter

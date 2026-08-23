@@ -283,6 +283,7 @@ Inspect what changed:
 | Pattern in changed files | Recommendation |
 |---|---|
 | `integrations/claude-code/{rules,commands,skills}/**` changed | «Re-run `bash integrations/claude-code/install.sh` to refresh `~/.claude/` symlinks.» |
+| A NEW file added under `_system/docs/**` that install.sh symlinks as a hot rule (git status `A`; today `communication-baseline.md`, `advisory-baseline.md`, `ENGINE_DOCTRINE.md`, `constitution-capture.md`) | «Re-run `bash integrations/claude-code/install.sh` — a new always-on rule shipped and needs its `~/.claude/rules/` symlink plus its `@`-import in the managed block.» A migration may already have done it; say so rather than repeating the ask when `~/.claude/rules/<name>.md` resolves |
 | Any file under `0_constitution/` engine paths or constitution tooling changed | «Run `/ztn:regen-constitution` to refresh views.» |
 | `_system/scripts/**` changed | «Run tests: `pytest zettelkasten/_system/scripts/tests/`.» |
 | A NEW file added under `integrations/claude-code/scheduler-prompts/**` (git status `A`) | «A new scheduled job shipped — set up a new `/schedule` routine for it (see `docs/scheduling.md` for the cron slot + its loader prompt).» |

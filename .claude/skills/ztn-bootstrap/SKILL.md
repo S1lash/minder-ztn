@@ -942,6 +942,8 @@ Next steps (in order — do not skip):
    for Agents gaps the profile or interview left as TODO markers. The
    profile's "How you like information presented" answers go here (general
    tuning) and into `_system/long-form-playbook.md` (the long-form recipe);
+   how they want a decision with someone else's interest in it worked through
+   goes into `_system/decision-advisory-playbook.md`;
    firm presentation rules you wrote under "Principles you live by" are already
    queued as `ai-interaction` principle-candidates for F.3 review.
 

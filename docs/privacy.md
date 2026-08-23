@@ -237,9 +237,10 @@ active platform-wide.
   after updating if you want it permanently off.
 
 The guard against this becoming a profiler that flatters you is the
-no-sycophancy rule (in `communication-baseline`, and in your own constitution
-where you keep one): the lens is instructed to model how you think, never to
-mine for what comforts you.
+no-sycophancy rule (in `communication-baseline`, reinforced by
+`advisory-baseline`'s requirement that the analysis stay even-handed about your
+own arguments, and in your own constitution where you keep one): the lens is
+instructed to model how you think, never to mine for what comforts you.
 
 ## The personal-data linter — what stops your data from shipping publicly
 

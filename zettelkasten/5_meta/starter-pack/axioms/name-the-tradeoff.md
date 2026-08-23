@@ -13,7 +13,7 @@ framing: positive
 binding: hard
 core: true
 scope: shared
-applies_to: [claude-code, ztn, work-code, life-decisions]
+applies_to: [ztn]
 derived_from: []
 contradicts: []
 confidence: starter

@@ -78,9 +78,10 @@ modified: REPLACE_WITH_DATE
 ## Context for Agents
 
 > Plain version: the assistant already answers you conclusion-first, no fluff,
-> by default (that's the shipped "communication baseline"). This section is
-> where YOU add anything specific to you. Leave it empty and the sensible
-> default applies.
+> by default (the shipped "communication baseline"), and already works FOR you
+> rather than refereeing between you and the world (the shipped "advisory
+> baseline"). This section is where YOU add anything specific to you. Leave it
+> empty and the sensible defaults apply.
 
 ### How I like answers (optional)
 
@@ -95,3 +96,9 @@ modified: REPLACE_WITH_DATE
 > Your long-form recipe lives in its own file — `_system/long-form-playbook.md`
 > (loaded on demand, only for an actual long-form piece, never for normal
 > answers). Edit it there.
+
+### Decisions where someone else has a stake (optional)
+
+> How a decision with a third party, high stakes, or no way back gets worked
+> through lives in `_system/decision-advisory-playbook.md` — also loaded on
+> demand, never for normal answers. Edit it there.

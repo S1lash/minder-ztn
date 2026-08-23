@@ -12,7 +12,7 @@ framing: positive
 binding: soft
 core: true
 scope: shared
-applies_to: [work, code, writing, design]
+applies_to: [ztn]
 derived_from: []
 contradicts: []
 confidence: starter
