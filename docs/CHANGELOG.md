@@ -2,6 +2,58 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.67.0 — Your ticks now record what they cost
+
+Every scheduled tick writes one line to `_system/state/tick-telemetry.jsonl` saying
+what it consumed: input, output, thinking, cache writes and reads, which models
+it used, and — on a roles tick — a breakdown naming each role separately. There
+is nothing to set up. Your routines read their instructions from the repository
+at run time, so the next tick after this update starts recording.
+
+**It measures, it does not report.** A model cannot see its own consumption.
+The only figure in its context is a remaining-budget counter that ignores cache
+reads and sub-agents entirely, so a tick asked to state its own cost would be
+guessing. Instead the tick reads the transcript the runtime wrote for it — its
+own, plus one per sub-agent it spawned — and adds up what is actually there.
+That distinction matters more than it sounds: on a real run, sub-agents
+accounted for six times the output of the main session, so anything that
+counted only the obvious half would have reported a seventh of the truth and
+looked entirely plausible doing it.
+
+**It has to happen during the run.** A cloud tick's transcripts live in a
+sandbox that is destroyed minutes after it finishes, which is why the recording
+happens mid-tick rather than afterwards, and why a tick that went unmeasured
+cannot be measured later. The cost of that timing is the tick's own closing
+messages: they are not written yet when the count is taken. Each line carries
+`measured_through` so you can see the horizon instead of guessing at it.
+
+**It can never cost you a tick.** The recorder always exits successfully, even
+when it finds nothing — a tick that threw away real work because its odometer
+broke would be worse than having no odometer. The consequence is that it also
+cannot fail loudly, so `/ztn:lint` now checks that every scheduled commit
+carries a telemetry line and tells you when one does not. It also watches for
+the sub-agent transcripts moving somewhere new, which would otherwise show up
+as your usage quietly dropping rather than as an error.
+
+**One thing to check once.** Your scheduled routines should hold the one-line
+loader that names a file under `integrations/claude-code/scheduler-prompts/`,
+which is the documented setup — those read the current instructions on every
+run and pick this up by themselves. A routine holding a pasted copy of the
+old instructions keeps running them: it will not record anything, and the new
+lint check will report each of its ticks as un-measured, which is true but
+points at the tick rather than at the frozen prompt. The update queues a
+clarification reminding you to look; replacing such a prompt with the loader
+fixes it for good.
+
+**Ticks only.** Running `/ztn:process` or `/ztn:lint` by hand records nothing
+and warns about nothing. The scheduled loop is the thing being measured.
+
+Two limits worth knowing. This starts from today — there is no way to recover
+what past ticks consumed, whether from the transcripts (gone with their
+sandboxes) or from Anthropic (subscription usage is not itemised per token).
+And it counts tokens, not money: a cost figure can be derived later from the
+numbers and a price list, but nothing here is a bill.
+
 ## 0.66.0 — An empty constitution stops counting as a yes
 
 0.65 made `/ztn:check-decision` useful before you have written anything.

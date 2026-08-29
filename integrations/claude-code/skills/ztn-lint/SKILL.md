@@ -918,6 +918,97 @@ individual artefact still looks correct, because what is missing is an event
 rather than a file. Nothing in the corpus is wrong; something simply never
 happened. That is precisely the shape no content scan can see.
 
+**A.13 Tick telemetry backstop:**
+
+The second check in the A.12 family — it watches for a step that stopped
+happening rather than for a file that came out wrong. Every scheduler tick
+runs `record_telemetry.py` at its Step 4.9 and appends one line to
+`_system/state/tick-telemetry.jsonl` in the same commit as its work. That helper
+exits 0 unconditionally, by design, so the tick cannot die of a broken
+odometer — which means nothing except this scan notices when the odometer
+stops.
+
+- **Ran-but-unmeasured.** Take the tick commits with this exact command —
+
+  ```
+  for sha in $(git log --since="26 hours ago" -F --grep='[scheduled]' --format='%H'); do
+    git ls-tree -r --name-only "$sha" -- scripts/scheduler/record_telemetry.py \
+      | grep -q . || continue
+    git show --name-only --format= "$sha" | grep -q 'tick-telemetry\.jsonl' \
+      && echo "OK   $sha" || echo "MISS $sha"
+  done
+  ```
+
+  The `git ls-tree` line is a skip, not a check: it asks whether the
+  recorder existed in the tree that tick ran against, and moves on when it did
+  not. Without it, the first lint after an engine update reports every tick
+  from the preceding day — ticks that ran correctly, before the step existed —
+  as un-measured. That is a false alarm on day one for every base, and a check
+  whose debut is a wall of wrong findings is not trusted afterwards. Anchoring
+  on the feature's own presence also means no grace period, no dated cut-off,
+  and nothing to remove later.
+
+  It asks with `ls-tree` rather than the shorter `git cat-file -e "$sha:path"`
+  for a reason that costs nothing here and is expensive to debug: in zsh a `:`
+  directly after a parameter is read as a history modifier, so that form
+  mangles its own argument and fails with `Not a valid object name` — while
+  behaving perfectly in bash. The failure lands on the skip branch, meaning
+  every commit gets skipped and the scan reports clean forever. A check whose
+  shell decides whether it checks anything is worse than no check, so this one
+  uses a form with no shell-parsed punctuation in it.
+
+  Two properties of that command are load-bearing, and both fail silently
+  rather than loudly when dropped:
+
+  - **`-F`.** Without it `[scheduled]` is a regular expression and `[...]` is
+    a character class, so the pattern matches any subject containing one of
+    those letters — nearly every commit in the repository. The scan would
+    report most of the history as un-measured on its first run, and a check
+    that cries wolf immediately is a check the owner learns to skip.
+  - **The per-commit `git show`, rather than one `git log --name-only`.**
+    Combining `--format` with `--name-only` interleaves subjects and file
+    lists with blank-line separators that are easy to mis-parse — and a
+    mis-parse here reads as "no telemetry file in this commit", i.e. a false
+    alarm on a healthy tick. Asking each commit separately removes the
+    parsing step entirely.
+
+  Every `MISS` → one aggregate `telemetry-missing` CLARIFICATION naming the
+  tick tags and SHAs, never one item per commit. Name the likeliest cause in
+  the item: a scheduled routine whose prompt is a pasted copy of the tick body
+  rather than the one-line loader keeps running the instructions it was given,
+  so its ticks never reach the recording step. The tick itself looks healthy
+  because it is — what is stale is the routine's copy of what to do.
+- **Measured-but-empty.** Lines in the window with `status: unmeasured` are
+  the same item with a different reason: the step ran and could not find its
+  transcript. Carry the line's own `note` — it already says why.
+- **Layout drift.** Lines with `xcheck: drift` → a separate
+  `telemetry-layout-drift` CLARIFICATION carrying `agent_dispatches` and
+  `subagent_files` from the line. The two failures deserve separate items
+  because their remedies are unrelated: a missing line means the step did not
+  run, drift means the runtime moved its sub-agent transcripts and the parser
+  is now undercounting every tick until it is taught the new location.
+- Never autofixed, and never by re-running the measurement. A tick's
+  transcript lives in the sandbox that produced it and is destroyed minutes
+  later, so an absent measurement is gone — there is nothing to recompute,
+  and writing a plausible line after the fact would be inventing the number
+  the whole mechanism exists to avoid inventing.
+
+**Scoped to ticks on purpose.** A manual `/ztn:process` or `/ztn:lint` the
+owner runs by hand produces no telemetry and must raise nothing: anchoring on
+`[scheduled]` commits keeps the scan silent for those without needing to know
+anything about how the owner works. The consequence, stated plainly: this
+scan proves a tick that ran was measured, and says nothing about a tick that
+never fired. That absence is A.12's and `pipeline_health.py`'s job, not this
+one's.
+
+**Why the cross-check lives in the tick and not here.** Comparing sub-agent
+transcripts on disk against the dispatches recorded in the main transcript
+can only be done while those files exist — that is, inside the run. By the
+time lint reads the repository, the only surviving evidence is the verdict
+the tick wrote down. So the tick judges and lint reads the judgement; a scan
+that tried to re-derive it would find no transcript and conclude, wrongly,
+that everything is fine.
+
 ### Scan B — Thread Lifecycle
 
 **B.1 Stale thread detection per-status:**

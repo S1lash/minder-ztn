@@ -159,6 +159,45 @@ classes (records / notes / hubs / profile concept-name and audience-
 tag format). If owner sees one, that's a bug in the producer-side
 guard, not a normal autonomy boundary.
 
+## Per-tick telemetry
+
+Every tick runs `python3 scripts/scheduler/record_telemetry.py <tag>` at Step
+4.9 and appends one line to `_system/state/tick-telemetry.jsonl`, delivered in the
+tick's own single commit. The line is read from the run's own session
+transcript — the main session plus every sub-agent it spawned — and carries
+input, output, thinking, cache writes split by TTL, cache reads, per-model
+message counts and a `by_agent` breakdown that names each role by its id.
+
+It is measured, not reported. A model cannot see its own consumption: the one
+figure in its context is a remaining-budget counter that knows nothing about
+cache reads or sub-agents, so a self-reported number would be fabrication.
+
+Three properties are deliberate and should survive any edit to these prompts:
+
+- **It runs before Step 5**, because Step 5 commits and there is no second
+  commit to carry a later line. The tick's own closing messages therefore go
+  uncounted; `measured_through` states the horizon instead of hiding it.
+- **It always exits 0**, so a broken odometer can never cost a tick its real
+  work. When it measures nothing it writes `status: unmeasured` and the
+  reason.
+- **Because it cannot fail loudly, something else must notice it going
+  quiet** — `/ztn:lint` Scan A.13 checks that every `[scheduled]` commit
+  carries a telemetry line, and raises `telemetry-missing` when one does not.
+
+One consequence is deliberate and worth stating, because it changes what the
+repository history looks like: **an idle tick now lands a commit where it
+previously landed none.** A tick whose skill found nothing to do still leaves
+a telemetry line, so `finalize-tick.sh` has something to stage. That is the
+intended trade — an idle tick is not free, it still pays for loading its
+context before discovering there is nothing to process, and a tick schedule
+that is too aggressive is exactly the thing this data is meant to make
+visible. The alternative, skipping the line when nothing else changed, would
+hide the cheapest waste there is to find.
+
+Ticks only. A manual `/ztn:process` writes no telemetry and raises nothing:
+A.13 anchors on `[scheduled]` commits precisely so an owner working by hand
+is never nagged.
+
 ## Plug-in — Claude Code `/schedule`
 
 The path of least friction. Five routines — and each one's prompt is a
@@ -195,17 +234,22 @@ same prompt bodies. Ensure the agent has:
 
 ## After `/ztn:update`
 
-These prompt bodies are engine-shipped, so `/ztn:update` keeps the
-files current as the engine evolves. Claude Code's `/schedule`,
-however, holds the prompt verbatim — engine updates do **not**
-propagate to running schedules automatically. After any `/ztn:update`
-that touched files in this directory:
+**Nothing to do, as long as your routines hold the loader.** These prompt
+bodies are engine-shipped, `/ztn:update` keeps the files current, and a
+routine set up per «Plug-in» above holds only a one-line loader that reads
+the current file at run time — so the next tick after an update already runs
+the new contract.
 
-1. Open the changed prompt file.
-2. Re-paste its body into the corresponding `/schedule` routine.
+**A routine holding a pasted body is the case that needs action.** A scheduler
+stores the text it was given and never revisits it, so such a routine keeps
+running whichever version was pasted, indefinitely, while the repository moves
+on. Nothing announces the divergence: the tick still succeeds, it simply does
+an older thing. Replace that routine's prompt with the loader — one sentence
+naming this directory's file for that tick — and it stops being a copy that
+can drift.
 
-`/ztn:update` already includes a follow-up reminder when this
-directory changes.
+That is why the loader exists at all, and why it is the documented setup
+rather than a convenience: one contract, one home, read fresh every run.
 
 ## Contract guarantees
 

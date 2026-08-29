@@ -144,6 +144,23 @@ Then exit `partial` immediately. Do not retry.
    - When the skill returns, the immediate next action is step 5 with
      no intermediate text.
 
+4.9. `python3 scripts/scheduler/record_telemetry.py process` — append this
+   tick's own token consumption to `_system/state/tick-telemetry.jsonl`, read from
+   the run's own transcript (main session plus every sub-agent it spawned).
+
+   It runs HERE, before Step 5, because Step 5 is what commits and the
+   single-commit guarantee leaves no second commit to carry a line written
+   after it. The cost of that ordering is that this tick's own closing
+   messages are not in the count; the line records `measured_through` so the
+   horizon is explicit rather than implied.
+
+   **This helper always exits 0 and never triggers failure-handling**, even
+   when it measures nothing — it writes `status: unmeasured` with the reason
+   instead. Its output is informational. Do NOT retry it, do NOT repair it,
+   and never abandon a tick because its odometer failed: the tick's real work
+   is already done and losing it to a broken measurement would invert every
+   priority this step exists to serve.
+
 5. `bash scripts/scheduler/finalize-tick.sh scheduler/process` — the
    single commit + delivery for this tick. The script auto-detects mode:
    - **LOCAL mode** (start branch = main) — single direct
