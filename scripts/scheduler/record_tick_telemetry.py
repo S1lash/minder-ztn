@@ -34,8 +34,8 @@ guarantee. `measured_through` marks the horizon, and the undercount is a
 handful of messages out of dozens.
 
 Usage:
-  python3 scripts/scheduler/record_telemetry.py <tick>
-  python3 scripts/scheduler/record_telemetry.py process --dry-run
+  python3 scripts/scheduler/record_tick_telemetry.py <tick>
+  python3 scripts/scheduler/record_tick_telemetry.py process --dry-run
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lib.portable import emit_lines  # noqa: E402
 
-SCHEMA = 1
+FORMAT_VERSION = "1.0"
 
 # Every countable field the runtime reports, kept whole. The reason for taking
 # all of them rather than the two that are interesting today: this file is the
@@ -244,18 +244,25 @@ def collect(session_id: str, projects_root: Path) -> dict:
     models: dict[str, int] = {}
     for label, usage, model in records.values():
         _add(totals, usage)
-        bucket = by_agent.setdefault(label, {"agent": label, "api_msgs": 0, **_zero()})
+        bucket = by_agent.setdefault(
+            label, {"agent": label, "api_msgs": 0, "models": {}, **_zero()}
+        )
         bucket["api_msgs"] += 1
+        # Per-agent as well as per-tick. A roles tick can run each role on a
+        # different model, so a tick-level tally answers "how many sonnet
+        # messages" but never "which role was on sonnet" — and the second is
+        # the question a cost or quality comparison actually asks.
+        bucket["models"][model] = bucket["models"].get(model, 0) + 1
         _add(bucket, usage)
         models[model] = models.get(model, 0) + 1
 
     dispatches = count_agent_dispatches(main_path)
     if dispatches and not sub_paths:
-        xcheck = "drift"
+        layout_check = "drift"
     elif len(sub_paths) < dispatches:
-        xcheck = "drift"
+        layout_check = "drift"
     else:
-        xcheck = "ok"
+        layout_check = "ok"
 
     result = {
         "status": "measured" if records else "unmeasured",
@@ -266,7 +273,7 @@ def collect(session_id: str, projects_root: Path) -> dict:
         "by_agent": sorted(by_agent.values(), key=lambda b: -b["output"]),
         "subagent_files": len(sub_paths),
         "agent_dispatches": dispatches,
-        "xcheck": xcheck,
+        "layout_check": layout_check,
     }
     if not records:
         result["note"] = "transcript found but no usage-bearing messages yet"
@@ -280,7 +287,7 @@ def build_line(tick: str, session_id: str, projects_root: Path) -> dict:
     line = {
         "ts": started,
         "tick": tick,
-        "schema": SCHEMA,
+        "format_version": FORMAT_VERSION,
         "session_id": session_id or None,
     }
     if not session_id:

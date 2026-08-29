@@ -106,7 +106,7 @@ Then exit `partial` immediately.
    - On skill error → run failure-handling, exit `partial`.
    - When the skill returns, the immediate next action is step 5.
 
-4.9. `python3 scripts/scheduler/record_telemetry.py lint` — append this
+4.9. `python3 scripts/scheduler/record_tick_telemetry.py lint` — append this
    tick's own token consumption to `_system/state/tick-telemetry.jsonl`, read from
    the run's own transcript (main session plus every sub-agent it spawned).
 

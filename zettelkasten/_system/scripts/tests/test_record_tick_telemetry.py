@@ -1,4 +1,4 @@
-"""Tests for scripts/scheduler/record_telemetry.py — the tick odometer.
+"""Tests for scripts/scheduler/record_tick_telemetry.py — the tick odometer.
 
 Every test builds a hermetic fake `projects/` tree (never this machine's real
 `~/.claude/projects`) shaped exactly like the transcripts Claude Code writes,
@@ -26,7 +26,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_REPO / "scripts" / "scheduler"))
 
-import record_telemetry as rt  # noqa: E402
+import record_tick_telemetry as rt  # noqa: E402
 
 SESSION = "11111111-2222-3333-4444-555555555555"
 
@@ -240,6 +240,27 @@ class CollectTest(unittest.TestCase):
             got = rt.collect(SESSION, tree.root)
             self.assertEqual(got["models"], {"claude-opus-5": 1, "claude-sonnet-5": 2})
 
+    def test_each_agent_carries_its_own_model_tally(self):
+        # A roles tick can put each role on a different model. A tick-level
+        # tally answers "how many sonnet messages" and never "which role was
+        # on sonnet" — the question a cost or quality comparison asks.
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Tree(Path(tmp))
+            tree.write_main([assistant("m1", model="claude-opus-5", output=1)])
+            tree.add_subagent(
+                "agent-a",
+                [assistant("s1", model="claude-sonnet-5", output=1),
+                 assistant("s2", model="claude-sonnet-5", output=1)],
+                {"agentType": "ztn-role"},
+                first_user="assignment: /tmp/x/prompt-shturman.md",
+            )
+            got = rt.collect(SESSION, tree.root)
+            per = {b["agent"]: b["models"] for b in got["by_agent"]}
+            self.assertEqual(per["main"], {"claude-opus-5": 1})
+            self.assertEqual(per["role:shturman"], {"claude-sonnet-5": 2})
+            # the tick-level tally still sums to the same messages
+            self.assertEqual(got["models"], {"claude-opus-5": 1, "claude-sonnet-5": 2})
+
     def test_truncated_final_line_is_skipped_and_the_rest_survives(self):
         with tempfile.TemporaryDirectory() as tmp:
             tree = Tree(Path(tmp))
@@ -276,7 +297,7 @@ class CrossCheckTest(unittest.TestCase):
             got = rt.collect(SESSION, tree.root)
             self.assertEqual(got["agent_dispatches"], 2)
             self.assertEqual(got["subagent_files"], 0)
-            self.assertEqual(got["xcheck"], "drift")
+            self.assertEqual(got["layout_check"], "drift")
 
     def test_more_files_than_dispatches_is_fine(self):
         # A continued agent or a nested spawn legitimately leaves more files
@@ -287,14 +308,14 @@ class CrossCheckTest(unittest.TestCase):
             tree.add_subagent("agent-a", [assistant("s1", output=1)], {"agentType": "Explore"})
             tree.add_subagent("agent-b", [assistant("s2", output=1)], {"agentType": "Explore"})
             got = rt.collect(SESSION, tree.root)
-            self.assertEqual(got["xcheck"], "ok")
+            self.assertEqual(got["layout_check"], "ok")
 
     def test_no_agents_at_all_is_ok(self):
         with tempfile.TemporaryDirectory() as tmp:
             tree = Tree(Path(tmp))
             tree.write_main([assistant("m1", output=1)])
             got = rt.collect(SESSION, tree.root)
-            self.assertEqual(got["xcheck"], "ok")
+            self.assertEqual(got["layout_check"], "ok")
 
     def test_repeated_chunks_of_one_dispatch_count_as_one(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -385,7 +406,7 @@ class OutputFormatTest(unittest.TestCase):
             tree = Tree(Path(tmp))
             tree.write_main([assistant("m1", output=1)])
             line = rt.build_line("agent-lens", SESSION, tree.root)
-            self.assertEqual(line["schema"], rt.SCHEMA)
+            self.assertEqual(line["format_version"], rt.FORMAT_VERSION)
             self.assertEqual(line["tick"], "agent-lens")
             self.assertIn("measured_through", line)
             self.assertTrue(line["measured_through"].endswith("Z"))

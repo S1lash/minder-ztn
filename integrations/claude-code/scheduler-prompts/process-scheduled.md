@@ -144,7 +144,7 @@ Then exit `partial` immediately. Do not retry.
    - When the skill returns, the immediate next action is step 5 with
      no intermediate text.
 
-4.9. `python3 scripts/scheduler/record_telemetry.py process` — append this
+4.9. `python3 scripts/scheduler/record_tick_telemetry.py process` — append this
    tick's own token consumption to `_system/state/tick-telemetry.jsonl`, read from
    the run's own transcript (main session plus every sub-agent it spawned).
 

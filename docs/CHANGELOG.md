@@ -2,6 +2,27 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.67.1 — The tick odometer says which telemetry it is
+
+0.67.0 shipped the recorder as `record_telemetry.py`, writing
+`telemetry.jsonl`. The engine already had a telemetry — `emit_telemetry.py`,
+which writes the check-decision audit substrate — so the plain name needed a
+spoken caveat to be understood, and a name that needs one is the wrong name.
+The recorder is `record_tick_telemetry.py` and its file is
+`tick-telemetry.jsonl`; both now say which telemetry they mean. The old paths
+are declared retired, so an update removes them rather than leaving a second
+copy behind.
+
+Two fields changed with them. `schema` became `format_version`, which is the
+word the engine already uses for a versioned record. `xcheck` became
+`layout_check`, matching the `telemetry-layout-drift` finding it feeds — the
+field and the alarm now share a word.
+
+Each entry under `by_agent` also carries its own model tally. A roles tick can
+run each role on a different model, and the tick-level count could say how many
+messages went to which model but never which role was on it — which is the
+question a cost or quality comparison actually asks.
+
 ## 0.67.0 — Your ticks now record what they cost
 
 Every scheduled tick writes one line to `_system/state/tick-telemetry.jsonl` saying

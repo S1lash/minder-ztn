@@ -161,7 +161,7 @@ guard, not a normal autonomy boundary.
 
 ## Per-tick telemetry
 
-Every tick runs `python3 scripts/scheduler/record_telemetry.py <tag>` at Step
+Every tick runs `python3 scripts/scheduler/record_tick_telemetry.py <tag>` at Step
 4.9 and appends one line to `_system/state/tick-telemetry.jsonl`, delivered in the
 tick's own single commit. The line is read from the run's own session
 transcript — the main session plus every sub-agent it spawned — and carries

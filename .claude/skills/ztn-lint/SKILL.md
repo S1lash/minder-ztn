@@ -922,7 +922,7 @@ happened. That is precisely the shape no content scan can see.
 
 The second check in the A.12 family — it watches for a step that stopped
 happening rather than for a file that came out wrong. Every scheduler tick
-runs `record_telemetry.py` at its Step 4.9 and appends one line to
+runs `record_tick_telemetry.py` at its Step 4.9 and appends one line to
 `_system/state/tick-telemetry.jsonl` in the same commit as its work. That helper
 exits 0 unconditionally, by design, so the tick cannot die of a broken
 odometer — which means nothing except this scan notices when the odometer
@@ -932,7 +932,7 @@ stops.
 
   ```
   for sha in $(git log --since="26 hours ago" -F --grep='[scheduled]' --format='%H'); do
-    git ls-tree -r --name-only "$sha" -- scripts/scheduler/record_telemetry.py \
+    git ls-tree -r --name-only "$sha" -- scripts/scheduler/record_tick_telemetry.py \
       | grep -q . || continue
     git show --name-only --format= "$sha" | grep -q 'tick-telemetry\.jsonl' \
       && echo "OK   $sha" || echo "MISS $sha"
@@ -981,7 +981,7 @@ stops.
 - **Measured-but-empty.** Lines in the window with `status: unmeasured` are
   the same item with a different reason: the step ran and could not find its
   transcript. Carry the line's own `note` — it already says why.
-- **Layout drift.** Lines with `xcheck: drift` → a separate
+- **Layout drift.** Lines with `layout_check: drift` → a separate
   `telemetry-layout-drift` CLARIFICATION carrying `agent_dispatches` and
   `subagent_files` from the line. The two failures deserve separate items
   because their remedies are unrelated: a missing line means the step did not
