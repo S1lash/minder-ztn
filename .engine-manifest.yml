@@ -396,14 +396,16 @@ exclude:
 
 
 retired:
-  # 0.67.0 shipped the tick odometer as `record_telemetry.py`, a name that
-  # collided with the engine's other telemetry — `emit_telemetry.py`, which
-  # writes the check-decision audit substrate. Both the recorder and the file
-  # it writes now say which telemetry they mean. A clone that took 0.67.0
-  # carries the old module beside the new one, where it would sit as a second
-  # copy of a contract that has exactly one home.
+  # Both recorders in this engine were once called simply "telemetry" — one
+  # for a tick's token consumption, one for a check-decision run. A reader had
+  # to be told which file meant which. Each now names its subject. These paths
+  # are listed so an update REMOVES them: a sync copies what upstream has and
+  # cannot express what it no longer has, so an undeclared rename leaves the
+  # old module beside the new one on every clone that ever received it.
   - scripts/scheduler/record_telemetry.py
   - zettelkasten/_system/scripts/tests/test_record_telemetry.py
+  - zettelkasten/_system/scripts/emit_telemetry.py
+  - zettelkasten/_system/scripts/tests/test_emit_telemetry.py
 
   # The 0.49.0 roles subsystem. Its shape was replaced wholesale; these files
   # are not part of the current one and never will be. A clone that adopted

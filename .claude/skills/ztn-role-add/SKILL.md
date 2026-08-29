@@ -681,10 +681,10 @@ mechanical sync. It puts their principles in the role's context; that alone
 covers the overwhelming majority of "weigh this against what I believe".
 
 A role that needs the *recorded* verdict — the full `/ztn:check-decision` path
-through `_system/scripts/query_constitution.py` and `emit_telemetry.py` — is a
+through `_system/scripts/query_constitution.py` and `record_decision_run.py` — is a
 different and heavier thing, and it carries two costs you must name before
 choosing it: the audit file it appends to has to be added to the role's write
-list or the guard reverts it, and `emit_telemetry.py` auto-commits for some
+list or the guard reverts it, and `record_decision_run.py` auto-commits for some
 callers, so the role must pass `--no-commit` or the tick sees a moved HEAD and
 records the run as an error. Default to not doing this.
 
@@ -1056,7 +1056,7 @@ What each failure means:
 | something was reverted | the body sends it where it may not write | fix the body, or widen the write list deliberately — never reflexively |
 | something was reported and left | it touched a file that was already changed and unsaved when it started, so there was nothing to restore it from; the finding says whether that was the owner's work or an earlier role's | look at what it did there before anything else |
 | a credential leak | the body makes it store or print the value | fix the body. Never widen anything |
-| HEAD moved | something in the body runs git, or a script it calls commits — `emit_telemetry.py` does for some callers unless passed `--no-commit` | remove it from the body |
+| HEAD moved | something in the body runs git, or a script it calls commits — `record_decision_run.py` does for some callers unless passed `--no-commit` | remove it from the body |
 | a revert failed | the working tree is not in the state either of you thinks | stop and look before re-running |
 | it timed out | the work does not fit its bound | narrow the work, or raise the bound with a reason |
 

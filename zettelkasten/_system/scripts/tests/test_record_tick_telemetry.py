@@ -62,12 +62,19 @@ def assistant(msg_id: str, model: str = "claude-opus-5", **kw) -> str:
 
 
 def agent_call(tool_id: str) -> str:
+    """A dispatch as the runtime actually writes it — with usage attached.
+
+    Verified against a real transcript: of 246 assistant messages carrying a
+    `tool_use` block, every one also carried `usage`. A fixture without it
+    would exercise a shape the runtime does not produce.
+    """
     return json.dumps(
         {
             "type": "assistant",
             "message": {
                 "id": "m-" + tool_id,
                 "model": "claude-opus-5",
+                "usage": usage(output=1),
                 "content": [
                     {"type": "tool_use", "id": tool_id, "name": "Agent", "input": {}}
                 ],
@@ -165,7 +172,8 @@ class CollectTest(unittest.TestCase):
                 {"agentType": "general-purpose", "description": "whatever"},
             )
             got = rt.collect(SESSION, tree.root)
-            self.assertEqual(got["totals"]["output"], 7100)
+            # 100 main + 7000 sub + 1 carried by the dispatch message itself
+            self.assertEqual(got["totals"]["output"], 7101)
             labels = {b["agent"] for b in got["by_agent"]}
             self.assertEqual(labels, {"main", "agent:general-purpose"})
 
@@ -279,6 +287,74 @@ class CollectTest(unittest.TestCase):
             got = rt.collect("no-such-session", tree.root)
             self.assertEqual(got["status"], "unmeasured")
             self.assertIn("no transcript", got["note"])
+
+
+class ExplanatoryFieldsTest(unittest.TestCase):
+    """The fields that turn a number into an explanation.
+
+    All of them live only in the transcript, which a cloud tick destroys
+    minutes after it finishes — so a field not taken here is not "available
+    from the source later", it is gone.
+    """
+
+    def test_cache_miss_reason_and_its_cost_are_kept(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Tree(Path(tmp))
+            a = json.loads(assistant("m1", output=1))
+            a["message"]["diagnostics"] = {
+                "cache_miss_reason": {
+                    "type": "system_changed",
+                    "cache_missed_input_tokens": 427299,
+                }
+            }
+            b = json.loads(assistant("m2", output=1))
+            b["message"]["diagnostics"] = {
+                "cache_miss_reason": {"type": "previous_message_not_found"}
+            }
+            tree.write_main([json.dumps(a), json.dumps(b)])
+            got = rt.collect(SESSION, tree.root)
+            self.assertEqual(
+                got["cache_misses"]["system_changed"],
+                {"count": 1, "tokens": 427299},
+            )
+            # a reason with no token figure still counts as an occurrence
+            self.assertEqual(
+                got["cache_misses"]["previous_message_not_found"]["count"], 1
+            )
+
+    def test_tool_calls_are_tallied_once_per_message_not_per_chunk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Tree(Path(tmp))
+            # one streamed reply, repeated — its tool call must count once
+            tree.write_main([agent_call("toolu_1"), agent_call("toolu_1")])
+            got = rt.collect(SESSION, tree.root)
+            self.assertEqual(got["tools"], {"Agent": 1})
+
+    def test_stop_reasons_are_counted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Tree(Path(tmp))
+            rows = []
+            for i, reason in enumerate(("tool_use", "tool_use", "max_tokens")):
+                d = json.loads(assistant(f"m{i}", output=1))
+                d["message"]["stop_reason"] = reason
+                rows.append(json.dumps(d))
+            tree.write_main(rows)
+            got = rt.collect(SESSION, tree.root)
+            self.assertEqual(got["stop_reasons"], {"tool_use": 2, "max_tokens": 1})
+
+    def test_runtime_context_and_time_window_are_recorded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Tree(Path(tmp))
+            rows = []
+            for i, stamp in enumerate(("2026-01-01T10:00:00Z", "2026-01-01T10:09:00Z")):
+                d = json.loads(assistant(f"m{i}", output=1))
+                d["timestamp"] = stamp
+                rows.append(json.dumps(d))
+            tree.write_main(rows)
+            got = rt.collect(SESSION, tree.root)
+            self.assertEqual(got["first_message"], "2026-01-01T10:00:00Z")
+            self.assertEqual(got["last_message"], "2026-01-01T10:09:00Z")
+            self.assertEqual(got["runtime"]["service_tier"], {"standard": 2})
 
 
 class CrossCheckTest(unittest.TestCase):

@@ -16,7 +16,7 @@ agents, schedulers. Two modes:
 Atomic JSONL append under an advisory `flock`; per-class auto-commit
 with graceful fallback (if git fails, JSONL line stays as source of
 truth, helper exits 0). Path: `_system/state/check-decision-runs.jsonl`
-+ `_system/state/.check-decision-telemetry.lock`.
++ `_system/state/.check-decision-runs.lock`.
 
 Sensitive-redaction: when `--is-sensitive` is set on a run-line,
 `situation_text` and `rationale` are omitted; `situation_hash` is
@@ -53,7 +53,10 @@ from _common import configure_std_streams, die, state_dir
 
 
 JSONL_FILENAME = "check-decision-runs.jsonl"
-LOCK_FILENAME = ".check-decision-telemetry.lock"
+# Same convention as the batch manifests and the tick odometer: a record
+# format that consumers read carries the version they are reading.
+FORMAT_VERSION = "1.0"
+LOCK_FILENAME = ".check-decision-runs.lock"
 
 CALLER_CLASSES = frozenset({"mechanical", "judgmental"})
 MECHANICAL_PIPELINES = frozenset({
@@ -187,6 +190,7 @@ def build_run_entry(args: argparse.Namespace) -> dict:
 
     entry = {
         "kind": "run",
+        "format_version": FORMAT_VERSION,
         "run_id": args.run_id,
         "run_at": run_at,
         "caller_class": caller_class,
@@ -240,6 +244,7 @@ def build_followup_entry(args: argparse.Namespace, jsonl_path: Path) -> dict:
 
     return {
         "kind": "followup",
+        "format_version": FORMAT_VERSION,
         "run_id": args.run_id,
         "followup_at": now_iso(),
         "post_confidence": args.post_confidence,

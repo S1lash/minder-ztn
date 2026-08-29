@@ -13,7 +13,7 @@ every call site:
 - `migrations` — the migration ledger: what ran, with what outcome
 
 Deliberately NOT here: a python twin of `lib/git.sh`. The engine's python code
-reaches git in exactly two places (`roles_guard.py`, `emit_telemetry.py`), both
+reaches git in exactly two places (`roles_guard.py`, `record_decision_run.py`), both
 already using the `-z` porcelain form that is immune to `core.quotePath`, and
 neither needing branch identity. An abstraction with no second caller is
 speculative plumbing; the shell library exists because the shell call sites are

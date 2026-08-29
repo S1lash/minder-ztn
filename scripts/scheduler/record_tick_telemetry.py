@@ -217,11 +217,48 @@ def collect(session_id: str, projects_root: Path) -> dict:
     # would multiply a single response by its chunk count.
     records: dict[str, tuple[str, dict, str]] = {}
     malformed_files = 0
+    # Everything below is present in the transcript and nowhere else once the
+    # sandbox is gone. Cache misses matter most: they are the largest single
+    # lever on what a tick costs, and the transcript says both why one happened
+    # and how many tokens it cost.
+    tools: dict[str, int] = {}
+    stop_reasons: dict[str, int] = {}
+    cache_misses: dict[str, dict] = {}
+    tiers: dict[str, int] = {}
+    speeds: dict[str, int] = {}
+    geos: dict[str, int] = {}
+    stamps: list[str] = []
+
+    def note_message(message: dict, usage: dict) -> None:
+        reason = message.get("stop_reason")
+        if reason:
+            stop_reasons[reason] = stop_reasons.get(reason, 0) + 1
+        miss = (message.get("diagnostics") or {}).get("cache_miss_reason") or {}
+        kind = miss.get("type")
+        if kind:
+            bucket = cache_misses.setdefault(kind, {"count": 0, "tokens": 0})
+            bucket["count"] += 1
+            bucket["tokens"] += miss.get("cache_missed_input_tokens") or 0
+        for field, sink in (
+            ("service_tier", tiers), ("speed", speeds), ("inference_geo", geos)
+        ):
+            value = usage.get(field)
+            if value:
+                sink[str(value)] = sink.get(str(value), 0) + 1
+        content = message.get("content")
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    name = str(block.get("name") or "unknown")
+                    tools[name] = tools.get(name, 0) + 1
 
     def ingest(path: Path, label: str) -> None:
         for entry in _iter_json_lines(path):
             if entry.get("type") != "assistant":
                 continue
+            stamp = entry.get("timestamp")
+            if stamp:
+                stamps.append(str(stamp))
             message = entry.get("message") or {}
             usage = message.get("usage")
             if not isinstance(usage, dict):
@@ -230,6 +267,11 @@ def collect(session_id: str, projects_root: Path) -> dict:
             if not message_id:
                 continue
             model = str(message.get("model") or "unknown")
+            if message_id not in records:
+                # Tallies key off the message, not the chunk: a streamed reply
+                # repeats its blocks, and counting each would multiply one tool
+                # call by its chunk count.
+                note_message(message, usage)
             records[message_id] = (label, extract_usage(usage), model)
 
     ingest(main_path, "main")
@@ -268,8 +310,14 @@ def collect(session_id: str, projects_root: Path) -> dict:
         "status": "measured" if records else "unmeasured",
         "transcript": main_path.name,
         "api_msgs": len(records),
+        "first_message": min(stamps) if stamps else None,
+        "last_message": max(stamps) if stamps else None,
         "totals": totals,
         "models": models,
+        "tools": dict(sorted(tools.items(), key=lambda kv: -kv[1])),
+        "stop_reasons": stop_reasons,
+        "cache_misses": cache_misses,
+        "runtime": {"service_tier": tiers, "speed": speeds, "inference_geo": geos},
         "by_agent": sorted(by_agent.values(), key=lambda b: -b["output"]),
         "subagent_files": len(sub_paths),
         "agent_dispatches": dispatches,

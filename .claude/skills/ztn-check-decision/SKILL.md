@@ -226,7 +226,7 @@ lens treats absence as observable, not as a contract violation.
    passed when available on the current code path.
 
    ```bash
-   python3 "$ZTN_BASE/_system/scripts/emit_telemetry.py" \
+   python3 "$ZTN_BASE/_system/scripts/record_decision_run.py" \
        --kind run \
        --run-id "$RUN_ID" \
        --status "$STATUS" \
@@ -289,7 +289,7 @@ constitution reasoning and instead:
 3. Appends a `kind: "followup"` line to the same JSONL via the helper:
 
    ```bash
-   python3 "$ZTN_BASE/_system/scripts/emit_telemetry.py" \
+   python3 "$ZTN_BASE/_system/scripts/record_decision_run.py" \
        --kind followup \
        --run-id "$RUN_ID" \
        --post-confidence "$POST_CONFIDENCE" \
@@ -404,7 +404,7 @@ appear. Missing fields should not appear — use empty arrays / `null`.
 | User passes an empty `situation` | Skill asks the user to supply one sentence, then stops; no telemetry line written (no run actually started) |
 | Auto-commit step fails (parallel session holds git lock, repo mid-rebase) | Helper writes the JSONL line, prints warning to stderr, returns 0 — JSONL is source of truth; commit picked up later by `/ztn:save` |
 | `--record-followup` references unknown run_id | Reject loud; do not append orphan followup line |
-| Concurrent invocation in another session | `flock` on `_system/state/.check-decision-telemetry.lock` serialises emission; advisory only — no deadlock |
+| Concurrent invocation in another session | `flock` on `_system/state/.check-decision-runs.lock` serialises emission; advisory only — no deadlock |
 
 ## Telemetry substrate — append-only contract
 

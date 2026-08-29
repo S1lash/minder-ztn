@@ -1,4 +1,4 @@
-"""Tests for emit_telemetry.py — substrate append correctness.
+"""Tests for record_decision_run.py — substrate append correctness.
 
 Covers happy-path run + followup, sensitive redaction, mechanical
 caller class auto-detect via --from-pipeline, orphan followup
@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 
 from tests._fixture import clear_ztn_env, make_fixture  # type: ignore
-import emit_telemetry as et  # type: ignore
+import record_decision_run as et  # type: ignore
 
 
 VALID_RUN_ID = "2026-05-03T12:34:56Z-abcdef01"

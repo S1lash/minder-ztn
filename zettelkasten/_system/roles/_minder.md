@@ -144,7 +144,7 @@ of them write, and nothing in a filename tells you which.
   reverted.
 
 When your assignment *does* name a script, running it is the job — the recorded
-verdict through `query_constitution.py` and `emit_telemetry.py --no-commit` is
+verdict through `query_constitution.py` and `record_decision_run.py --no-commit` is
 the path that exists. Run it exactly as written, flags included: its audit file
 is already in your allowed writes, and `--no-commit` is what stops it committing
 on your behalf.

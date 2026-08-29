@@ -2,69 +2,54 @@
 
 User-readable release notes. For the engineering log, see git history.
 
-## 0.67.1 — The tick odometer says which telemetry it is
+## 0.67.1 — Your ticks now record what they cost
 
-0.67.0 shipped the recorder as `record_telemetry.py`, writing
-`telemetry.jsonl`. The engine already had a telemetry — `emit_telemetry.py`,
-which writes the check-decision audit substrate — so the plain name needed a
-spoken caveat to be understood, and a name that needs one is the wrong name.
-The recorder is `record_tick_telemetry.py` and its file is
-`tick-telemetry.jsonl`; both now say which telemetry they mean. The old paths
-are declared retired, so an update removes them rather than leaving a second
-copy behind.
-
-Two fields changed with them. `schema` became `format_version`, which is the
-word the engine already uses for a versioned record. `xcheck` became
-`layout_check`, matching the `telemetry-layout-drift` finding it feeds — the
-field and the alarm now share a word.
-
-Each entry under `by_agent` also carries its own model tally. A roles tick can
-run each role on a different model, and the tick-level count could say how many
-messages went to which model but never which role was on it — which is the
-question a cost or quality comparison actually asks.
-
-## 0.67.0 — Your ticks now record what they cost
-
-Every scheduled tick writes one line to `_system/state/tick-telemetry.jsonl` saying
-what it consumed: input, output, thinking, cache writes and reads, which models
-it used, and — on a roles tick — a breakdown naming each role separately. There
-is nothing to set up. Your routines read their instructions from the repository
+Every scheduled tick writes one line to `_system/state/tick-telemetry.jsonl`
+saying what it consumed: input, output, thinking, cache writes split by TTL,
+cache reads, which models it used and how many messages each got, and — on a
+roles tick — a breakdown naming each role with its own model tally. There is
+nothing to set up. Your routines read their instructions from the repository
 at run time, so the next tick after this update starts recording.
 
 **It measures, it does not report.** A model cannot see its own consumption.
-The only figure in its context is a remaining-budget counter that ignores cache
-reads and sub-agents entirely, so a tick asked to state its own cost would be
-guessing. Instead the tick reads the transcript the runtime wrote for it — its
-own, plus one per sub-agent it spawned — and adds up what is actually there.
-That distinction matters more than it sounds: on a real run, sub-agents
-accounted for six times the output of the main session, so anything that
-counted only the obvious half would have reported a seventh of the truth and
-looked entirely plausible doing it.
+The only figure in its context is a remaining-budget counter that ignores
+cache reads and sub-agents entirely, so a tick asked to state its own cost
+would be guessing. Instead the tick reads the transcripts the runtime wrote
+for it — its own, plus one per sub-agent it spawned — and adds up what is
+actually there. On a real run, sub-agents accounted for six times the output
+of the main session, so anything counting only the obvious half would have
+reported a seventh of the truth and looked entirely plausible doing it.
 
-**It has to happen during the run.** A cloud tick's transcripts live in a
-sandbox that is destroyed minutes after it finishes, which is why the recording
-happens mid-tick rather than afterwards, and why a tick that went unmeasured
-cannot be measured later. The cost of that timing is the tick's own closing
-messages: they are not written yet when the count is taken. Each line carries
-`measured_through` so you can see the horizon instead of guessing at it.
+**It keeps what explains the number, not just the number.** Each line also
+carries why the cache was missed and how many tokens that cost, which tools
+the tick ran and how often, why each response stopped, and the wall-clock
+window it ran in. Those are the fields that turn "this tick was expensive"
+into "this tick was expensive because the system prompt changed and 427k
+tokens re-entered the cache". None of it survives the run: a cloud tick's
+transcripts live in a sandbox that is destroyed minutes later, which is also
+why the recording happens mid-tick and why a tick that went unmeasured cannot
+be measured afterwards.
 
 **It can never cost you a tick.** The recorder always exits successfully, even
 when it finds nothing — a tick that threw away real work because its odometer
 broke would be worse than having no odometer. The consequence is that it also
 cannot fail loudly, so `/ztn:lint` now checks that every scheduled commit
-carries a telemetry line and tells you when one does not. It also watches for
-the sub-agent transcripts moving somewhere new, which would otherwise show up
-as your usage quietly dropping rather than as an error.
+carries a telemetry line and tells you when one does not. It ignores ticks
+that ran before the recorder existed, so the first run does not open with a
+wall of false findings, and it watches for the sub-agent transcripts moving
+somewhere new — which would otherwise show up as your usage quietly dropping
+rather than as an error.
 
-**One thing to check once.** Your scheduled routines should hold the one-line
-loader that names a file under `integrations/claude-code/scheduler-prompts/`,
-which is the documented setup — those read the current instructions on every
-run and pick this up by themselves. A routine holding a pasted copy of the
-old instructions keeps running them: it will not record anything, and the new
-lint check will report each of its ticks as un-measured, which is true but
-points at the tick rather than at the frozen prompt. The update queues a
-clarification reminding you to look; replacing such a prompt with the loader
-fixes it for good.
+**Both recorders now say which telemetry they are.** This engine writes two
+audit substrates, and until now each was called simply "telemetry" — you had
+to be told which file a script meant. The tick odometer is
+`record_tick_telemetry.py` → `tick-telemetry.jsonl`; the check-decision
+recorder is `record_decision_run.py` → `check-decision-runs.jsonl`, with its
+lock renamed to match. Decision-run lines now carry `format_version` like
+every other versioned record the engine writes, and the update backfills the
+lines already on disk — inserting the field, changing no value and reordering
+no key. The old module paths are declared retired, so the update removes them
+instead of leaving a second copy of a one-home module behind.
 
 **Ticks only.** Running `/ztn:process` or `/ztn:lint` by hand records nothing
 and warns about nothing. The scheduled loop is the thing being measured.
