@@ -68,8 +68,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import hashlib
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 try:
@@ -126,6 +128,309 @@ def is_sanctioned_principle_home(rel_path: Path) -> bool:
     this participates in."""
     rel_str = rel_path.as_posix()
     for home in SANCTIONED_PRINCIPLE_HOMES:
+        if home.endswith("/"):
+            if rel_str.startswith(home):
+                return True
+        elif rel_str == home:
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Verbatim-corpus layer
+# ---------------------------------------------------------------------------
+#
+# The dynamic layer above derives patterns from the instance's REGISTRIES and
+# greps shipped files for them. It structurally cannot reach one class: the
+# owner's own words, quoted out of a transcript and left in a shipped prompt as
+# a worked example. The corpus (`_records/`, `_sources/`) is free prose with no
+# bounded pattern to extract — any extraction wide enough to catch such a
+# sentence flags ordinary language.
+#
+# So this layer searches the other way. Spans a shipped file DELIMITS as a
+# quotation are few (hundreds) and are by construction intended examples; each
+# is tested for exact occurrence in the corpus. Exact match keeps the verdict
+# deterministic and the false-positive rate near zero: a sentence the engine
+# invented does not appear verbatim in a transcript.
+#
+# Known limitation, stated rather than papered over: only DELIMITED spans are
+# checked. A verbatim owner sentence written into a prompt with no quotation
+# marks escapes this layer. Widening to undelimited n-grams was considered and
+# rejected — the cost is a false-positive tail that needs a stoplist, and every
+# example these prompts actually contain is delimited.
+#
+# Output discipline (load-bearing): a hit prints the SHIPPED file, its line,
+# the span — all three already committed in git — plus the corpus file's PATH.
+# Never corpus surrounding text. A gate against leaking the owner's words must
+# not leak them into a terminal or a CI log while reporting.
+
+CORPUS_DIRS = ("zettelkasten/_records", "zettelkasten/_sources")
+
+# Above the length at which an ordinary phrase coincides, below the shortest
+# real leak found in practice.
+QUOTE_MIN_LEN = 24
+
+# Upper bound on a delimited span. Not a judgement about what counts as a
+# quotation — purely a guard against a runaway match when a closing delimiter
+# is missing. High enough that a real block quotation is still tested.
+QUOTE_MAX_LEN = 2000
+
+# A separator that cannot occur in the sources, so a span can never match
+# across the seam between two corpus files.
+_CORPUS_SEP = "\x00"
+
+def _span_re(pairs: tuple[tuple[str, str], ...]) -> re.Pattern[str]:
+    return re.compile(
+        "|".join(
+            f"{re.escape(o)}(?P<g{i}>[^{re.escape(c)}]{{{QUOTE_MIN_LEN},{QUOTE_MAX_LEN}}}?){re.escape(c)}"
+            for i, (o, c) in enumerate(pairs)
+        ),
+        re.DOTALL,
+    )
+
+
+# In prose, all four pairs delimit a quotation.
+_PROSE_PAIRS = (("«", "»"), ('"', '"'), ("\u201c", "\u201d"), ("『", "』"))
+
+# In SOURCE files the ASCII double quote is the language's own string
+# delimiter, not a quotation mark: every literal in a python or shell file
+# would otherwise be treated as something someone said. Two such literals
+# ("applies_to: [claude-code]", "no summary metrics aggregated") were reported
+# as leaks on the first run with the test tree unexempted — both engine
+# vocabulary that the engine itself had written into a record, matched against
+# itself. The typographic pairs stay: a real owner sentence quoted inside a
+# fixture is written with guillemets, which is exactly how the one real leak in
+# this repo's own tests was written.
+_CODE_PAIRS = (("«", "»"), ("\u201c", "\u201d"), ("『", "』"))
+
+_CODE_SUFFIXES = {".py", ".sh", ".bash", ".js", ".mjs", ".json", ".yml", ".yaml", ".toml", ".ps1"}
+
+_QUOTE_SPAN_RE = _span_re(_PROSE_PAIRS)
+_CODE_SPAN_RE = _span_re(_CODE_PAIRS)
+
+
+def span_re_for(path: Path | str | None) -> re.Pattern[str]:
+    if path is None:
+        return _QUOTE_SPAN_RE
+    return _CODE_SPAN_RE if Path(path).suffix.lower() in _CODE_SUFFIXES else _QUOTE_SPAN_RE
+
+
+def normalize_for_corpus(text: str) -> str:
+    """The ONE normalisation, applied to both sides of every comparison.
+
+    Applying it to one side only is the failure mode that matters: every
+    multi-line quote would silently stop matching and the gate would report
+    green forever, which looks exactly like success.
+    """
+    return re.sub(r"[^\S\x00]+", " ", unicodedata.normalize("NFC", text)).strip()
+
+
+def extract_quoted_spans(text: str, path: Path | str | None = None) -> list[tuple[int, str]]:
+    """`(line_number, normalised_span)` for every delimited span worth testing.
+
+    A span with no space is an identifier or a path, never an utterance.
+    """
+    out: list[tuple[int, str]] = []
+    seen: set[str] = set()
+    for m in span_re_for(path).finditer(text):
+        raw = next((g for g in m.groups() if g is not None), None)
+        if raw is None:
+            continue
+        span = normalize_for_corpus(raw)
+        if len(span) < QUOTE_MIN_LEN or " " not in span or span in seen:
+            continue
+        seen.add(span)
+        out.append((text.count("\n", 0, m.start()) + 1, span))
+    return out
+
+
+class Corpus:
+    """The owner's own words, read once.
+
+    Engine and template files are SUBTRACTED from the haystack even when they
+    live under a corpus directory (`_records/README.md`, the describe-me
+    questionnaire under `_sources/inbox/`). Without that subtraction the gate
+    matches shipped text against itself and reports a leak that is nothing of
+    the kind — two such false positives appeared on the first real run.
+
+    Holds the per-file texts as well as the joined blob: locating a hit then
+    costs nothing, where re-reading the corpus per hit cost ~25 s each.
+    """
+
+    # A separator that cannot occur in the sources, so a span can never match
+    # across the seam between two corpus files.
+    SEP = "\x00"
+
+    # Prefilter vocabulary. Soundness is the whole game here: a filter that
+    # rejects a span the full search WOULD have found is a false negative in a
+    # privacy gate, and it is invisible — the run goes green.
+    #
+    # Only the span's INTERIOR words are safe to test. If the span occurs in
+    # the corpus, every word bounded by spaces on both sides inside the span is
+    # a complete corpus token; its FIRST and LAST words may be fragments of
+    # longer tokens there (corpus «unbrokenidentifier», span starting
+    # «identifier …»), so testing those against a token set rejects real
+    # matches. That exact case is pinned by a test.
+    _WORD_RE = re.compile(r"[^\W\d_]{7,}", re.UNICODE)
+    _INTERIOR_RE = re.compile(r"(?<=\s)[^\W\d_]{7,}(?=\s)", re.UNICODE)
+
+    def __init__(self, files: list[tuple[str, str]]) -> None:
+        self.files = files
+        self.blob = self.SEP.join(text for _, text in files)
+        self.words = set(self._WORD_RE.findall(self.blob))
+
+    def __bool__(self) -> bool:
+        return bool(self.blob)
+
+    def may_contain(self, span: str) -> bool:
+        """A NECESSARY condition for `span in self.blob` — never a sufficient
+        one, and never allowed to be wrong in the rejecting direction."""
+        return all(w in self.words for w in self._INTERIOR_RE.findall(span))
+
+    def contains(self, span: str) -> bool:
+        return self.may_contain(span) and span in self.blob
+
+    def locate(self, span: str) -> str | None:
+        """Repo-relative path of the first corpus file holding `span`."""
+        for rel, text in self.files:
+            if span in text:
+                return rel
+        return None
+
+
+def build_corpus(root: Path, shipped: set[Path] | None = None) -> Corpus:
+    """Read the corpus once, minus anything that ships."""
+    shipped = shipped or set()
+    files: list[tuple[str, str]] = []
+    for rel in CORPUS_DIRS:
+        base = root / rel
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("*.md")):
+            if path.resolve() in shipped or path.name.endswith(".template.md"):
+                continue
+            try:
+                text = normalize_for_corpus(path.read_text(encoding="utf-8", errors="replace"))
+            except OSError:
+                continue
+            files.append((path.relative_to(root).as_posix(), text))
+    return Corpus(files)
+
+
+def build_corpus_blob(root: Path, shipped: set[Path] | None = None) -> Corpus:
+    """Name kept for callers that read this as «the haystack»."""
+    return build_corpus(root, shipped)
+
+
+def scan_file_for_corpus_quotes(
+    path: Path, corpus: "Corpus", relpath: str | None = None
+) -> list[tuple[int, str]]:
+    """Spans this shipped file quotes that occur verbatim in the corpus.
+
+    `relpath` (repo-relative) opts the file into the sanctioned-homes
+    exemption — the same paths the constitution layer exempts, for the same
+    reason: they legitimately ship verbatim owner axioms.
+    """
+    if relpath is not None and is_sanctioned_quote_home(Path(relpath)):
+        return []
+    if not corpus:
+        return []
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [
+        (ln, span)
+        for ln, span in extract_quoted_spans(text, path)
+        if corpus.contains(span)
+    ]
+
+
+def locate_span_in_corpus(corpus: "Corpus", span: str) -> str | None:
+    return corpus.locate(span)
+
+
+QUOTE_EXCEPTIONS_FILENAME = "shipped-quote-exceptions.txt"
+
+
+def span_digest(span: str) -> str:
+    """Stable short digest of a normalised span. Identifies a hit in a report
+    without reproducing it, and keys an exception to the exact text — so an
+    exception stops applying the moment the shipped line changes."""
+    return hashlib.sha256(span.encode("utf-8")).hexdigest()[:16]
+
+
+def load_quote_exceptions(root: Path) -> dict[tuple[str, str], str]:
+    """Instance-local, never-shipped exceptions for the corpus layer.
+
+    Same shape and the same promise as `personal-data-blacklist.txt`: tracked
+    in this private repo, absent from `.engine-manifest.yml`, so it reaches no
+    skeleton. It exists for one case the shared engine cannot solve — a
+    friend's own recording happening to contain, word for word, an example the
+    engine ships. They can neither edit engine text nor delete their own
+    record, so without this the gate is permanently red on something that is
+    nobody's defect.
+
+    Format, tab-separated: `<shipped-path>	<span-digest>	<reason>`. The
+    reason is required — an exception with no stated ground is the failure mode
+    this file would otherwise become. Keying on the digest means an exception
+    dies when the shipped line is edited, so it cannot quietly outlive what it
+    excused.
+    """
+    p = root / QUOTE_EXCEPTIONS_FILENAME
+    if not p.exists():
+        return {}
+    out: dict[tuple[str, str], str] = {}
+    for line in p.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        parts = [f.strip() for f in stripped.split("\t") if f.strip()]
+        if len(parts) < 3:
+            continue
+        out[(parts[0], parts[1])] = parts[2]
+    return out
+
+
+def render_corpus_hit(
+    rel: str, line_no: int, span: str, corpus_path: str | None, reveal: bool = False
+) -> str:
+    """One report line.
+
+    Carries no corpus text — and, by default, no corpus PATH either. A record's
+    filename is built from its own subject («…observation-defenses-critique-
+    mood-…»), so printing it into a terminal or a CI log discloses the very
+    thing this gate exists to keep private. The default is an opaque digest;
+    `--reveal-corpus-paths` prints the real path for an owner looking locally.
+    """
+    if corpus_path is None:
+        where = "(corpus file not located)"
+    elif reveal:
+        where = corpus_path
+    else:
+        where = f"corpus file {span_digest(corpus_path)} (re-run with --reveal-corpus-paths)"
+    return (
+        f"{rel}:{line_no}  [verbatim in corpus, span {span_digest(span)}]\n"
+        f"    a quoted span here occurs word-for-word in {where}"
+    )
+
+
+# Homes exempt from the VERBATIM-CORPUS layer. Deliberately NARROWER than
+# `SANCTIONED_PRINCIPLE_HOMES`: those two ship the owner's principles as worked
+# examples by design, so a verbatim match there is the feature. The test tree is
+# not on this list, and that is the point — a test plants its own corpus in a
+# temp directory, so it never needs a real owner sentence, and exempting it once
+# let exactly such a sentence ship inside a fixture. Found in the built
+# skeleton, after the gate that exists to prevent it had passed.
+SANCTIONED_QUOTE_HOMES = (
+    "zettelkasten/5_meta/starter-pack/",
+    "zettelkasten/0_constitution/CONSTITUTION.md",
+)
+
+
+def is_sanctioned_quote_home(rel_path: Path) -> bool:
+    rel_str = rel_path.as_posix()
+    for home in SANCTIONED_QUOTE_HOMES:
         if home.endswith("/"):
             if rel_str.startswith(home):
                 return True
@@ -612,6 +917,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--quiet", action="store_true", help="machine-readable, hits only")
     ap.add_argument(
+        "--reveal-corpus-paths",
+        action="store_true",
+        help="print the real corpus path of a verbatim hit instead of a digest "
+             "(local use — the path itself carries the record's subject)",
+    )
+    ap.add_argument(
         "--extra-pattern",
         action="append",
         default=[],
@@ -640,6 +951,11 @@ def main() -> int:
     always_patterns = [re.compile(p) for p in always_raw]
     constitution_patterns = [re.compile(p) for p in constitution_dynamic]
 
+    # Built once. Empty on a fresh clone whose corpus has not filled in,
+    # which makes the layer a no-op there rather than a false green.
+    corpus = build_corpus(root, shipped={p.resolve() for p in targets})
+    quote_exceptions = load_quote_exceptions(root)
+
     total_hits = 0
     files_with_hits = 0
     for path in targets:
@@ -654,9 +970,10 @@ def main() -> int:
             else always_patterns + constitution_patterns
         )
         hits = scan_file(path, patterns)
-        if not hits:
+        quote_hits = scan_file_for_corpus_quotes(path, corpus, relpath=rel.as_posix())
+        if not hits and not quote_hits:
             continue
-        files_with_hits += 1
+        before = total_hits
         for line_no, pat, line in hits:
             total_hits += 1
             if args.quiet:
@@ -664,6 +981,22 @@ def main() -> int:
             else:
                 print(f"{rel}:{line_no}  [{pat}]")
                 print(f"    {line}")
+        for line_no, span in quote_hits:
+            excused = quote_exceptions.get((rel.as_posix(), span_digest(span)))
+            if excused:
+                if not args.quiet:
+                    print(f"{rel}:{line_no}  [verbatim in corpus — excused: {excused}]")
+                continue
+            total_hits += 1
+            corpus_path = corpus.locate(span)
+            if args.quiet:
+                emit_lines([f"{rel}:{line_no}\tverbatim-in-corpus\t{span_digest(span)}"])
+            else:
+                print(render_corpus_hit(rel.as_posix(), line_no, span, corpus_path,
+                                        reveal=args.reveal_corpus_paths))
+
+        if total_hits > before:
+            files_with_hits += 1
 
     if not args.quiet:
         print()

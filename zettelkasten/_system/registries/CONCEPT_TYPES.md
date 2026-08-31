@@ -1,6 +1,6 @@
 ---
 last_updated: 2026-05-02
-mirror_of: minder/minder-app/src/main/java/.../domain/graph/ConceptType.java
+mirror_of: minder/domain/graph/ConceptType.java
 ---
 
 # Concept Types Registry
@@ -28,10 +28,13 @@ truth. ZTN mirrors it for two reasons:
    per-value descriptions gives the subagent enough context to
    disambiguate cases the prompt alone cannot resolve (`PROJECT` vs
    `IDEA`, `GOAL` vs `VALUE`, `THEME` vs `IDEA`).
-2. **Drift detection.** The `mirror_of:` frontmatter pins this file
-   to the upstream Java path. The python pipeline's parity test
-   (`test_common.py::TestConceptTypeMirror`) locates the Java enum by
-   filesystem glob at test time and asserts both sets match. It is a
+2. **Drift detection.** `mirror_of:` above states the path SUFFIX the
+   parity test matches on — not an absolute path, which would resolve on
+   exactly one machine. Resolution itself is owned by that test
+   (`test_common.py::TestConceptTypeMirror`): it walks up from the checkout
+   looking for a descendant ending in that suffix, honours
+   `ZTN_CONCEPT_TYPE_JAVA` when the file lives elsewhere, and asserts both
+   sets match. It is a
    **local** guard, not a CI one: the Java source is only reachable
    where the Minder repo is checked out alongside this one, and the
    test skips where it is not — so shared CI, and every friend's

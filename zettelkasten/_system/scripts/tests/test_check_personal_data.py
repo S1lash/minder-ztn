@@ -476,3 +476,230 @@ class TestFinalizePatternGuards(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# Verbatim-corpus layer — a shipped file must not quote the owner's own words
+# ---------------------------------------------------------------------------
+
+
+def _corpus_repo(tmp: Path) -> Path:
+    """A temp instance whose corpus holds one owner utterance."""
+    root = tmp / "repo"
+    # Wrapped mid-sentence ON PURPOSE: the shipped side quotes it on one line,
+    # so the pair only matches when one normalisation is applied to both.
+    _write(
+        root / "zettelkasten/_records/observations/20260101-observation-planted.md",
+        "# Observation\n\nPlanted line: Тут уже который год ни отпуска,\n"
+        "ни продвижения не видно, и это уже не смешно.\n",
+    )
+    _write(
+        root / "zettelkasten/_sources/processed/plaud/2026-04-27T15:36:23Z/t.md",
+        "raw transcript ... и так каждый раз повторяется одно и то же ...\n",
+    )
+    return root
+
+
+class VerbatimCorpusQuoteTests(unittest.TestCase):
+    """The class that shipped: an owner utterance used as a worked example.
+
+    The existing dynamic layer derives patterns from registries and greps
+    shipped files for them. It cannot reach this class — the corpus is free
+    prose with no bounded pattern to extract — so the search runs the other
+    way: spans quoted in shipped files are tested against the corpus.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.root = _corpus_repo(self.tmp)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_verbatim_owner_quote_is_refused(self):
+        rel = "zettelkasten/_system/registries/lenses/x/prompt.md"
+        _write(
+            self.root / rel,
+            "## Example\n\n"
+            "Пример брожения: «Тут уже который год ни отпуска, ни продвижения не видно» "
+            "— подстановка убирает суть.\n",
+        )
+        corpus = M.build_corpus_blob(self.root)
+        hits = M.scan_file_for_corpus_quotes(self.root / rel, corpus)
+        self.assertEqual(len(hits), 1, f"expected the planted quote, got {hits}")
+        self.assertEqual(hits[0][0], 3)
+
+    def test_legitimate_unusual_span_is_accepted(self):
+        """Accepts-sibling: long, quoted, non-ASCII, and NOT in the corpus."""
+        rel = "zettelkasten/_system/registries/lenses/y/prompt.md"
+        _write(
+            self.root / rel,
+            "Пиши наблюдательно: «эта возможность порождает другие возможности, "
+            "а не закрывает их» — и не продавай.\n",
+        )
+        corpus = M.build_corpus_blob(self.root)
+        self.assertEqual(M.scan_file_for_corpus_quotes(self.root / rel, corpus), [])
+
+    def test_line_wrapped_corpus_copy_still_matches(self):
+        """CR-4: one normalisation, both sides. The corpus copy of the planted
+        utterance is wrapped mid-sentence; the shipped span is one line."""
+        rel = "zettelkasten/_system/registries/lenses/z/prompt.md"
+        _write(
+            self.root / rel,
+            "Х: «Тут уже который год ни отпуска, ни продвижения не видно, и это уже не смешно»\n",
+        )
+        corpus = M.build_corpus_blob(self.root)
+        self.assertEqual(len(M.scan_file_for_corpus_quotes(self.root / rel, corpus)), 1)
+
+    def test_short_and_spaceless_spans_are_ignored(self):
+        rel = "zettelkasten/_system/registries/lenses/w/prompt.md"
+        _write(
+            self.root / rel,
+            'Поле «tags» и путь "zettelkasten/_records/observations" — не высказывания.\n',
+        )
+        corpus = M.build_corpus_blob(self.root)
+        self.assertEqual(M.scan_file_for_corpus_quotes(self.root / rel, corpus), [])
+
+    def test_report_line_carries_no_corpus_text(self):
+        """CR-1: the gate must not print corpus context into a log."""
+        rel = "zettelkasten/_system/registries/lenses/v/prompt.md"
+        _write(
+            self.root / rel,
+            "«Тут уже который год ни отпуска, ни продвижения не видно»\n",
+        )
+        corpus = M.build_corpus_blob(self.root)
+        hits = M.scan_file_for_corpus_quotes(self.root / rel, corpus)
+        located = M.locate_span_in_corpus(corpus, hits[0][1])
+        self.assertTrue(located.endswith("20260101-observation-planted.md"))
+        rendered = M.render_corpus_hit(rel, hits[0][0], hits[0][1], located)
+        self.assertNotIn("и это уже не смешно", rendered)
+        self.assertNotIn("Owner said", rendered)
+
+    def test_sanctioned_homes_are_exempt(self):
+        """CR-5: paths that legitimately ship verbatim owner axioms stay exempt
+        for this layer too, exactly as they are for the constitution layer."""
+        # A DIRECTORY home — the tuple also holds one exact-file entry,
+        # which has no "under it" to place a file in.
+        sanctioned = next(h for h in M.SANCTIONED_QUOTE_HOMES if h.endswith("/"))
+        rel = f"{sanctioned}example.md"
+        _write(
+            self.root / rel,
+            "«Тут уже который год ни отпуска, ни продвижения не видно»\n",
+        )
+        corpus = M.build_corpus_blob(self.root)
+        self.assertTrue(M.is_sanctioned_quote_home(Path(rel)))
+        # ...and the test tree is deliberately NOT exempt here.
+        self.assertFalse(
+            M.is_sanctioned_quote_home(Path('zettelkasten/_system/scripts/tests/t.py')))
+        self.assertTrue(
+            M.is_sanctioned_principle_home(Path('zettelkasten/_system/scripts/tests/t.py')))
+        self.assertEqual(
+            M.scan_file_for_corpus_quotes(self.root / rel, corpus, relpath=rel), []
+        )
+
+    def test_shipped_file_inside_a_corpus_dir_does_not_match_itself(self):
+        """CR-10, found on the first real run: `_records/README.md` ships AND
+        lives under a corpus directory, so an unsubtracted haystack reports it
+        as quoting the owner — quoting itself. Same for a `.template.md` the
+        engine seeds into `_sources/inbox/`."""
+        readme = "zettelkasten/_records/README.md"
+        tmpl = "zettelkasten/_sources/inbox/describe-me/PROFILE.template.md"
+        line = "«эта строка живёт в отгружаемом файле внутри корпусной папки»\n"
+        _write(self.root / readme, line)
+        _write(self.root / tmpl, line)
+        shipped = {(self.root / readme).resolve()}
+        corpus = M.build_corpus(self.root, shipped=shipped)
+        self.assertEqual(
+            M.scan_file_for_corpus_quotes(self.root / readme, corpus, relpath=readme), []
+        )
+        self.assertEqual(
+            M.scan_file_for_corpus_quotes(self.root / tmpl, corpus, relpath=tmpl), []
+        )
+
+    def test_prefilter_never_hides_a_real_hit(self):
+        """The vocabulary prefilter is an optimisation; a span it rejects must
+        be one the full search would also reject."""
+        corpus = M.build_corpus(self.root)
+        planted = "Тут уже который год ни отпуска, ни продвижения не видно"
+        self.assertTrue(corpus.may_contain(planted))
+        self.assertTrue(corpus.contains(planted))
+        self.assertFalse(corpus.contains("совершенно посторонняя выдуманная фраза здесь"))
+
+    def test_prefilter_is_sound_at_word_boundaries(self):
+        """Second-model finding, reproduced before it was fixed: the corpus
+        token can be LONGER than the span's edge word, so testing edge words
+        against a token set rejects a span that is genuinely present. A false
+        negative in a privacy gate is invisible — the run just goes green."""
+        corpus = M.Corpus(
+            [("x.md", M.normalize_for_corpus("unbrokenidentifier phrase that completes here"))]
+        )
+        span = "identifier phrase that completes"
+        self.assertIn(span, corpus.blob)
+        self.assertTrue(corpus.may_contain(span), "prefilter rejected a present span")
+        self.assertTrue(corpus.contains(span))
+
+    def test_report_hides_the_corpus_path_by_default(self):
+        """The record's filename is built from its own subject, so printing it
+        discloses what the gate exists to protect."""
+        rendered = M.render_corpus_hit(
+            "lens/prompt.md", 12, "какая-то длинная закавыченная фраза владельца",
+            "zettelkasten/_records/observations/20260427-observation-mood-pay-call.md",
+        )
+        self.assertNotIn("observation-mood-pay-call", rendered)
+        self.assertIn("--reveal-corpus-paths", rendered)
+        revealed = M.render_corpus_hit(
+            "lens/prompt.md", 12, "какая-то длинная закавыченная фраза владельца",
+            "zettelkasten/_records/observations/20260427-observation-mood-pay-call.md",
+            reveal=True,
+        )
+        self.assertIn("observation-mood-pay-call", revealed)
+
+    def test_quote_exception_is_keyed_to_the_exact_span(self):
+        """An exception dies when the shipped line is edited, so it cannot
+        quietly outlive the thing it excused."""
+        span = "фраза, которая случайно совпала у друга"
+        _write(
+            self.root / M.QUOTE_EXCEPTIONS_FILENAME,
+            "# path\tdigest\treason\n"
+            f"lens/prompt.md\t{M.span_digest(span)}\tcoincidence in this friend's own recording\n",
+        )
+        exc = M.load_quote_exceptions(self.root)
+        self.assertIn(("lens/prompt.md", M.span_digest(span)), exc)
+        self.assertNotIn(("lens/prompt.md", M.span_digest(span + " ещё")), exc)
+
+    def test_exception_without_a_reason_is_not_loaded(self):
+        _write(self.root / M.QUOTE_EXCEPTIONS_FILENAME, "lens/prompt.md\tdeadbeefdeadbeef\n")
+        self.assertEqual(M.load_quote_exceptions(self.root), {})
+
+    def test_long_block_quotation_is_still_extracted(self):
+        long_span = "слово " * 120  # ~720 chars, over the previous 600 cap
+        text = f"Пример: «{long_span.strip()}» — конец.\n"
+        spans = [s for _, s in M.extract_quoted_spans(text)]
+        self.assertEqual(len(spans), 1)
+        self.assertGreater(len(spans[0]), 600)
+
+    def test_ascii_string_literals_in_source_files_are_not_quotations(self):
+        """In a .py or .sh file the ASCII double quote is the language's own
+        string delimiter. Treating it as a quotation mark reported engine
+        vocabulary — written by the engine INTO a record — as an owner leak."""
+        _write(
+            self.root / "zettelkasten/_records/biometric/garmin/2026-05-18.md",
+            "no summary metrics aggregated for this day\n",
+        )
+        corpus = M.build_corpus(self.root)
+        code = "zettelkasten/_system/scripts/tests/t_probe.py"
+        _write(self.root / code, 'assert "no summary metrics aggregated" in text\n')
+        self.assertEqual(
+            M.scan_file_for_corpus_quotes(self.root / code, corpus, relpath=code), []
+        )
+
+    def test_guillemet_quote_in_a_source_file_is_still_caught(self):
+        """The accepting sibling of the rule above — and the shape of the real
+        leak this repo shipped inside a fixture."""
+        planted = "Тут уже который год ни отпуска, ни продвижения не видно"
+        corpus = M.build_corpus(self.root)
+        code = "zettelkasten/_system/scripts/tests/t_probe2.py"
+        _write(self.root / code, f'text = "Пример: «{planted}»"\n')
+        hits = M.scan_file_for_corpus_quotes(self.root / code, corpus, relpath=code)
+        self.assertEqual(len(hits), 1, f"guillemet quote in code must still be caught: {hits}")

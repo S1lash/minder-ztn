@@ -10,8 +10,15 @@
 #   - If <vault>/minder-ztn.md does not exist, copies the dashboard
 #     template there. A legacy <vault>/HOME.md (pre-rename) is migrated
 #     to minder-ztn.md preserving any owner edits.
-#   - Otherwise, leaves the file alone (friend's customisations are
-#     preserved). To force-refresh, pass --force (overwrites both).
+#     Those two are the owner's once they exist: the seeder leaves them
+#     alone, and only --force overwrites them.
+#   - The four help docs under <vault>/5_meta/help/ are the exception,
+#     because they are not the owner's: they are copies of engine docs.
+#     They are DERIVED — regenerated on every run, so a hand edit in them
+#     is undone by the next one, and --force is not needed to refresh
+#     them. `--refresh-help` runs that step alone; sync_engine.sh calls it
+#     after every update, so a changed engine doc reaches the vault
+#     instead of freezing at install time.
 #
 # Engine improvements to vault-config flow to friends via sync_engine.sh
 # (the source under integrations/obsidian/ is engine-synced); the live
@@ -25,17 +32,21 @@ VAULT="${MINDER_ZTN_BASE:-$REPO_ROOT/zettelkasten}"
 
 FORCE=0
 RESET_GRAPH=0
+REFRESH_HELP_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --force) FORCE=1 ;;
     --reset-graph) RESET_GRAPH=1 ;;
+    --refresh-help) REFRESH_HELP_ONLY=1 ;;
     --vault) VAULT="$2"; shift ;;
     -h|--help)
-      sed -n '2,18p' "$0"
+      sed -n '2,22p' "$0"
       echo
-      echo "Usage: $0 [--force] [--reset-graph] [--vault PATH]"
+      echo "Usage: $0 [--force] [--reset-graph] [--refresh-help] [--vault PATH]"
       echo
       echo "  --force        wipe and re-seed everything (with backup)"
+      echo "  --refresh-help re-render <vault>/5_meta/help/ from the engine"
+      echo "                 docs and do nothing else (they are DERIVED)"
       echo "  --reset-graph  restore graph.json defaults only (color groups,"
       echo "                 forces, default filter) — useful after Obsidian"
       echo "                 erased your color groups when you tweaked filters"
@@ -47,6 +58,64 @@ while [ $# -gt 0 ]; do
 done
 
 log() { printf '[obsidian] %s\n' "$*"; }
+
+# --- Help docs into the vault (DERIVED) ---
+# Obsidian resolves links relative to the vault root. Engine docs live outside
+# the vault (in repo `docs/` and `integrations/obsidian/`), so a curated subset
+# is rendered into `<vault>/5_meta/help/` for the dashboard and bookmarks to
+# link to.
+#
+# These four are DERIVED surfaces in the engine's own sense: copies of engine
+# docs with no legitimate owner edit, regenerated on every run. They were
+# previously copy-if-missing, which froze each friend's copy at the moment
+# they installed — silently, since a stale doc looks exactly like a current
+# one. A hand edit here is undone by the next run; that is the DERIVED rule,
+# and softening it for these files would restore the freeze.
+refresh_help() {
+  # Validate the target BEFORE creating anything. `--refresh-help` runs from
+  # the updater, which inherits MINDER_ZTN_BASE from whatever environment it
+  # was launched in; an `mkdir -p` on an unvalidated path would happily build
+  # and populate a directory tree somewhere unrelated.
+  if [ ! -d "$VAULT/_system" ]; then
+    log "help: $VAULT is not a ZTN base (no _system/) — refusing to write there"
+    return 1
+  fi
+  help_dst="$VAULT/5_meta/help"
+  mkdir -p "$help_dst"
+  # bash 3.2: no associative arrays. `src|dst` pairs, split below.
+  help_pairs="$SCRIPT_DIR/guide.md|$help_dst/guide.md
+$SCRIPT_DIR/views.md|$help_dst/views.md
+$REPO_ROOT/docs/privacy.md|$help_dst/privacy.md
+$REPO_ROOT/docs/CHANGELOG.md|$help_dst/CHANGELOG.md"
+  while IFS='|' read -r src dst; do
+    [ -n "$src" ] || continue
+    [ -f "$src" ] || continue
+    if [ -f "$dst" ] && cmp -s "$src" "$dst"; then
+      log "help: $(basename "$dst") up to date"
+      continue
+    fi
+    # Temp + rename: `cp` truncates the destination first, so a crash mid-copy
+    # leaves a half-written doc that looks present. `mv` within one filesystem
+    # is atomic on all three platforms. The temp name carries the pid because
+    # an install, an update and a manual run can overlap — a fixed `.tmp` lets
+    # one process rename a file another is still writing.
+    tmp="$dst.tmp.$$"
+    trap 'rm -f "$tmp"' EXIT
+    cp "$src" "$tmp" && mv "$tmp" "$dst"
+    trap - EXIT
+    log "help: refreshed $(basename "$dst")"
+  done <<HELP_PAIRS
+$help_pairs
+HELP_PAIRS
+}
+
+# `--refresh-help` is the narrow entry point /ztn:update calls: the DERIVED
+# help docs and nothing else — no `.obsidian/`, no dashboard, no plugin check.
+if [ "$REFRESH_HELP_ONLY" -eq 1 ]; then
+  refresh_help
+  exit 0
+fi
+
 
 if [ ! -d "$VAULT" ]; then
   echo "error: vault directory not found: $VAULT" >&2
@@ -128,30 +197,11 @@ else
   log "seeded minder-ztn.md at $DASHBOARD_DST"
 fi
 
-# --- Help docs into the vault ---
-# Obsidian resolves links relative to the vault root. Engine docs live
-# outside the vault (in repo `docs/` and `integrations/obsidian/`), so
-# we copy a curated subset into `<vault>/5_meta/help/` for HOME and
-# bookmarks to link to. Idempotent: only copies when missing or --force.
-HELP_DST="$VAULT/5_meta/help"
-mkdir -p "$HELP_DST"
-declare -a HELP_PAIRS=(
-  "$SCRIPT_DIR/guide.md|$HELP_DST/guide.md"
-  "$SCRIPT_DIR/views.md|$HELP_DST/views.md"
-  "$REPO_ROOT/docs/privacy.md|$HELP_DST/privacy.md"
-  "$REPO_ROOT/docs/CHANGELOG.md|$HELP_DST/CHANGELOG.md"
-)
-for pair in "${HELP_PAIRS[@]}"; do
-  src="${pair%%|*}"
-  dst="${pair##*|}"
-  [ -f "$src" ] || continue
-  if [ -f "$dst" ] && [ "$FORCE" -ne 1 ]; then
-    log "skipped $(basename "$dst") — already exists"
-  else
-    cp "$src" "$dst"
-    log "seeded $(basename "$dst")"
-  fi
-done
+# --- Help docs into the vault (DERIVED — see refresh_help above) ---
+# Tolerant here: a seed run that cannot write help docs should still finish the
+# rest. `--refresh-help` above is the strict path, because there the refresh IS
+# the job and a silent no-op would be recorded as success.
+refresh_help || log "help: refresh skipped"
 
 # --- Community plugins — detect missing and warn ---
 # Plugin IDs in community-plugins.json auto-enable when their main.js lands

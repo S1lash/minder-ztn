@@ -259,6 +259,36 @@ derivation is local-only — it reads your registries to build regex
 patterns and never sends that data anywhere; the scan itself only runs
 against files bound for the public skeleton, never your private notes.
 
+It also reads the other way round, because names are not the only thing
+that identifies you. A sentence lifted verbatim out of one of your
+recordings and left in a prompt as a worked example carries no name to
+match — and is often more identifying than one. So every quoted span in a
+shipped file is tested for exact occurrence in your `_records/` and
+`_sources/`, and a match fails the run. Files the engine legitimately
+ships your verbatim principles in (the starter pack, the constitution
+protocol's own example) stay exempt, exactly as they are for the pattern
+layer. Anything that ships is subtracted from the haystack first, so
+shipped text is never matched against itself.
+
+This is a **backstop, not a boundary**, and the difference matters to
+you: it catches a sentence someone pasted in between quotation marks,
+and it misses one that was paraphrased, or written in without quotes.
+The rule that engine examples are written rather than quoted is on the
+author; the check only catches the careless half.
+
+The whole scan is local, and the report is built so that failing does
+not itself disclose anything: it names the shipped file, its line, and
+a digest of the matched span — not the record's path, because a record
+filename is built from its own subject. The real path is printed only
+when you ask for it with `--reveal-corpus-paths`, on your own machine.
+
+If your own recording happens to contain, word for word, an example the
+engine ships, you can neither edit engine text nor delete your record.
+List it in `shipped-quote-exceptions.txt` — instance-local, never
+shipped, one line of shipped-path, span digest and a required reason.
+Keying on the digest means the exception stops applying the moment that
+engine line changes, so it cannot quietly outlive what it excused.
+
 ## Engine boundaries — what the engine is not allowed to do
 
 Codified in `zettelkasten/_system/docs/ENGINE_DOCTRINE.md` (auto-loaded

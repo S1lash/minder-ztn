@@ -183,6 +183,12 @@ class RealBaseTests(unittest.TestCase):
         if not log.is_file():
             self.skipTest("no owner data in this checkout")
         row = pipeline_health.last_run(log)
+        if not row["entries"]:
+            # The engine SHIPS this file as a header with no rows, so presence
+            # is not evidence of runs. Guarding on the file alone made every
+            # fresh clone fail this test on day one — found by running the
+            # suite inside a built skeleton.
+            self.skipTest("log present but carries no runs — nothing to order")
         self.assertIsNotNone(row["last_run"])
         # Not asserting the specific dates — they move. Asserting that the
         # helper does not agree with the naive reading is the durable claim,

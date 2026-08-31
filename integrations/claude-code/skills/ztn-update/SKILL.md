@@ -276,6 +276,22 @@ If the runner exits 0 but reported `partial` outcomes, surface each one in the
 not finish. The update itself succeeded; the owner should know what is still
 outstanding, and that it will be retried automatically.
 
+### Step 6.5 — Derived vault docs (already done by the sync script)
+
+`sync_engine.sh` refreshes `<vault>/5_meta/help/` right after the migration
+chain — the four files there are copies of engine docs, so an update that
+rewrote their sources has to rewrite them too. There is nothing to run here;
+this step exists so the reader knows those files moved and why.
+
+It lives in the sync script rather than in this skill because the script is
+what BOTH update paths run: this skill wraps it, and a friend using the CLI
+directly gets the same convergence. Wiring it here alone would have left the
+documented power-user path frozen.
+
+If the sync output carried `warning: vault help docs not refreshed`, put it in
+the Step 8 recovery list with the command it names. A stale help doc never
+fails an update.
+
 ### Step 7 — Follow-up detection
 
 Inspect what changed:
@@ -495,7 +511,11 @@ Ask for more detail on any point?
 
 - **Touch data paths.** Records, knowledge notes, registries,
   constitution principles, SOUL/TASKS/CALENDAR/POSTS, `*.template.md` —
-  all left alone.
+  all left alone. One named exception, and it is not owner content:
+  `<vault>/5_meta/help/` holds copies of engine docs and is refreshed in
+  Step 6.5. A DERIVED surface is regenerated, never preserved
+  (`SYSTEM_CONFIG.md → Identity Contract → Surface classes`); leaving these
+  four alone is what froze them.
 - **Auto-resolve divergence.** Three-way merge of prompts is not safe;
   owner decides per file.
 - **Push.** Hands off to `/ztn:save`.

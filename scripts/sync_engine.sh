@@ -261,6 +261,23 @@ python3 "$SCRIPT_DIR/run_migrations.py" || {
   exit 2
 }
 
+echo
+echo "[sync] refreshing derived vault docs ..."
+# The four files under <vault>/5_meta/help/ are copies of engine docs. They are
+# DERIVED: an update that rewrote their sources has to rewrite them too, or the
+# vault keeps showing whatever was current when this clone was installed.
+#
+# It lives HERE rather than in the /ztn:update skill because this script is what
+# both update paths run — the skill is a wrapper around it, and a friend using
+# the CLI directly gets the same convergence. Putting it in the skill only would
+# have left the documented power-user path permanently frozen.
+#
+# Non-fatal: a stale help doc is no reason to fail an otherwise-good update.
+if [ -x "$REPO_ROOT/integrations/obsidian/seed.sh" ] || [ -f "$REPO_ROOT/integrations/obsidian/seed.sh" ]; then
+  bash "$REPO_ROOT/integrations/obsidian/seed.sh" --refresh-help || \
+    echo "[sync] warning: vault help docs not refreshed — re-run: bash integrations/obsidian/seed.sh --refresh-help" >&2
+fi
+
 cat <<EOF
 
 [sync] done.

@@ -2051,7 +2051,7 @@ def find_soul_auto_zone(text: str) -> tuple[int, int] | None:
 # -----------------------------------------------------------------------------
 
 # Roots walked by `/ztn:process --reprocess-corpus`. Keep aligned with the
-# SKILL spec's §2.1 reprocess-corpus branch: records cover transcript-grounded
+# SKILL spec's `## Mode: --reprocess-corpus`: records cover transcript-grounded
 # logs, knowledge covers PARA layers (4_archive intentionally excluded — history
 # is not rewritten).
 REPROCESS_CORPUS_ROOTS: dict[str, tuple[str, ...]] = {

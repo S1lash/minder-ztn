@@ -348,9 +348,13 @@ exclude:
   - zettelkasten/.obsidian.backup-
   - zettelkasten/minder-ztn.md
   - zettelkasten/HOME.md
-  # Help docs copied into the vault by integrations/obsidian/seed.sh.
-  # Engine source for these lives in `integrations/obsidian/{guide,views}.md`
-  # and `docs/{privacy,CHANGELOG}.md`; vault copies are owner-data after seed.
+  # Help docs rendered into the vault by integrations/obsidian/seed.sh.
+  # Engine source lives in `integrations/obsidian/{guide,views}.md` and
+  # `docs/{privacy,CHANGELOG}.md`. Excluded because a clone must never ship
+  # ANOTHER instance's vault — not because the copies are owner content. They
+  # are DERIVED: regenerated on every seeder run and by `/ztn:update`
+  # Step 6.5, and a hand edit in them is undone by the next run. Calling them
+  # owner-data is what once froze them at install time.
   - zettelkasten/5_meta/help/
 
   # Owner's personal README
@@ -377,6 +381,10 @@ exclude:
   # accidentally reversed by a future glob. See
   # `scripts/check_no_personal_data.py::load_owner_blacklist`.
   - personal-data-blacklist.txt
+  # Instance-local exceptions for the linter's verbatim-corpus layer:
+  # a friend's own recording coinciding with a shipped example. Same
+  # promise as the blacklist above — tracked here, shipped nowhere.
+  - shipped-quote-exceptions.txt
 
   # Note: `scripts/check_no_personal_data.{sh,py}` still ships to skeleton
   # (lives under engine `scripts/` glob) — by design. It ships with an EMPTY

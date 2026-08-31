@@ -2,6 +2,44 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.68.0 — Your help docs stop freezing, and the engine stops quoting you
+
+Two things that had been true since long before anyone noticed.
+
+**The help docs in your vault were frozen at the day you installed.** The four
+files under `5_meta/help/` — the guide, the view presets, the privacy note and
+this changelog — are copies of engine documents. They were copied only when
+missing, and nothing ever refreshed them: updates do not run the installer, and
+the installer skipped anything already there. So every improvement to those
+documents reached the repository and stopped at the vault door. Nothing
+reported it, because a stale document looks exactly like a current one.
+
+They are now treated as what they are: derived copies, re-rendered on every
+seeder run and by `/ztn:update` after each checkout. Nothing to do — the next
+update brings them level. On the authoring instance the changelog was 217 lines
+behind and the privacy note 122, and one copy still carried a person's real
+name where the engine source had used a placeholder for months.
+
+If you deliberately edited one of those four in your vault, that edit is
+overwritten from now on. They are engine documents; edit the source or keep
+your note somewhere the engine does not regenerate.
+
+**The personal-data gate now catches your own words, not just your names.** It
+already derived patterns from your people, projects, identity and principles
+and refused any shipped file containing them. It could not see a different
+class: a sentence lifted verbatim out of one of your transcripts and left in a
+prompt as a worked example. Those are the words that identify a person most
+sharply, and there is no name in them to match.
+
+The gate now reads the other way round — every quoted span in a shipped file is
+tested against your own records and sources, and an exact match fails the run.
+It found one: a lens prompt shipping a sentence about pay, quoted from a
+recording made in April. Replaced with a synthetic example of the same shape.
+
+The check reports the shipped file, the line, and the *path* of the record it
+matched — never the surrounding text. A gate against leaking your words must
+not print them into a log while reporting.
+
 ## 0.67.1 — Your ticks now record what they cost
 
 Every scheduled tick writes one line to `_system/state/tick-telemetry.jsonl`
