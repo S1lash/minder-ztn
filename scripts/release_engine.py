@@ -401,6 +401,12 @@ def main() -> int:
             # for good — and a half-declared removal breaks the survivors that
             # import what was retired.
             ("retirement gate", "check_retirements.py", "shipped paths deleted but undeclared"),
+            # A migration reaches a friend's clone and runs there once. An
+            # untested one that succeeds at the wrong thing is marked applied
+            # and never retried, so release is the last moment the omission is
+            # still free to fix.
+            ("migration-coverage gate", "check_migration_coverage.py",
+             "a migration ships with no suite and no exemption"),
         ):
             print(f"running {label}...")
             rc = subprocess.run(

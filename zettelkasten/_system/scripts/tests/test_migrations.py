@@ -823,3 +823,103 @@ class Migration020Tests(_PreviousShapeFixture, unittest.TestCase):
             first = self._handoff(root), self._plan(root, "steward")
             self.assertEqual(self._run(root).returncode, 0)
             self.assertEqual((self._handoff(root), self._plan(root, "steward")), first)
+
+
+class Migration030OrphanBaselineTests(unittest.TestCase):
+    """030 must let the orphan check start where a friend's base already is.
+
+    The check ships with the gate armed: from this version a tag naming an
+    identity no registry declares is residue, and residue is what the process
+    gate refuses. On a clone that predates the check that is a new verdict about
+    old data — tags that sat in notes for a year would fail tonight's tick, for
+    drift the tick did not create and cannot resolve. So the seeding is the
+    difference between a check that starts working and a base that stops
+    processing.
+    """
+
+    NAME = "030-seed-orphan-baseline.sh"
+    BASELINE = "zettelkasten/_system/state/identity-orphan-baseline.txt"
+
+    _REGISTRY = """# Projects
+
+| ID | Name | Description | Path | Scope | Status |
+|---|---|---|---|---|---|
+| alpha-app | Alpha | a | 1_projects/alpha-app/ | work | active |
+"""
+
+    def _repo(self, tmp: str, *, tags: list[str] | None = None) -> Path:
+        root = _build_repo(tmp)
+        # The helper imports `lib.portable`, which ships beside it on any clone.
+        shutil.copytree(_REPO_ROOT / "scripts" / "lib", root / "scripts" / "lib")
+        zk = root / "zettelkasten"
+        shutil.copy(_SCRIPTS_DIR / "identity_audit.py",
+                    zk / "_system" / "scripts" / "identity_audit.py")
+        for sub in ("1_projects", "2_areas", "3_resources/people", "_system/state",
+                    "4_archive", "_sources/inbox"):
+            (zk / sub).mkdir(parents=True, exist_ok=True)
+        (zk / "1_projects" / "PROJECTS.md").write_text(self._REGISTRY, encoding="utf-8")
+        if tags:
+            fm = "id: n\ntags:\n" + "".join(f"  - {t}\n" for t in tags)
+            (zk / "2_areas" / "n.md").write_text(f"---\n{fm}---\nbody\n", encoding="utf-8")
+        shutil.copy(_MIGRATIONS / "_030_seed_orphan_baseline.py",
+                    root / "scripts" / "migrations" / "_030_seed_orphan_baseline.py")
+        return root
+
+    def test_seeds_the_orphans_it_finds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp, tags=["project/never-registered", "project/alpha-app"])
+            mig = _copy_migration(root, self.NAME)
+            res = _run(mig)
+            self.assertEqual(res.returncode, 0, res.stderr)
+            body = (root / self.BASELINE).read_text(encoding="utf-8")
+            self.assertIn("project/never-registered | 2_areas/n.md", body)
+            # A declared identity is not drift and must not be silenced.
+            self.assertNotIn("alpha-app", body.split("Format:")[-1])
+
+    def test_a_base_with_no_orphans_gets_no_file(self):
+        """No baseline and an empty one mean the same thing; write neither."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp, tags=["project/alpha-app"])
+            res = _run(_copy_migration(root, self.NAME))
+            self.assertEqual(res.returncode, 0, res.stderr)
+            self.assertFalse((root / self.BASELINE).exists())
+
+    def test_an_existing_baseline_is_never_re_derived(self):
+        """Re-deriving would re-admit every orphan the owner has since resolved."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp, tags=["project/never-registered"])
+            curated = root / self.BASELINE
+            curated.parent.mkdir(parents=True, exist_ok=True)
+            curated.write_text("# curated by hand\n", encoding="utf-8")
+            res = _run(_copy_migration(root, self.NAME))
+            self.assertEqual(res.returncode, 0, res.stderr)
+            self.assertEqual(curated.read_text(encoding="utf-8"), "# curated by hand\n")
+
+    def test_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp, tags=["project/never-registered"])
+            mig = _copy_migration(root, self.NAME)
+            _run(mig)
+            first = (root / self.BASELINE).read_text(encoding="utf-8")
+            self.assertEqual(_run(mig).returncode, 0)
+            self.assertEqual((root / self.BASELINE).read_text(encoding="utf-8"), first)
+
+    def test_no_engine_library_is_partial_not_applied(self):
+        """Exiting 0 here would record `applied` and the base would never be seeded."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp, tags=["project/never-registered"])
+            (root / "zettelkasten" / "_system" / "scripts" / "identity_audit.py").unlink()
+            res = _run(_copy_migration(root, self.NAME))
+            self.assertNotEqual(res.returncode, 0)
+            self.assertFalse((root / self.BASELINE).exists())
+
+    def test_touches_no_owner_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp, tags=["project/never-registered"])
+            before = _tree_md5(root)
+            _run(_copy_migration(root, self.NAME))
+            after = _tree_md5(root)
+            added = set(after) - set(before)
+            self.assertEqual(added, {self.BASELINE})
+            for path, digest in before.items():
+                self.assertEqual(after.get(path), digest, path)

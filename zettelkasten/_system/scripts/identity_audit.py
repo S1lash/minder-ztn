@@ -530,6 +530,192 @@ PEOPLE_SPEC = RegistrySpec(
 
 REGISTRY_SPECS: tuple[RegistrySpec, ...] = (PROJECT_SPEC, PEOPLE_SPEC)
 
+
+# -----------------------------------------------------------------------------
+# Orphan namespaced tags — a tag naming an identity no registry declares
+# -----------------------------------------------------------------------------
+
+# The known orphans of THIS base, one per line as `tag | path`. Owner data, not
+# engine: it names identifiers out of the owner's own notes, so it never ships.
+ORPHAN_BASELINE_NAME = "identity-orphan-baseline.txt"
+ORPHAN_BASELINE_REL = f"_system/state/{ORPHAN_BASELINE_NAME}"
+
+
+class IdentityAuditError(RuntimeError):
+    """A declaration the audit cannot act on — never a finding about the base."""
+
+
+def namespace_owners(
+    specs: tuple[RegistrySpec, ...] = REGISTRY_SPECS,
+) -> dict[str, RegistrySpec]:
+    """`namespace -> the one registry that claims it`.
+
+    The specs declare `category -> namespace`; this is the inverse, and it is
+    built once here rather than open-coded wherever a namespace has to be
+    resolved back to its owner. A namespace claimed twice is a defect of the
+    declarations: picking either registry would make one of them read the
+    other's identities as orphans, so it is refused rather than resolved.
+    """
+    owners: dict[str, RegistrySpec] = {}
+    for spec in specs:
+        for namespace in spec.expected_namespace.values():
+            if namespace is None:
+                continue
+            other = owners.get(namespace)
+            if other is not None and other is not spec:
+                raise IdentityAuditError(
+                    f"namespace `{namespace}` is claimed by both "
+                    f"`{other.name}` and `{spec.name}` — one namespace, one "
+                    f"registry, or every identity of one reads as an orphan "
+                    f"of the other"
+                )
+            owners[namespace] = spec
+    return owners
+
+
+def _read_orphan_baseline(root: Path) -> set[tuple[str, str]]:
+    path = root / ORPHAN_BASELINE_REL
+    if not path.is_file():
+        return set()
+    out: set[tuple[str, str]] = set()
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        tag, _, where = line.partition("|")
+        tag, where = tag.strip(), where.strip()
+        if tag and where:
+            out.add((tag, where))
+    return out
+
+
+def baseline_additions(root: Path, ref: str = "HEAD") -> list[str] | None:
+    """Rows this working tree added to the orphan baseline since `ref`.
+
+    The baseline is documented as a list that only shrinks, and documentation is
+    not a mechanism: appending one line silences a real orphan, and every scan
+    afterwards reports clean. Nothing in the file itself can tell an original
+    row from one added yesterday — only its own history can, which is why this
+    reads git rather than the file.
+
+    Returns `None` — never `[]` — when the ref cannot be read, and the two are
+    different facts that must not print the same word. A shallow checkout, no
+    git, or a first commit all mean «nothing was compared»; reporting that as
+    «nothing was added» is how a guard passes forever on a machine where it has
+    never once run. The caller decides what an unestablished result is worth;
+    in CI it is a failure, by the same rule the identity gate already applies to
+    its own could-not-run.
+    """
+    import subprocess
+
+    rel = ORPHAN_BASELINE_REL
+    cwd = str(root.parent if root.name == "zettelkasten" else root)
+    try:
+        # Whether the REF resolves and whether the PATH existed in it are two
+        # different questions, and `git show` fails the same way for both. Asked
+        # together they turn the commit that first creates the baseline into a
+        # «could not compare» failure — the guard would refuse its own seeding.
+        known_ref = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+            cwd=cwd, capture_output=True, text=True, encoding="utf-8",
+        )
+        if known_ref.returncode != 0:
+            return None
+        prior = subprocess.run(
+            ["git", "show", f"{ref}:zettelkasten/{rel}"],
+            cwd=cwd, capture_output=True, text=True, encoding="utf-8",
+        )
+    except OSError:
+        return None
+    if prior.returncode != 0:
+        # The ref is good and the file is not in it: the baseline is being
+        # created here. Nothing to compare against, and a creating commit is
+        # read in review like any other. Removing the file and re-adding it with
+        # fresh rows would slip past this — as two commits that both show what
+        # they did, which is the level of visibility this guard is for.
+        return []
+    def _rows(text: str) -> set[str]:
+        out = set()
+        for raw in text.splitlines():
+            line = raw.strip()
+            if line and not line.startswith("#"):
+                out.add(line)
+        return out
+    path = root / rel
+    now = _rows(path.read_text(encoding="utf-8")) if path.is_file() else set()
+    return sorted(now - _rows(prior.stdout))
+
+
+def _tags_of(fm: dict) -> list[str]:
+    tags = fm.get("tags")
+    if isinstance(tags, str):
+        return [tags]
+    if isinstance(tags, list):
+        return [t for t in tags if isinstance(t, str)]
+    return []
+
+
+def scan_orphan_tags(
+    root: Path,
+    files: list[ClassifiedFile],
+    registries: dict[str, dict[str, RegistryEntry]],
+    specs: tuple[RegistrySpec, ...] = REGISTRY_SPECS,
+) -> list[dict]:
+    """Tags naming an identity that the claiming registry never declared.
+
+    The audit reasons outward from declared identities, so an identifier that
+    was never declared has no entity to reason from and is examined by nothing.
+    The registry is the source of truth for what a project or a person IS; a tag
+    in its namespace naming something absent from it is drift by that same rule.
+
+    Only LIVE surfaces are read, and the class comes from the audit's own
+    classification rather than a second list of excluded paths — a second list
+    is how the two would drift apart.
+    """
+    owners = namespace_owners(specs)
+    findings: list[dict] = []
+    for item in files:
+        if item.rule.surface_class != CLASS_LIVE:
+            continue
+        parsed = read_frontmatter(item.path)
+        if not parsed:
+            continue
+        fm, _ = parsed
+        for tag in _tags_of(fm):
+            split = _split_tag(tag)
+            if split is None:
+                continue
+            namespace, identifier = split
+            spec = owners.get(namespace)
+            if spec is None:
+                continue  # nobody claims this namespace; it declares no identity
+            if identifier in registries.get(spec.name, {}):
+                continue  # declared — live or retired, both are the audit's job
+            rel = item.path.relative_to(root).as_posix()
+            findings.append({
+                "scan": "orphan-tag",
+                "tag": tag,
+                "namespace": namespace,
+                "identifier": identifier,
+                "registry": namespace,
+                "registry_path": spec.registry_path,
+                "path": rel,
+                "reason": (
+                    f"`{tag}` names `{identifier}` in the `{namespace}` "
+                    f"namespace, and {spec.registry_path} does not declare it "
+                    f"— neither live nor retired. Nothing else examines this: "
+                    f"every other check reasons outward from a declared "
+                    f"identity."
+                ),
+                "to_resolve": (
+                    f"Decide which it is and do that one thing: register "
+                    f"`{identifier}`, retag the note to an identity that "
+                    f"exists, or drop the tag. The choice is the owner's — the "
+                    f"three are not interchangeable."
+                ),
+            })
+    return findings
+
 # Body-text markers accepted as boundary-case annotation when
 # projects.length == 2.
 BOUNDARY_MARKERS: tuple[str, ...] = (
@@ -546,7 +732,7 @@ BOUNDARY_MARKERS: tuple[str, ...] = (
 # -----------------------------------------------------------------------------
 
 def _wikilink_re(entity_id: str) -> re.Pattern[str]:
-    """Every legal Obsidian link to this node, and nothing else.
+    r"""Every legal Obsidian link to this node, and nothing else.
 
     Five shapes, all of which resolve to the same node: `[[id]]`, `[[id|label]]`,
     `[[id#section]]`, the path form `[[1_projects/id]]` that Obsidian writes
@@ -1763,10 +1949,12 @@ def audit(
     # be reported in the same words as one computed over a clean scan.
     identity_placements: list[tuple[str, str, tuple[str, ...]]] = []
 
+    parsed_by_spec: dict[str, dict[str, RegistryEntry]] = {}
     for spec in specs:
         parsed = (registries or {}).get(spec.name)
         if parsed is None:
             parsed = spec.parse(root)
+        parsed_by_spec[spec.name] = parsed
         if identity is not None and identity in parsed:
             known_identity = True
             identity_placements.append(
@@ -1834,13 +2022,31 @@ def audit(
     # unreadable registry rows belong to the base as a whole, and letting them
     # fail one identity's gate is exactly the confusion the filter exists to
     # remove.
+    # An orphan is a fact about the base: no identity owns it, so it must never
+    # fail the proof of one retirement — the same reason coverage gaps and
+    # unreadable rows are dropped here.
+    orphans_all = scan_orphan_tags(root, files, parsed_by_spec, specs)
+    baseline = _read_orphan_baseline(root)
+    orphans_baselined = [o for o in orphans_all if (o["tag"], o["path"]) in baseline]
+    orphans = [o for o in orphans_all if (o["tag"], o["path"]) not in baseline]
+    # A row whose orphan is gone is not harmless: it is a silencer left armed
+    # over a spot that may drift back, and it makes the list look longer than
+    # the work remaining. Reported, never residue — the night must not stop for
+    # a stale line in a state file.
+    live_pairs = {(o["tag"], o["path"]) for o in orphans_all}
+    orphans_stale = sorted(f"{tag} | {where}" for tag, where in baseline
+                           if (tag, where) not in live_pairs)
+
     if identity is not None:
         unclassified, registry_defects = [], []
+        orphans, orphans_baselined, orphans_stale = [], [], []
 
     ordered = [per_identity[k] for k in sorted(per_identity)]
     surface_residue = sum(b["residue_count"] for b in ordered)
     derived_count = sum(b["derived_count"] for b in ordered)
-    residue_count = surface_residue + len(unclassified) + len(registry_defects)
+    residue_count = (
+        surface_residue + len(unclassified) + len(registry_defects) + len(orphans)
+    )
     coverage: dict[str, int] = {
         CLASS_LIVE: 0, CLASS_DERIVED: 0, CLASS_IMMUTABLE: 0,
         CLASS_UNCLASSIFIED: len(unclassified),
@@ -1869,6 +2075,10 @@ def audit(
         "unclassified": unclassified,
         "registry_defect_count": len(registry_defects),
         "registry_defects": registry_defects,
+        "orphan_count": len(orphans),
+        "orphans": orphans,
+        "orphans_baselined": orphans_baselined,
+        "orphans_stale": orphans_stale,
         "coverage": coverage,
         "clean": residue_count == 0,
         "surfaces": list(SURFACES),
@@ -2140,7 +2350,8 @@ def _print_report(result: dict) -> None:
         f"residue: {result['residue_count']} "
         f"(surfaces {result['surface_residue_count']}, "
         f"unclassified {result['unclassified_count']}, "
-        f"registry defects {result['registry_defect_count']}) | "
+        f"registry defects {result['registry_defect_count']}, "
+        f"orphan tags {result['orphan_count']}) | "
         f"derived: {result['derived_count']} | {verdict} | "
         f"owner: {result['owner'] or '—'}"
     )
@@ -2150,6 +2361,13 @@ def _print_report(result: dict) -> None:
             "  exit 0 here means «no check applies», not «no residue found» — "
             "nothing about this identifier was examined."
         )
+    if result.get("orphans_stale"):
+        print(
+            f"  orphan baseline: {len(result['orphans_stale'])} stale row(s) — "
+            "the orphan is gone, the silencer is still armed. Remove them:"
+        )
+        for row in result["orphans_stale"]:
+            print(f"    {row}")
     cov = result["coverage"]
     print(
         f"  coverage: {cov[CLASS_LIVE]} live, {cov[CLASS_DERIVED]} derived, "

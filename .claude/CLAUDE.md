@@ -161,6 +161,7 @@ When engine behaviour changes, these are the docs that must move with it. Drift 
 | `scripts/check_portability.py` | Portability gate — makes `ENGINE_DOCTRINE §3.9` executable. Runs in CI and inside `release_engine.py`; a release cannot ship a §3.9 violation. Escapes: inline `portability-ok: <reason>` or a row in `scripts/portability-allowlist.txt` |
 | `scripts/manifest_paths.py` | Emits one manifest section as LF-separated lines for a shell caller. Exists so `sync_engine.sh` has no inline `python3 - <<'PY'` heredoc on the boundary — that heredoc printed with a bare `print()`, and python's text-mode stdout writes CRLF on Git Bash, which is what made `/ztn:update` silently apply nothing there |
 | `scripts/run_migrations.py` | The migration runner. Honours each migration's declared `# migration-kind:` — `structural` failure aborts, `heal` failure is recorded and the update continues. Called by `sync_engine.sh` and by `/ztn:update` |
+| `scripts/check_migration_coverage.py` | Migration-coverage gate — a migration ships with a suite that EXECUTES it, or a dated row in `scripts/migration-coverage-allowlist.txt`. Coverage is read from the test's syntax tree (class naming the migration, a real `test_*`, a runner that itself shells out), because a `NAME` line beside no test is trivial to write and grep cannot tell them apart. The allowlist's ceiling is a constant in the gate, not a line in the list — a limit a file declares about itself is raised by editing that file. Runs in CI and inside `release_engine.py`. Exists because an untested `heal` that SUCCEEDS at the wrong thing is marked applied and never runs again, on any clone |
 | `scripts/check_seed_contract.py` | Seed-contract gate — enforces the contract at release + CI; add a new seed's invariant here if you introduce a new seeding kind |
 | `scripts/check_retirements.py` | Retirement gate — proves every shipped path this engine deleted is declared in `retired:`. Runs in CI and inside `release_engine.py`. Exists because no content scan can see it: the absence of a file is not a file, and a half-declared removal is worse than none — the survivors go on importing what was retired, so the update meant to clean the tree is what breaks it. Refuses on a shallow clone rather than reporting clean |
 | `scripts/retire_paths.py` | Removes what the manifest lists as `retired:`. A sync copies what upstream HAS and cannot express what it no longer has, so without this a deleted module lives on every clone forever. Runs on every update rather than as a one-off migration, so it converges a clone at any version — including one dark for months |
@@ -193,6 +194,10 @@ python3 scripts/release_engine.py --target /tmp/skeleton-check --dry-run
 # Run after touching `.engine-manifest.yml → template:/seed_skill` or the
 # threshold/config seed files. CI runs it too.
 python3 scripts/check_seed_contract.py
+
+# Migration-coverage gate — every migration has a suite that executes it, or a
+# dated row in the closed allowlist. Run after adding a migration; CI runs it too.
+python3 scripts/check_migration_coverage.py
 
 # Retirement gate — every shipped path we deleted is declared in `retired:`,
 # so it actually leaves a friend's clone. Needs full git history; refuses on a

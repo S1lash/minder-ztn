@@ -526,6 +526,16 @@ and route to the owning regenerator, never to a text fix; immutable surfaces
 are never walked. A **void** identity has no successor by rule, so its
 references are frozen where they stand and excluded from the residue check.
 
+**Orphan tags arrive in their own key and are never autofixed.** The report's
+`orphans` list holds tags naming an identity no registry declares — they carry
+no `action` and no `target` on purpose: registering the identity, retagging the
+note and dropping the tag are three different decisions, and nothing in the
+scan can tell which one the owner means. Each new orphan is an
+`identity-orphan` CLARIFICATION naming the tag and the note. The ones the base
+already carried sit in `_system/state/identity-orphan-baseline.txt` and are
+absent from `orphans` entirely, so a nightly run reports only what appeared
+since — and removing a row there is how a resolved orphan leaves the list.
+
 **Successor resolution is transitive.** The target of any surface naming a
 retired identifier is the **terminal live successor** — follow the chain of
 retirement rows until an identity that is not itself retired, and write that.

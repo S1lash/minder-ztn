@@ -2,6 +2,70 @@
 
 User-readable release notes. For the engineering log, see git history.
 
+## 0.69.0 — A tag can no longer name a project you never had, and a migration can no longer arrive untested
+
+Two holes of the same shape: a rule that was written down and watched by
+nothing.
+
+**A tag naming an identity that does not exist was invisible to every check.**
+The identity procedure reasons outward from what a registry declares — for each
+project and person it knows, it asks where the identifier still appears. An
+identifier the registry never declared has nothing to reason from, so it was
+examined by nobody. `project/some-topic` could sit in a note for years while
+every scan reported clean.
+
+The scan now reads the other direction too: a tag whose namespace belongs to a
+registry, naming something that registry never declared — neither live nor
+retired — is residue. Only namespaces a registry claims are judged, so
+`topic/`, `domain/` and the rest are untouched, and each namespace belongs to
+exactly one registry, a collision being refused rather than quietly resolved.
+
+Nothing is repaired automatically, because registering the identity, retagging
+the note and dropping the tag are three different decisions and only you can
+tell which applies. The ones your base already carries are listed in
+`_system/state/identity-orphan-baseline.txt` so tonight's run does not stop for
+drift that predates the check; each becomes a clarification. The list only
+shrinks, and CI now refuses a commit that adds a row to it — a list that can be
+appended to is not a baseline, it is a mute button.
+
+On the authoring base it found ten, in thirteen notes: topics tagged as
+projects, a person archived out of the registry while their tag stayed, and one
+placeholder.
+
+**Your own base is seeded on update, so tonight's run is unaffected.** The check
+arrives with the gate armed, and on a base that predates it that would be a new
+verdict about old data — tags that have sat in notes for a year failing a tick
+that neither created them nor can resolve them. So the update runs the scan once
+and writes what it finds into your baseline first; from that moment a NEW orphan
+fails and the existing ones wait for you. If you already have a baseline it is
+left exactly as it is: re-deriving it would re-admit every orphan you had
+already resolved.
+
+**A migration could ship with no test, and nothing anywhere said otherwise.**
+Six of twenty-eight had one. The gap had grown by three across two releases,
+because coverage was a habit rather than a rule, and a habit stops without any
+artifact looking wrong.
+
+This matters more for migrations than for ordinary code. One that FAILS is
+recorded and retried on your next update. One that *succeeds at the wrong
+thing* is marked applied and never runs again — not on your clone, not after a
+corrected version ships. Only a test that actually executes the script can see
+that case, so the new gate demands execution rather than a declaration: a test
+class naming the migration, holding a real test, and calling a runner that
+genuinely shells out. All three are read from the test's syntax tree, because a
+declaration of coverage is trivial to write beside no test at all.
+
+The twenty-two that predate the gate are listed with a reason and a date, and
+that list is closed: its ceiling lives in the gate's own code, so it cannot be
+raised by editing the list. Anything added from now on ships with a suite.
+
+**And the identity contract now says what it actually enforces.** It named seven
+kinds of identity and one procedure for all of them; two are enforced. The
+others are not covered by silence — a concept rename rides the regenerated
+census, a source has its deprecated section, a domain hub has the archive
+contract, and a lens has nothing at all. Each is now named, including the
+nothing.
+
 ## 0.68.0 — Your help docs stop freezing, and the engine stops quoting you
 
 Two things that had been true since long before anyone noticed.
